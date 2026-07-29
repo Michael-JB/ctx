@@ -34,14 +34,11 @@ def create_session(session: str, cwd: Path) -> None:
     _tmux("select-pane", "-t", right)
 
 
-def attach(session: str, cwd: Path) -> None:
+def attach(session: str) -> None:
     if os.environ.get("TMUX"):
         _tmux("switch-client", "-t", f"={session}")
     else:
-        # -c re-pins the session working directory (used for new panes and
-        # windows), which can drift if the session was rebuilt, e.g. by
-        # tmux-resurrect after a server restart.
-        os.execvp("tmux", ["tmux", "attach-session", "-t", f"={session}", "-c", str(cwd)])
+        os.execvp("tmux", ["tmux", "attach-session", "-t", f"={session}"])
 
 
 def kill_session(session: str) -> None:
