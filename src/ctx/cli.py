@@ -29,12 +29,12 @@ def new(repo: str, name: str) -> None:
 
 
 @cli.command("open")
-@click.argument("ref", metavar="REPO/NAME")
-def open_(ref: str) -> None:
+@click.argument("name")
+def open_(name: str) -> None:
     """Attach to a context's tmux session, recreating it if needed."""
     cfg = load_config()
     try:
-        ctx = contexts.find_context(cfg, ref)
+        ctx = contexts.find_context(cfg, name)
     except LookupError as exc:
         raise click.ClickException(str(exc)) from exc
     session = tmux.session_name(ctx)
@@ -64,13 +64,13 @@ def list_() -> None:
 
 
 @cli.command()
-@click.argument("ref", metavar="REPO/NAME")
+@click.argument("name")
 @click.option("--force", is_flag=True, help="Delete even with uncommitted or unpushed work.")
-def rm(ref: str, force: bool) -> None:
+def rm(name: str, force: bool) -> None:
     """Delete a context: kill its tmux session and remove the checkout."""
     cfg = load_config()
     try:
-        ctx = contexts.find_context(cfg, ref)
+        ctx = contexts.find_context(cfg, name)
     except LookupError as exc:
         raise click.ClickException(str(exc)) from exc
     if not force:

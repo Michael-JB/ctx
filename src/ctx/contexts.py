@@ -35,24 +35,22 @@ def list_contexts(cfg: Config) -> list[Context]:
     return found
 
 
-def find_context(cfg: Config, ref: str) -> Context:
-    """Resolve a 'repo/name' reference to an existing context."""
-    if "/" not in ref:
-        raise LookupError(f"'{ref}' is not a context reference; use the form repo/name")
-    repo, name = ref.split("/", 1)
-    path = context_path(cfg, repo, name)
-    if not (path / ".git").exists():
-        raise LookupError(f"no context '{repo}/{name}'")
-    return Context(repo, name, path)
+def find_context(cfg: Config, name: str) -> Context:
+    """Resolve a context name; names are globally unique."""
+    matches = [c for c in list_contexts(cfg) if c.name == name]
+    if not matches:
+        raise LookupError(f"no context '{name}'")
+    return matches[0]
 
 
 def create_context(cfg: Config, repo: str, name: str) -> Context:
     mirror = repos.repo_path(cfg, repo)
     if not mirror.exists():
         raise FileNotFoundError(f"repo '{repo}' is not registered (ctx repo add <url>)")
+    taken = next((c for c in list_contexts(cfg) if c.name == name), None)
+    if taken is not None:
+        raise FileExistsError(f"context name '{name}' is already used by {taken.qualified}")
     path = context_path(cfg, repo, name)
-    if path.exists():
-        raise FileExistsError(f"context '{repo}/{name}' already exists at {path}")
 
     repos.update_repo(cfg, repo)
     default = repos.default_branch(cfg, repo)
