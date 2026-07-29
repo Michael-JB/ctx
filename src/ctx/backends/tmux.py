@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 
 from ctx.contexts import Context
+from ctx.layout import Node, Pane
 
 
 def _session_name(ctx: Context) -> str:
@@ -16,20 +17,35 @@ def _tmux(*args: str) -> str:
     return result.stdout.strip()
 
 
-def _create_session(session: str, cwd: Path) -> None:
-    """Left column: lazygit over nvim. Right column: claude."""
-    left_top = _tmux("new-session", "-d", "-s", session, "-c", str(cwd), "-P", "-F", "#{pane_id}")
-    right = _tmux("split-window", "-h", "-t", left_top, "-c", str(cwd), "-P", "-F", "#{pane_id}")
-    left_bottom = _tmux(
-        "split-window", "-v", "-t", left_top, "-c", str(cwd), "-P", "-F", "#{pane_id}"
-    )
-    _tmux("send-keys", "-t", left_top, "lazygit", "Enter")
-    _tmux("send-keys", "-t", left_bottom, "nvim", "Enter")
-    _tmux("send-keys", "-t", right, "claude", "Enter")
-    _tmux("select-pane", "-t", right)
+def _build(node: Node, pane_id: str, cwd: Path) -> list[tuple[str, Pane]]:
+    """Subdivide pane_id according to the layout, returning (pane_id, pane) leaves."""
+    if isinstance(node, Pane):
+        return [(pane_id, node)]
+    flag = "-h" if node.direction == "row" else "-v"
+    regions = [pane_id]
+    for _ in node.panes[1:]:
+        regions.append(
+            _tmux("split-window", flag, "-t", regions[-1], "-c", str(cwd), "-P", "-F", "#{pane_id}")
+        )
+    leaves: list[tuple[str, Pane]] = []
+    for child, region in zip(node.panes, regions, strict=True):
+        leaves.extend(_build(child, region, cwd))
+    return leaves
+
+
+def _create_session(session: str, cwd: Path, layout: Node) -> None:
+    first = _tmux("new-session", "-d", "-s", session, "-c", str(cwd), "-P", "-F", "#{pane_id}")
+    leaves = _build(layout, first, cwd)
+    for pane_id, pane in leaves:
+        _tmux("send-keys", "-t", pane_id, pane.command, "Enter")
+    focused = next((pane_id for pane_id, pane in leaves if pane.focus), leaves[0][0])
+    _tmux("select-pane", "-t", focused)
 
 
 class TmuxBackend:
+    def __init__(self, layout: Node) -> None:
+        self._layout = layout
+
     def exists(self, ctx: Context) -> bool:
         result = subprocess.run(
             ["tmux", "has-session", "-t", f"={_session_name(ctx)}"], capture_output=True
@@ -39,7 +55,7 @@ class TmuxBackend:
     def open(self, ctx: Context) -> None:
         session = _session_name(ctx)
         if not self.exists(ctx):
-            _create_session(session, ctx.path)
+            _create_session(session, ctx.path, self._layout)
         if os.environ.get("TMUX"):
             _tmux("switch-client", "-t", f"={session}")
         else:

@@ -26,7 +26,7 @@ def get_backend(cfg: Config) -> Multiplexer:
     if cfg.multiplexer == "tmux":
         from ctx.backends.tmux import TmuxBackend
 
-        return TmuxBackend()
+        return TmuxBackend(cfg.layout)
     if cfg.multiplexer == "zellij":
         from ctx.backends.zellij import ZellijBackend
 
