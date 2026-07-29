@@ -6,8 +6,9 @@ from ctx.contexts import Context
 
 
 def session_name(ctx: Context) -> str:
+    raw = f"{ctx.repo}--{ctx.name}"
     # tmux forbids '.' and ':' in session names.
-    return ctx.name.replace(".", "-").replace(":", "-")
+    return raw.replace(".", "-").replace(":", "-")
 
 
 def _tmux(*args: str) -> str:
