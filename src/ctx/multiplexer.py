@@ -30,5 +30,5 @@ def get_backend(cfg: Config) -> Multiplexer:
     if cfg.multiplexer == "zellij":
         from ctx.backends.zellij import ZellijBackend
 
-        return ZellijBackend()
+        return ZellijBackend(cfg.layout)
     raise MultiplexerError(f"unknown multiplexer '{cfg.multiplexer}' (supported: tmux, zellij)")
