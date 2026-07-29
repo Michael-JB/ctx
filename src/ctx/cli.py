@@ -4,7 +4,7 @@ import sys
 import click
 
 from ctx import contexts, repos
-from ctx.config import load_config
+from ctx.config import ConfigError, load_config
 from ctx.layout import LayoutError
 from ctx.multiplexer import MultiplexerError, get_backend
 
@@ -27,7 +27,7 @@ def new(repo: str, name: str, base: str | None) -> None:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"created {ctx.qualified} at {ctx.path} on {contexts.current_branch(ctx)}")
     try:
-        get_backend(cfg).open(ctx)
+        get_backend(cfg.multiplexer, cfg.layout).open(ctx)
     except MultiplexerError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -42,7 +42,7 @@ def open_(name: str) -> None:
     except LookupError as exc:
         raise click.ClickException(str(exc)) from exc
     try:
-        get_backend(cfg).open(ctx)
+        get_backend(cfg.multiplexer, cfg.layout).open(ctx)
     except MultiplexerError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -55,10 +55,7 @@ def list_() -> None:
     if not all_contexts:
         click.echo("no contexts")
         return
-    try:
-        mux = get_backend(cfg)
-    except MultiplexerError as exc:
-        raise click.ClickException(str(exc)) from exc
+    mux = get_backend(cfg.multiplexer, cfg.layout)
     for ctx in all_contexts:
         branch = contexts.current_branch(ctx)
         flags = []
@@ -92,10 +89,7 @@ def rm(name: str, force: bool) -> None:
             raise click.ClickException(
                 f"{ctx.qualified} has {' and '.join(problems)}; use --force to delete anyway"
             )
-    try:
-        mux = get_backend(cfg)
-    except MultiplexerError as exc:
-        raise click.ClickException(str(exc)) from exc
+    mux = get_backend(cfg.multiplexer, cfg.layout)
     if mux.exists(ctx):
         mux.kill(ctx)
     contexts.remove_context(ctx)
@@ -149,4 +143,7 @@ def main() -> None:
         sys.exit(exc.returncode or 1)
     except LayoutError as exc:
         click.echo(f"error: invalid layout: {exc}", err=True)
+        sys.exit(1)
+    except ConfigError as exc:
+        click.echo(f"error: invalid config: {exc}", err=True)
         sys.exit(1)

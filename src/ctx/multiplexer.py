@@ -1,7 +1,17 @@
-from abc import ABC, abstractmethod
+from __future__ import annotations
 
-from ctx.config import Config
-from ctx.contexts import Context
+from abc import ABC, abstractmethod
+from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ctx.contexts import Context
+    from ctx.layout import Node
+
+
+class MultiplexerKind(StrEnum):
+    TMUX = "tmux"
+    ZELLIJ = "zellij"
 
 
 class MultiplexerError(Exception):
@@ -22,13 +32,13 @@ class Multiplexer(ABC):
         """Tear down the context's session."""
 
 
-def get_backend(cfg: Config) -> Multiplexer:
-    if cfg.multiplexer == "tmux":
-        from ctx.backends.tmux import TmuxBackend
+def get_backend(kind: MultiplexerKind, layout: Node) -> Multiplexer:
+    match kind:
+        case MultiplexerKind.TMUX:
+            from ctx.backends.tmux import TmuxBackend
 
-        return TmuxBackend(cfg.layout)
-    if cfg.multiplexer == "zellij":
-        from ctx.backends.zellij import ZellijBackend
+            return TmuxBackend(layout)
+        case MultiplexerKind.ZELLIJ:
+            from ctx.backends.zellij import ZellijBackend
 
-        return ZellijBackend(cfg.layout)
-    raise MultiplexerError(f"unknown multiplexer '{cfg.multiplexer}' (supported: tmux, zellij)")
+            return ZellijBackend(layout)

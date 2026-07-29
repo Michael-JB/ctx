@@ -3,8 +3,13 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ctx.layout import DEFAULT_LAYOUT, Node, parse_layout
+from ctx.multiplexer import MultiplexerKind
 
 CONFIG_PATH = Path.home() / ".config" / "ctx" / "config.toml"
+
+
+class ConfigError(Exception):
+    pass
 
 
 @dataclass(frozen=True)
@@ -12,7 +17,7 @@ class Config:
     contexts_dir: Path = Path.home() / "dev" / "contexts"
     repos_dir: Path = Path.home() / ".local" / "share" / "ctx" / "repos"
     branch_prefix: str = "mb/"
-    multiplexer: str = "tmux"
+    multiplexer: MultiplexerKind = MultiplexerKind.TMUX
     layout: Node = DEFAULT_LAYOUT
 
 
@@ -28,7 +33,13 @@ def load_config() -> Config:
     if "branch_prefix" in data:
         cfg = replace(cfg, branch_prefix=str(data["branch_prefix"]))
     if "multiplexer" in data:
-        cfg = replace(cfg, multiplexer=str(data["multiplexer"]))
+        raw = str(data["multiplexer"])
+        try:
+            kind = MultiplexerKind(raw)
+        except ValueError as exc:
+            valid = ", ".join(k.value for k in MultiplexerKind)
+            raise ConfigError(f"unknown multiplexer '{raw}' (supported: {valid})") from exc
+        cfg = replace(cfg, multiplexer=kind)
     if "layout" in data:
         cfg = replace(cfg, layout=parse_layout(data["layout"]))
     return cfg
