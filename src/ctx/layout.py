@@ -8,7 +8,7 @@ class LayoutError(Exception):
 
 @dataclass(frozen=True)
 class Pane:
-    command: str
+    command: str | None = None  # None means a plain shell
     focus: bool = False
 
 
@@ -20,13 +20,7 @@ class Split:
 
 Node = Pane | Split
 
-DEFAULT_LAYOUT: Node = Split(
-    "row",
-    (
-        Split("column", (Pane("lazygit"), Pane("nvim"))),
-        Pane("claude", focus=True),
-    ),
-)
+DEFAULT_LAYOUT: Node = Pane()
 
 
 def parse_layout(data: dict[str, Any]) -> Node:
@@ -37,11 +31,10 @@ def parse_layout(data: dict[str, Any]) -> Node:
 
 
 def _parse_node(data: dict[str, Any]) -> Node:
-    if "command" in data and "split" in data:
-        raise LayoutError("a layout node is either a 'command' pane or a 'split', not both")
-    if "command" in data:
-        return Pane(str(data["command"]), focus=bool(data.get("focus", False)))
     if "split" in data:
+        unknown = data.keys() - {"split", "panes"}
+        if unknown:
+            raise LayoutError(f"unknown split key(s): {', '.join(sorted(unknown))}")
         direction = data["split"]
         if direction not in ("row", "column"):
             raise LayoutError(f"split must be 'row' or 'column', got {direction!r}")
@@ -49,7 +42,11 @@ def _parse_node(data: dict[str, Any]) -> Node:
         if not isinstance(panes, list) or not panes:
             raise LayoutError("a split needs a non-empty 'panes' list")
         return Split(direction, tuple(_parse_node(pane) for pane in panes))
-    raise LayoutError("a layout node needs either 'command' or 'split'")
+    unknown = data.keys() - {"command", "focus"}
+    if unknown:
+        raise LayoutError(f"unknown pane key(s): {', '.join(sorted(unknown))}")
+    command = str(data["command"]) if "command" in data else None
+    return Pane(command, focus=bool(data.get("focus", False)))
 
 
 def _count_focus(node: Node) -> int:

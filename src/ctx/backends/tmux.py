@@ -38,7 +38,8 @@ def _create_session(session: str, cwd: Path, layout: Node) -> None:
     first = _tmux("new-session", "-d", "-s", session, "-c", str(cwd), "-P", "-F", "#{pane_id}")
     leaves = _build(layout, first, cwd)
     for pane_id, pane in leaves:
-        _tmux("send-keys", "-t", pane_id, pane.command, "Enter")
+        if pane.command is not None:
+            _tmux("send-keys", "-t", pane_id, pane.command, "Enter")
     focused = next((pane_id for pane_id, pane in leaves if pane.focus), leaves[0][0])
     _tmux("select-pane", "-t", focused)
 

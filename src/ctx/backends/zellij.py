@@ -17,8 +17,11 @@ def _session_name(ctx: Context) -> str:
 def _render_node(node: Node, cwd: Path, indent: int) -> str:
     pad = "    " * indent
     if isinstance(node, Pane):
-        argv = shlex.split(node.command)
-        line = f'{pad}pane command="{argv[0]}" cwd="{cwd}"'
+        argv = shlex.split(node.command) if node.command else []
+        line = f"{pad}pane"
+        if argv:
+            line += f' command="{argv[0]}"'
+        line += f' cwd="{cwd}"'
         if node.focus:
             line += " focus=true"
         if len(argv) > 1:
