@@ -10,6 +10,7 @@ class Config:
     contexts_dir: Path = Path.home() / "dev" / "contexts"
     repos_dir: Path = Path.home() / ".local" / "share" / "ctx" / "repos"
     branch_prefix: str = "mb/"
+    multiplexer: str = "tmux"
 
 
 def load_config() -> Config:
@@ -23,4 +24,6 @@ def load_config() -> Config:
         cfg = replace(cfg, repos_dir=Path(data["repos_dir"]).expanduser())
     if "branch_prefix" in data:
         cfg = replace(cfg, branch_prefix=str(data["branch_prefix"]))
+    if "multiplexer" in data:
+        cfg = replace(cfg, multiplexer=str(data["multiplexer"]))
     return cfg

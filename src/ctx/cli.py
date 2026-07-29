@@ -3,8 +3,9 @@ import sys
 
 import click
 
-from ctx import contexts, repos, tmux
+from ctx import contexts, repos
 from ctx.config import load_config
+from ctx.multiplexer import MultiplexerError, get_backend
 
 
 @click.group()
@@ -24,24 +25,25 @@ def new(repo: str, name: str, base: str | None) -> None:
     except (FileExistsError, FileNotFoundError) as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"created {ctx.qualified} at {ctx.path} on {contexts.current_branch(ctx)}")
-    session = tmux.session_name(ctx)
-    tmux.create_session(session, ctx.path)
-    tmux.attach(session)
+    try:
+        get_backend(cfg).open(ctx)
+    except MultiplexerError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @cli.command("open")
 @click.argument("name")
 def open_(name: str) -> None:
-    """Attach to a context's tmux session, recreating it if needed."""
+    """Attach to a context's session, recreating it if needed."""
     cfg = load_config()
     try:
         ctx = contexts.find_context(cfg, name)
     except LookupError as exc:
         raise click.ClickException(str(exc)) from exc
-    session = tmux.session_name(ctx)
-    if not tmux.session_exists(session):
-        tmux.create_session(session, ctx.path)
-    tmux.attach(session)
+    try:
+        get_backend(cfg).open(ctx)
+    except MultiplexerError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @cli.command("list")
@@ -52,6 +54,10 @@ def list_() -> None:
     if not all_contexts:
         click.echo("no contexts")
         return
+    try:
+        mux = get_backend(cfg)
+    except MultiplexerError as exc:
+        raise click.ClickException(str(exc)) from exc
     for ctx in all_contexts:
         branch = contexts.current_branch(ctx)
         flags = []
@@ -59,7 +65,7 @@ def list_() -> None:
             flags.append("dirty")
         if contexts.unpushed_commits(ctx):
             flags.append("unpushed")
-        if tmux.session_exists(tmux.session_name(ctx)):
+        if mux.exists(ctx):
             flags.append("session")
         click.echo(f"{ctx.qualified}\t{branch}\t{','.join(flags) or '-'}")
 
@@ -68,7 +74,7 @@ def list_() -> None:
 @click.argument("name")
 @click.option("--force", is_flag=True, help="Delete even with uncommitted or unpushed work.")
 def rm(name: str, force: bool) -> None:
-    """Delete a context: kill its tmux session and remove the checkout."""
+    """Delete a context: kill its session and remove the checkout."""
     cfg = load_config()
     try:
         ctx = contexts.find_context(cfg, name)
@@ -85,9 +91,12 @@ def rm(name: str, force: bool) -> None:
             raise click.ClickException(
                 f"{ctx.qualified} has {' and '.join(problems)}; use --force to delete anyway"
             )
-    session = tmux.session_name(ctx)
-    if tmux.session_exists(session):
-        tmux.kill_session(session)
+    try:
+        mux = get_backend(cfg)
+    except MultiplexerError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if mux.exists(ctx):
+        mux.kill(ctx)
     contexts.remove_context(ctx)
     click.echo(f"removed {ctx.qualified}")
 
