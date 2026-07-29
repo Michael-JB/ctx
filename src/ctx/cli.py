@@ -3,7 +3,7 @@ import sys
 
 import click
 
-from ctx import contexts, repos
+from ctx import contexts, repos, tmux
 from ctx.config import load_config
 
 
@@ -23,6 +23,24 @@ def new(repo: str, name: str) -> None:
     except (FileExistsError, FileNotFoundError) as exc:
         raise click.ClickException(str(exc))
     click.echo(f"created {ctx.qualified} at {ctx.path} on {contexts.current_branch(ctx)}")
+    session = tmux.session_name(ctx)
+    tmux.create_session(session, ctx.path)
+    tmux.attach(session)
+
+
+@cli.command("open")
+@click.argument("ref")
+def open_(ref: str) -> None:
+    """Attach to a context's tmux session, recreating it if needed."""
+    cfg = load_config()
+    try:
+        ctx = contexts.find_context(cfg, ref)
+    except LookupError as exc:
+        raise click.ClickException(str(exc))
+    session = tmux.session_name(ctx)
+    if not tmux.session_exists(session):
+        tmux.create_session(session, ctx.path)
+    tmux.attach(session)
 
 
 @cli.group()
