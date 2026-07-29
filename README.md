@@ -40,3 +40,25 @@ ctx rm my-cool-feature             # refuses if dirty/unpushed; --force override
 - Optional config: `~/.config/ctx/config.toml` with `contexts_dir`,
   `repos_dir`, `branch_prefix` (default `mb/`), and `multiplexer`
   (`tmux`, the default, or `zellij`).
+
+## Custom layout
+
+The pane layout is a tree of `command` panes and `row`/`column` splits
+(`row` places panes side by side, `column` stacks them). At most one pane
+may set `focus`. The default is equivalent to:
+
+```toml
+[layout]
+split = "row"
+
+[[layout.panes]]
+split = "column"
+[[layout.panes.panes]]
+command = "lazygit"
+[[layout.panes.panes]]
+command = "nvim"
+
+[[layout.panes]]
+command = "claude"
+focus = true
+```
