@@ -14,14 +14,14 @@ uv tool install --editable .
 
 ```sh
 # One-time per repository: keep a local bare mirror to clone from.
-ctx repo add git@github.com:org/savanna.git
+ctx repo add https://github.com/Michael-JB/papaya-nvim.git
 ctx repo list
-ctx repo remove savanna            # removes the mirror only
+ctx repo remove papaya-nvim        # removes the mirror only
 
 # Create a context: fetches the mirror, clones it, points origin at the
 # real URL, branches mb/<name> off the fresh default branch (not pushed),
 # then builds and attaches the tmux session.
-ctx new savanna my-cool-feature
+ctx new papaya-nvim my-cool-feature
 
 # Manage contexts. Names are globally unique (enforced by ctx new), so
 # contexts are referenced by name alone; the tmux session is repo--name.
