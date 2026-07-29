@@ -15,7 +15,7 @@ def cli() -> None:
 @cli.command()
 @click.argument("repo")
 @click.argument("name")
-@click.option("--branch", "base", help="Base branch (default: the repo's default branch).")
+@click.option("-b", "--branch", "base", help="Base branch (default: the repo's default branch).")
 def new(repo: str, name: str, base: str | None) -> None:
     """Create a context: fresh checkout of REPO on a new local branch."""
     cfg = load_config()
@@ -120,7 +120,7 @@ def repo_list() -> None:
 
 @repo.command("remove")
 @click.argument("name")
-def repo_remove(name: str) -> None:
+def repo_rm(name: str) -> None:
     """Remove a registered repository's mirror (contexts are untouched)."""
     cfg = load_config()
     try:

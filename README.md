@@ -24,7 +24,7 @@ ctx repo remove papaya-nvim        # removes the mirror only
 ctx new papaya-nvim my-cool-feature
 
 # Base a context on a non-default branch (fetched fresh from origin).
-ctx new papaya-nvim follow-up --branch other-base
+ctx new papaya-nvim follow-up -b other-base
 
 # Manage contexts. Names are globally unique (enforced by ctx new), so
 # contexts are referenced by name alone; the tmux session is repo--name.
