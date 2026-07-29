@@ -43,6 +43,26 @@ def open_(ref: str) -> None:
     tmux.attach(session)
 
 
+@cli.command("list")
+def list_() -> None:
+    """List contexts with branch, dirtiness, and session state."""
+    cfg = load_config()
+    all_contexts = contexts.list_contexts(cfg)
+    if not all_contexts:
+        click.echo("no contexts")
+        return
+    for ctx in all_contexts:
+        branch = contexts.current_branch(ctx)
+        flags = []
+        if contexts.is_dirty(ctx):
+            flags.append("dirty")
+        if contexts.unpushed_commits(ctx):
+            flags.append("unpushed")
+        if tmux.session_exists(tmux.session_name(ctx)):
+            flags.append("session")
+        click.echo(f"{ctx.qualified}\t{branch}\t{','.join(flags) or '-'}")
+
+
 @cli.group()
 def repo() -> None:
     """Manage registered repositories."""
