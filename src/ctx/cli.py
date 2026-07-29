@@ -55,17 +55,26 @@ def list_() -> None:
     if not all_contexts:
         click.echo("no contexts")
         return
-    mux = get_multiplexer(cfg.multiplexer, cfg.layout)
+    rows = [("NAME", "REPO", "BRANCH", "STATUS")]
     for ctx in all_contexts:
-        branch = contexts.current_branch(ctx)
-        flags = []
+        status = []
         if contexts.is_dirty(ctx):
-            flags.append("dirty")
-        if contexts.unpushed_commits(ctx):
-            flags.append("unpushed")
-        if mux.exists(ctx):
-            flags.append("session")
-        click.echo(f"{ctx.qualified}\t{branch}\t{','.join(flags) or '-'}")
+            status.append("uncommitted changes")
+        unpushed = contexts.unpushed_commits(ctx)
+        if unpushed:
+            status.append(f"{len(unpushed)} unpushed commit(s)")
+        rows.append(
+            (
+                ctx.name,
+                ctx.repo,
+                contexts.current_branch(ctx),
+                ", ".join(status) or "clean",
+            )
+        )
+    widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
+    for row in rows:
+        cells = zip(row, widths, strict=True)
+        click.echo("  ".join(cell.ljust(width) for cell, width in cells).rstrip())
 
 
 @cli.command()
