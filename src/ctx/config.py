@@ -24,7 +24,7 @@ class ConfigError(Exception):
 class Config:
     contexts_dir: Path = _DATA_DIR / "contexts"
     repos_dir: Path = _DATA_DIR / "repos"
-    branch_prefix: str = "mb/"
+    branch_prefix: str = ""
     multiplexer: MultiplexerKind = MultiplexerKind.TMUX
     layout: Node = DEFAULT_LAYOUT
 
