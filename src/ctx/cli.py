@@ -4,9 +4,9 @@ import sys
 import click
 
 from ctx import contexts, repos
-from ctx.config import ConfigError, load_config
+from ctx.config import Config, ConfigError, load_config
 from ctx.layout import LayoutError
-from ctx.multiplexer import MultiplexerError, get_backend
+from ctx.multiplexer import Multiplexer, MultiplexerError, get_backend
 
 
 @click.group()
@@ -69,15 +69,28 @@ def list_() -> None:
 
 
 @cli.command()
-@click.argument("name")
+@click.argument("names", nargs=-1, required=True)
 @click.option("--force", is_flag=True, help="Delete even with uncommitted or unpushed work.")
-def rm(name: str, force: bool) -> None:
-    """Delete a context: kill its session and remove the checkout."""
+def rm(names: tuple[str, ...], force: bool) -> None:
+    """Delete contexts: kill their sessions and remove the checkouts."""
     cfg = load_config()
+    mux = get_backend(cfg.multiplexer, cfg.layout)
+    failed = False
+    for name in names:
+        error = _remove_one(cfg, mux, name, force)
+        if error:
+            click.echo(f"error: {error}", err=True)
+            failed = True
+    if failed:
+        sys.exit(1)
+
+
+def _remove_one(cfg: Config, mux: Multiplexer, name: str, force: bool) -> str | None:
+    """Delete one context, returning an error message instead of raising."""
     try:
         ctx = contexts.find_context(cfg, name)
     except LookupError as exc:
-        raise click.ClickException(str(exc)) from exc
+        return str(exc)
     if not force:
         problems = []
         if contexts.is_dirty(ctx):
@@ -86,14 +99,12 @@ def rm(name: str, force: bool) -> None:
         if unpushed:
             problems.append(f"{len(unpushed)} unpushed commit(s)")
         if problems:
-            raise click.ClickException(
-                f"{ctx.qualified} has {' and '.join(problems)}; use --force to delete anyway"
-            )
-    mux = get_backend(cfg.multiplexer, cfg.layout)
+            return f"{ctx.qualified} has {' and '.join(problems)}; use --force to delete anyway"
     if mux.exists(ctx):
         mux.kill(ctx)
     contexts.remove_context(ctx)
     click.echo(f"removed {ctx.qualified}")
+    return None
 
 
 @cli.group()
