@@ -26,7 +26,7 @@ def new(repo: str, name: str, base: str | None) -> None:
     click.echo(f"created {ctx.qualified} at {ctx.path} on {contexts.current_branch(ctx)}")
     session = tmux.session_name(ctx)
     tmux.create_session(session, ctx.path)
-    tmux.attach(session)
+    tmux.attach(session, ctx.path)
 
 
 @cli.command("open")
@@ -41,7 +41,7 @@ def open_(name: str) -> None:
     session = tmux.session_name(ctx)
     if not tmux.session_exists(session):
         tmux.create_session(session, ctx.path)
-    tmux.attach(session)
+    tmux.attach(session, ctx.path)
 
 
 @cli.command("list")
