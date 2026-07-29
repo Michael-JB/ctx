@@ -63,6 +63,34 @@ def list_() -> None:
         click.echo(f"{ctx.qualified}\t{branch}\t{','.join(flags) or '-'}")
 
 
+@cli.command()
+@click.argument("ref")
+@click.option("--force", is_flag=True, help="Delete even with uncommitted or unpushed work.")
+def rm(ref: str, force: bool) -> None:
+    """Delete a context: kill its tmux session and remove the checkout."""
+    cfg = load_config()
+    try:
+        ctx = contexts.find_context(cfg, ref)
+    except LookupError as exc:
+        raise click.ClickException(str(exc))
+    if not force:
+        problems = []
+        if contexts.is_dirty(ctx):
+            problems.append("uncommitted changes")
+        unpushed = contexts.unpushed_commits(ctx)
+        if unpushed:
+            problems.append(f"{len(unpushed)} unpushed commit(s)")
+        if problems:
+            raise click.ClickException(
+                f"{ctx.qualified} has {' and '.join(problems)}; use --force to delete anyway"
+            )
+    session = tmux.session_name(ctx)
+    if tmux.session_exists(session):
+        tmux.kill_session(session)
+    contexts.remove_context(ctx)
+    click.echo(f"removed {ctx.qualified}")
+
+
 @cli.group()
 def repo() -> None:
     """Manage registered repositories."""
