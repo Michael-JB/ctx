@@ -134,15 +134,21 @@ def repo_list() -> None:
 
 
 @repo.command("rm")
-@click.argument("name")
-def repo_rm(name: str) -> None:
-    """Remove a registered repository's mirror (contexts are untouched)."""
+@click.argument("names", nargs=-1, required=True)
+def repo_rm(names: tuple[str, ...]) -> None:
+    """Remove registered repositories' mirrors (contexts are untouched)."""
     cfg = load_config()
-    try:
-        repos.remove_repo(cfg, name)
-    except FileNotFoundError as exc:
-        raise click.ClickException(str(exc)) from exc
-    click.echo(f"removed '{name}'")
+    failed = False
+    for name in names:
+        try:
+            repos.remove_repo(cfg, name)
+        except FileNotFoundError as exc:
+            click.echo(f"error: {exc}", err=True)
+            failed = True
+            continue
+        click.echo(f"removed '{name}'")
+    if failed:
+        sys.exit(1)
 
 
 def main() -> None:
