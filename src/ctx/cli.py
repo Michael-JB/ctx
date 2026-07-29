@@ -29,7 +29,7 @@ def new(repo: str, name: str) -> None:
 
 
 @cli.command("open")
-@click.argument("ref")
+@click.argument("ref", metavar="REPO/NAME")
 def open_(ref: str) -> None:
     """Attach to a context's tmux session, recreating it if needed."""
     cfg = load_config()
@@ -64,7 +64,7 @@ def list_() -> None:
 
 
 @cli.command()
-@click.argument("ref")
+@click.argument("ref", metavar="REPO/NAME")
 @click.option("--force", is_flag=True, help="Delete even with uncommitted or unpushed work.")
 def rm(ref: str, force: bool) -> None:
     """Delete a context: kill its tmux session and remove the checkout."""

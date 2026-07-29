@@ -23,10 +23,10 @@ ctx repo remove savanna            # removes the mirror only
 # then builds and attaches the tmux session.
 ctx new savanna my-experiment
 
-# Manage contexts. A bare name works when unambiguous, else repo/name.
+# Manage contexts, always referenced as repo/name.
 ctx list                           # branch, dirty/unpushed flags, session state
-ctx open my-experiment             # attach, recreating the session if needed
-ctx rm my-experiment               # refuses if dirty/unpushed; --force overrides
+ctx open savanna/my-experiment     # attach, recreating the session if needed
+ctx rm savanna/my-experiment       # refuses if dirty/unpushed; --force overrides
 ```
 
 ## Layout

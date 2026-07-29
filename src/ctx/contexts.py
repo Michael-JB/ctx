@@ -36,19 +36,14 @@ def list_contexts(cfg: Config) -> list[Context]:
 
 
 def find_context(cfg: Config, ref: str) -> Context:
-    """Resolve 'repo/name' or a bare context name (if unambiguous)."""
-    contexts = list_contexts(cfg)
-    if "/" in ref:
-        repo, name = ref.split("/", 1)
-        matches = [c for c in contexts if c.repo == repo and c.name == name]
-    else:
-        matches = [c for c in contexts if c.name == ref]
-    if not matches:
-        raise LookupError(f"no context matches '{ref}'")
-    if len(matches) > 1:
-        options = ", ".join(c.qualified for c in matches)
-        raise LookupError(f"'{ref}' is ambiguous: {options}")
-    return matches[0]
+    """Resolve a 'repo/name' reference to an existing context."""
+    if "/" not in ref:
+        raise LookupError(f"'{ref}' is not a context reference; use the form repo/name")
+    repo, name = ref.split("/", 1)
+    path = context_path(cfg, repo, name)
+    if not (path / ".git").exists():
+        raise LookupError(f"no context '{repo}/{name}'")
+    return Context(repo, name, path)
 
 
 def create_context(cfg: Config, repo: str, name: str) -> Context:
