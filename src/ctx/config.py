@@ -7,13 +7,13 @@ from ctx.layout import DEFAULT_LAYOUT, Node, parse_layout
 from ctx.multiplexer import MultiplexerKind
 
 
-def _xdg_dir(variable: str, fallback: str) -> Path:
+def _xdg_dir(variable: str, fallback: Path) -> Path:
     value = os.environ.get(variable, "")
     return Path(value) if value else Path.home() / fallback
 
 
-CONFIG_PATH = _xdg_dir("XDG_CONFIG_HOME", ".config") / "ctx" / "config.toml"
-_DATA_DIR = _xdg_dir("XDG_DATA_HOME", ".local/share") / "ctx"
+CONFIG_PATH = _xdg_dir("XDG_CONFIG_HOME", Path(".config")) / "ctx" / "config.toml"
+_DATA_DIR = _xdg_dir("XDG_DATA_HOME", Path(".local") / "share") / "ctx"
 
 
 class ConfigError(Exception):
