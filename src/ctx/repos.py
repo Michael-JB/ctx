@@ -42,12 +42,6 @@ def remove_repo(cfg: Config, name: str) -> None:
 def update_repo(cfg: Config, name: str) -> None:
     path = repo_path(cfg, name)
     git("fetch", "--prune", "origin", cwd=path)
-    # Track upstream default-branch changes.
-    head = git("ls-remote", "--symref", "origin", "HEAD", cwd=path)
-    for line in head.splitlines():
-        if line.startswith("ref:"):
-            ref = line.split()[1]
-            git("symbolic-ref", "HEAD", ref, cwd=path)
 
 
 def repo_url(cfg: Config, name: str) -> str:
