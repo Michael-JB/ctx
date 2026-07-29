@@ -24,9 +24,10 @@ def add_repo(cfg: Config, url: str, name: str | None = None) -> str:
     if path.exists():
         raise FileExistsError(f"repo '{name}' already registered at {path}")
     cfg.repos_dir.mkdir(parents=True, exist_ok=True)
-    git("clone", "--bare", url, str(path))
-    # Bare clones get no fetch refspec; mirror branches so updates work.
-    git("config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*", cwd=path)
+    git("clone", "--bare", "--single-branch", url, str(path))
+    # Bare clones get no fetch refspec; mirror only the default branch.
+    branch = git("symbolic-ref", "--short", "HEAD", cwd=path)
+    git("config", "remote.origin.fetch", f"+refs/heads/{branch}:refs/heads/{branch}", cwd=path)
     return name
 
 
