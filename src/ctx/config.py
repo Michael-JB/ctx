@@ -2,6 +2,8 @@ import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from ctx.layout import DEFAULT_LAYOUT, Node, parse_layout
+
 CONFIG_PATH = Path.home() / ".config" / "ctx" / "config.toml"
 
 
@@ -11,6 +13,7 @@ class Config:
     repos_dir: Path = Path.home() / ".local" / "share" / "ctx" / "repos"
     branch_prefix: str = "mb/"
     multiplexer: str = "tmux"
+    layout: Node = DEFAULT_LAYOUT
 
 
 def load_config() -> Config:
@@ -26,4 +29,6 @@ def load_config() -> Config:
         cfg = replace(cfg, branch_prefix=str(data["branch_prefix"]))
     if "multiplexer" in data:
         cfg = replace(cfg, multiplexer=str(data["multiplexer"]))
+    if "layout" in data:
+        cfg = replace(cfg, layout=parse_layout(data["layout"]))
     return cfg

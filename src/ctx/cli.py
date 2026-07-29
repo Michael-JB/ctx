@@ -5,6 +5,7 @@ import click
 
 from ctx import contexts, repos
 from ctx.config import load_config
+from ctx.layout import LayoutError
 from ctx.multiplexer import MultiplexerError, get_backend
 
 
@@ -146,3 +147,6 @@ def main() -> None:
         cmd = " ".join(map(str, exc.cmd))
         click.echo(f"error: command failed ({cmd})", err=True)
         sys.exit(exc.returncode or 1)
+    except LayoutError as exc:
+        click.echo(f"error: invalid layout: {exc}", err=True)
+        sys.exit(1)
