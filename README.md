@@ -18,16 +18,11 @@ ctx repo add https://github.com/Michael-JB/papaya-nvim.git
 ctx repo list
 ctx repo rm papaya-nvim            # removes the mirror only
 
-# Create a context: fetches the mirror, clones it, points origin at the
-# real URL, branches off the fresh default branch (not pushed), then
-# builds and attaches the session.
+# Create a context: a fresh clone on a new branch off the up-to-date
+# default branch, in its own session. Names are globally unique.
 ctx new papaya-nvim my-cool-feature
+ctx new papaya-nvim follow-up -b other-base   # base on another branch
 
-# Base a context on a non-default branch (fetched fresh from origin).
-ctx new papaya-nvim follow-up -b other-base
-
-# Manage contexts. Names are globally unique (enforced by ctx new), so
-# contexts are referenced by name alone; the session is named repo--name.
 ctx list                           # branch, dirty/unpushed flags, session state
 ctx open my-cool-feature           # attach, recreating the session if needed
 ctx rm my-cool-feature             # refuses if dirty/unpushed; --force overrides
@@ -35,26 +30,19 @@ ctx rm my-cool-feature             # refuses if dirty/unpushed; --force override
 
 ## Configuration
 
-Optional, at `$XDG_CONFIG_HOME/ctx/config.toml` (`~/.config/ctx/config.toml`):
-
-- `contexts_dir`: where checkouts live
-  (default `$XDG_DATA_HOME/ctx/contexts`, i.e. `~/.local/share/ctx/contexts`)
-- `repos_dir`: where the internal bare mirrors live
-  (default `$XDG_DATA_HOME/ctx/repos`)
-- `branch_prefix`: prepended to the work branch name, e.g. `"jane/"`
-  (default: none, the branch is named after the context)
-- `multiplexer`: `tmux` (default) or `zellij`
-- `[layout]`: the pane layout, see below
-
-## Layout
-
-The pane layout is a tree of panes and `row`/`column` splits (`row` places
-panes side by side, `column` stacks them). A pane runs `command`, or a plain
-shell if omitted; at most one pane may set `focus`. Every pane starts in the
-context's checkout. The default is a single shell pane; a lazygit/editor/agent
-setup looks like:
+Optional, at `$XDG_CONFIG_HOME/ctx/config.toml` (`~/.config/ctx/config.toml`).
+All fields shown with their defaults, except the layout: that defaults to a
+single shell pane, so a custom tree is shown instead.
 
 ```toml
+contexts_dir = "~/.local/share/ctx/contexts"  # where checkouts live
+repos_dir = "~/.local/share/ctx/repos"        # where the bare mirrors live
+branch_prefix = ""                            # work branch prefix, e.g. "jane/"
+multiplexer = "tmux"                          # or "zellij"
+
+# The pane layout: a tree of panes and "row"/"column" splits ("row" = side
+# by side, "column" = stacked). A pane runs `command` (default: a shell) in
+# the checkout; at most one pane may set `focus`.
 [layout]
 split = "row"
 
