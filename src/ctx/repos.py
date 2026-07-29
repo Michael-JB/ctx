@@ -40,8 +40,10 @@ def remove_repo(cfg: Config, name: str) -> None:
 
 
 def update_repo(cfg: Config, name: str) -> None:
+    """Refresh only the default branch; contexts fetch other branches from origin on demand."""
     path = repo_path(cfg, name)
-    git("fetch", "--prune", "origin", cwd=path)
+    branch = default_branch(cfg, name)
+    git("fetch", "origin", f"+refs/heads/{branch}:refs/heads/{branch}", cwd=path)
 
 
 def repo_url(cfg: Config, name: str) -> str:
