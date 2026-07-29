@@ -4,6 +4,7 @@ from pathlib import Path
 
 from ctx.contexts import Context
 from ctx.layout import Node, Pane
+from ctx.multiplexer import Multiplexer
 
 
 def _session_name(ctx: Context) -> str:
@@ -42,7 +43,7 @@ def _create_session(session: str, cwd: Path, layout: Node) -> None:
     _tmux("select-pane", "-t", focused)
 
 
-class TmuxBackend:
+class TmuxBackend(Multiplexer):
     def __init__(self, layout: Node) -> None:
         self._layout = layout
 

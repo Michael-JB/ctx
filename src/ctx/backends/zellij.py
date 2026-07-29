@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ctx.contexts import Context
 from ctx.layout import Node, Pane
-from ctx.multiplexer import MultiplexerError
+from ctx.multiplexer import Multiplexer, MultiplexerError
 
 
 def _session_name(ctx: Context) -> str:
@@ -51,7 +51,7 @@ def _render_layout(layout: Node, cwd: Path) -> str:
     )
 
 
-class ZellijBackend:
+class ZellijBackend(Multiplexer):
     def __init__(self, layout: Node) -> None:
         self._layout = layout
 
