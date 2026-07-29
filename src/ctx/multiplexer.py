@@ -32,13 +32,13 @@ class Multiplexer(ABC):
         """Tear down the context's session."""
 
 
-def get_backend(kind: MultiplexerKind, layout: Node) -> Multiplexer:
+def get_multiplexer(kind: MultiplexerKind, layout: Node) -> Multiplexer:
     match kind:
         case MultiplexerKind.TMUX:
-            from ctx.backends.tmux import TmuxBackend
+            from ctx.multiplexers.tmux import TmuxMultiplexer
 
-            return TmuxBackend(layout)
+            return TmuxMultiplexer(layout)
         case MultiplexerKind.ZELLIJ:
-            from ctx.backends.zellij import ZellijBackend
+            from ctx.multiplexers.zellij import ZellijMultiplexer
 
-            return ZellijBackend(layout)
+            return ZellijMultiplexer(layout)

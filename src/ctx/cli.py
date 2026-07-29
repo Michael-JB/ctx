@@ -6,7 +6,7 @@ import click
 from ctx import contexts, repos
 from ctx.config import Config, ConfigError, load_config
 from ctx.layout import LayoutError
-from ctx.multiplexer import Multiplexer, MultiplexerError, get_backend
+from ctx.multiplexer import Multiplexer, MultiplexerError, get_multiplexer
 
 
 @click.group()
@@ -27,7 +27,7 @@ def new(repo: str, name: str, base: str | None) -> None:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"created {ctx.qualified} at {ctx.path} on {contexts.current_branch(ctx)}")
     try:
-        get_backend(cfg.multiplexer, cfg.layout).open(ctx)
+        get_multiplexer(cfg.multiplexer, cfg.layout).open(ctx)
     except MultiplexerError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -42,7 +42,7 @@ def open_(name: str) -> None:
     except LookupError as exc:
         raise click.ClickException(str(exc)) from exc
     try:
-        get_backend(cfg.multiplexer, cfg.layout).open(ctx)
+        get_multiplexer(cfg.multiplexer, cfg.layout).open(ctx)
     except MultiplexerError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -55,7 +55,7 @@ def list_() -> None:
     if not all_contexts:
         click.echo("no contexts")
         return
-    mux = get_backend(cfg.multiplexer, cfg.layout)
+    mux = get_multiplexer(cfg.multiplexer, cfg.layout)
     for ctx in all_contexts:
         branch = contexts.current_branch(ctx)
         flags = []
@@ -74,7 +74,7 @@ def list_() -> None:
 def rm(names: tuple[str, ...], force: bool) -> None:
     """Delete contexts: kill their sessions and remove the checkouts."""
     cfg = load_config()
-    mux = get_backend(cfg.multiplexer, cfg.layout)
+    mux = get_multiplexer(cfg.multiplexer, cfg.layout)
     failed = False
     for name in names:
         error = _remove_one(cfg, mux, name, force)

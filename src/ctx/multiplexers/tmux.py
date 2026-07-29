@@ -48,7 +48,7 @@ def _create_session(session: str, cwd: Path, layout: Node) -> None:
     _tmux("select-pane", "-t", focused)
 
 
-class TmuxBackend(Multiplexer):
+class TmuxMultiplexer(Multiplexer):
     def __init__(self, layout: Node) -> None:
         self._layout = layout
 

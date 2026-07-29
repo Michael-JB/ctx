@@ -58,7 +58,7 @@ def _render_layout(layout: Node, cwd: Path) -> str:
     )
 
 
-class ZellijBackend(Multiplexer):
+class ZellijMultiplexer(Multiplexer):
     def __init__(self, layout: Node) -> None:
         self._layout = layout
 
