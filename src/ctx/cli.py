@@ -21,7 +21,7 @@ def new(repo: str, name: str) -> None:
     try:
         ctx = contexts.create_context(cfg, repo, name)
     except (FileExistsError, FileNotFoundError) as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
     click.echo(f"created {ctx.qualified} at {ctx.path} on {contexts.current_branch(ctx)}")
     session = tmux.session_name(ctx)
     tmux.create_session(session, ctx.path)
@@ -36,7 +36,7 @@ def open_(ref: str) -> None:
     try:
         ctx = contexts.find_context(cfg, ref)
     except LookupError as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
     session = tmux.session_name(ctx)
     if not tmux.session_exists(session):
         tmux.create_session(session, ctx.path)
@@ -72,7 +72,7 @@ def rm(ref: str, force: bool) -> None:
     try:
         ctx = contexts.find_context(cfg, ref)
     except LookupError as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
     if not force:
         problems = []
         if contexts.is_dirty(ctx):
@@ -105,7 +105,7 @@ def repo_add(url: str, name: str | None) -> None:
     try:
         registered = repos.add_repo(cfg, url, name)
     except FileExistsError as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
     click.echo(f"registered '{registered}'")
 
 
@@ -125,7 +125,7 @@ def repo_remove(name: str) -> None:
     try:
         repos.remove_repo(cfg, name)
     except FileNotFoundError as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
     click.echo(f"removed '{name}'")
 
 

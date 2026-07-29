@@ -1,5 +1,5 @@
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 CONFIG_PATH = Path.home() / ".config" / "ctx" / "config.toml"
@@ -16,10 +16,11 @@ def load_config() -> Config:
     if not CONFIG_PATH.exists():
         return Config()
     data = tomllib.loads(CONFIG_PATH.read_text())
-    kwargs: dict[str, object] = {}
-    for key in ("contexts_dir", "repos_dir"):
-        if key in data:
-            kwargs[key] = Path(data[key]).expanduser()
+    cfg = Config()
+    if "contexts_dir" in data:
+        cfg = replace(cfg, contexts_dir=Path(data["contexts_dir"]).expanduser())
+    if "repos_dir" in data:
+        cfg = replace(cfg, repos_dir=Path(data["repos_dir"]).expanduser())
     if "branch_prefix" in data:
-        kwargs["branch_prefix"] = data["branch_prefix"]
-    return Config(**kwargs)
+        cfg = replace(cfg, branch_prefix=str(data["branch_prefix"]))
+    return cfg
