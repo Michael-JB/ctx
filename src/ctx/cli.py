@@ -15,11 +15,12 @@ def cli() -> None:
 @cli.command()
 @click.argument("repo")
 @click.argument("name")
-def new(repo: str, name: str) -> None:
+@click.option("--branch", "base", help="Base branch (default: the repo's default branch).")
+def new(repo: str, name: str, base: str | None) -> None:
     """Create a context: fresh checkout of REPO on a new local branch."""
     cfg = load_config()
     try:
-        ctx = contexts.create_context(cfg, repo, name)
+        ctx = contexts.create_context(cfg, repo, name, base)
     except (FileExistsError, FileNotFoundError) as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"created {ctx.qualified} at {ctx.path} on {contexts.current_branch(ctx)}")

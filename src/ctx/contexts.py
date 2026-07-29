@@ -43,7 +43,7 @@ def find_context(cfg: Config, name: str) -> Context:
     return matches[0]
 
 
-def create_context(cfg: Config, repo: str, name: str) -> Context:
+def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -> Context:
     mirror = repos.repo_path(cfg, repo)
     if not mirror.exists():
         raise FileNotFoundError(f"repo '{repo}' is not registered (ctx repo add <url>)")
@@ -52,13 +52,20 @@ def create_context(cfg: Config, repo: str, name: str) -> Context:
         raise FileExistsError(f"context name '{name}' is already used by {taken.qualified}")
     path = context_path(cfg, repo, name)
 
-    repos.update_repo(cfg, repo)
-    default = repos.default_branch(cfg, repo)
+    if base is None:
+        repos.update_repo(cfg, repo)
+        base = repos.default_branch(cfg, repo)
+        fetch_base = False
+    else:
+        # The mirror only carries the default branch; fetch the base into the context.
+        fetch_base = True
     path.parent.mkdir(parents=True, exist_ok=True)
     git("clone", str(mirror), str(path))
     git("remote", "set-url", "origin", repos.repo_url(cfg, repo), cwd=path)
+    if fetch_base:
+        git("fetch", "origin", base, cwd=path)
     branch = f"{cfg.branch_prefix}{name}"
-    git("checkout", "--no-track", "-b", branch, f"origin/{default}", cwd=path)
+    git("checkout", "--no-track", "-b", branch, f"origin/{base}", cwd=path)
     return Context(repo, name, path)
 
 
