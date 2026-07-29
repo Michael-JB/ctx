@@ -3,13 +3,26 @@ import sys
 
 import click
 
-from ctx import repos
+from ctx import contexts, repos
 from ctx.config import load_config
 
 
 @click.group()
 def cli() -> None:
     """Manage repo-scoped work contexts."""
+
+
+@cli.command()
+@click.argument("repo")
+@click.argument("name")
+def new(repo: str, name: str) -> None:
+    """Create a context: fresh checkout of REPO on a new local branch."""
+    cfg = load_config()
+    try:
+        ctx = contexts.create_context(cfg, repo, name)
+    except (FileExistsError, FileNotFoundError) as exc:
+        raise click.ClickException(str(exc))
+    click.echo(f"created {ctx.qualified} at {ctx.path} on {contexts.current_branch(ctx)}")
 
 
 @cli.group()
