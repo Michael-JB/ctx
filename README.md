@@ -38,4 +38,5 @@ ctx rm my-cool-feature             # refuses if dirty/unpushed; --force override
 - Mirrors: `~/.local/share/ctx/repos/<repo>.git`
 - Checkouts: `~/dev/contexts/<repo>/<name>`
 - Optional config: `~/.config/ctx/config.toml` with `contexts_dir`,
-  `repos_dir`, and `branch_prefix` (default `mb/`).
+  `repos_dir`, `branch_prefix` (default `mb/`), and `multiplexer`
+  (`tmux`, the default, or `zellij`).

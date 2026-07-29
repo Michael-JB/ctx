@@ -27,4 +27,8 @@ def get_backend(cfg: Config) -> Multiplexer:
         from ctx.backends.tmux import TmuxBackend
 
         return TmuxBackend()
-    raise MultiplexerError(f"unknown multiplexer '{cfg.multiplexer}' (supported: tmux)")
+    if cfg.multiplexer == "zellij":
+        from ctx.backends.zellij import ZellijBackend
+
+        return ZellijBackend()
+    raise MultiplexerError(f"unknown multiplexer '{cfg.multiplexer}' (supported: tmux, zellij)")
