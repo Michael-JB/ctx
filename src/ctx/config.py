@@ -1,3 +1,4 @@
+import os
 import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -5,7 +6,14 @@ from pathlib import Path
 from ctx.layout import DEFAULT_LAYOUT, Node, parse_layout
 from ctx.multiplexer import MultiplexerKind
 
-CONFIG_PATH = Path.home() / ".config" / "ctx" / "config.toml"
+
+def _xdg_dir(variable: str, fallback: str) -> Path:
+    value = os.environ.get(variable, "")
+    return Path(value) if value else Path.home() / fallback
+
+
+CONFIG_PATH = _xdg_dir("XDG_CONFIG_HOME", ".config") / "ctx" / "config.toml"
+_DATA_DIR = _xdg_dir("XDG_DATA_HOME", ".local/share") / "ctx"
 
 
 class ConfigError(Exception):
@@ -14,8 +22,8 @@ class ConfigError(Exception):
 
 @dataclass(frozen=True)
 class Config:
-    contexts_dir: Path = Path.home() / "dev" / "contexts"
-    repos_dir: Path = Path.home() / ".local" / "share" / "ctx" / "repos"
+    contexts_dir: Path = _DATA_DIR / "contexts"
+    repos_dir: Path = _DATA_DIR / "repos"
     branch_prefix: str = "mb/"
     multiplexer: MultiplexerKind = MultiplexerKind.TMUX
     layout: Node = DEFAULT_LAYOUT
