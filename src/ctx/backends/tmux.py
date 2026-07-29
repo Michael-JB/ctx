@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 from ctx.contexts import Context
-from ctx.layout import Node, Pane
+from ctx.layout import Node, Pane, SplitDirection
 from ctx.multiplexer import Multiplexer
 
 
@@ -22,7 +22,11 @@ def _build(node: Node, pane_id: str, cwd: Path) -> list[tuple[str, Pane]]:
     """Subdivide pane_id according to the layout, returning (pane_id, pane) leaves."""
     if isinstance(node, Pane):
         return [(pane_id, node)]
-    flag = "-h" if node.direction == "row" else "-v"
+    match node.direction:
+        case SplitDirection.ROW:
+            flag = "-h"
+        case SplitDirection.COLUMN:
+            flag = "-v"
     regions = [pane_id]
     for _ in node.panes[1:]:
         regions.append(

@@ -1,9 +1,15 @@
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 
 class LayoutError(Exception):
     pass
+
+
+class SplitDirection(StrEnum):
+    ROW = "row"  # panes side by side
+    COLUMN = "column"  # panes stacked
 
 
 @dataclass(frozen=True)
@@ -14,7 +20,7 @@ class Pane:
 
 @dataclass(frozen=True)
 class Split:
-    direction: str  # "row" places panes side by side, "column" stacks them
+    direction: SplitDirection
     panes: tuple["Node", ...]
 
 
@@ -35,9 +41,11 @@ def _parse_node(data: dict[str, Any]) -> Node:
         unknown = data.keys() - {"split", "panes"}
         if unknown:
             raise LayoutError(f"unknown split key(s): {', '.join(sorted(unknown))}")
-        direction = data["split"]
-        if direction not in ("row", "column"):
-            raise LayoutError(f"split must be 'row' or 'column', got {direction!r}")
+        try:
+            direction = SplitDirection(str(data["split"]))
+        except ValueError as exc:
+            valid = ", ".join(d.value for d in SplitDirection)
+            raise LayoutError(f"split must be one of {valid}, got {data['split']!r}") from exc
         panes = data.get("panes")
         if not isinstance(panes, list) or not panes:
             raise LayoutError("a split needs a non-empty 'panes' list")

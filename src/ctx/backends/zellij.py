@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from ctx.contexts import Context
-from ctx.layout import Node, Pane
+from ctx.layout import Node, Pane, SplitDirection
 from ctx.multiplexer import Multiplexer, MultiplexerError
 
 
@@ -30,7 +30,11 @@ def _render_node(node: Node, cwd: Path, indent: int) -> str:
         return line
     # Zellij's split_direction names the split axis, not the arrangement:
     # "vertical" puts panes side by side, "horizontal" stacks them.
-    direction = "vertical" if node.direction == "row" else "horizontal"
+    match node.direction:
+        case SplitDirection.ROW:
+            direction = "vertical"
+        case SplitDirection.COLUMN:
+            direction = "horizontal"
     children = "\n".join(_render_node(pane, cwd, indent + 1) for pane in node.panes)
     return f'{pad}pane split_direction="{direction}" {{\n{children}\n{pad}}}'
 
