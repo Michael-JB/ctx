@@ -14,3 +14,28 @@ ctx = "ctx.cli:main"
 [build-system]
 requires = ["uv_build>=0.7,<0.9"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.0",
+    "ruff>=0.16.0",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "SIM", # simplify
+    "PTH", # pathlib
+    "RUF",
+]
+
+[tool.mypy]
+strict = true
