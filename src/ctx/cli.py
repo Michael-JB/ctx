@@ -118,7 +118,7 @@ def repo_list() -> None:
         click.echo(f"{name}\t{repos.repo_url(cfg, name)}")
 
 
-@repo.command("remove")
+@repo.command("rm")
 @click.argument("name")
 def repo_rm(name: str) -> None:
     """Remove a registered repository's mirror (contexts are untouched)."""

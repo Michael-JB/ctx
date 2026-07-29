@@ -16,7 +16,7 @@ uv tool install --editable .
 # One-time per repository: keep a local bare mirror to clone from.
 ctx repo add https://github.com/Michael-JB/papaya-nvim.git
 ctx repo list
-ctx repo remove papaya-nvim        # removes the mirror only
+ctx repo rm papaya-nvim            # removes the mirror only
 
 # Create a context: fetches the mirror, clones it, points origin at the
 # real URL, branches mb/<name> off the fresh default branch (not pushed),
