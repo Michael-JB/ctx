@@ -21,13 +21,13 @@ ctx repo remove savanna            # removes the mirror only
 # Create a context: fetches the mirror, clones it, points origin at the
 # real URL, branches mb/<name> off the fresh default branch (not pushed),
 # then builds and attaches the tmux session.
-ctx new savanna my-experiment
+ctx new savanna my-cool-feature
 
 # Manage contexts. Names are globally unique (enforced by ctx new), so
-# contexts are referenced by name alone; the tmux session shares the name.
+# contexts are referenced by name alone; the tmux session is repo--name.
 ctx list                           # branch, dirty/unpushed flags, session state
-ctx open my-experiment             # attach, recreating the session if needed
-ctx rm my-experiment               # refuses if dirty/unpushed; --force overrides
+ctx open my-cool-feature           # attach, recreating the session if needed
+ctx rm my-cool-feature             # refuses if dirty/unpushed; --force overrides
 ```
 
 ## Layout
