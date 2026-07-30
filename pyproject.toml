@@ -8,6 +8,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.13"
 dependencies = [
     "click>=8.1",
+    "textual>=8.2.8",
 ]
 
 [project.scripts]
