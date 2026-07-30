@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ctx.contexts import Context
 from ctx.layout import Node, Pane, SplitDirection
-from ctx.multiplexer import Multiplexer, MultiplexerError
+from ctx.multiplexer import Multiplexer
 
 
 def _session_name(ctx: Context) -> str:
@@ -63,7 +63,8 @@ class ZellijMultiplexer(Multiplexer):
         self._layout = layout
 
     def can_open_in_place(self) -> bool:
-        return False
+        # Inside zellij, open() re-points the current client and returns.
+        return bool(os.environ.get("ZELLIJ"))
 
     def exists(self, ctx: Context) -> bool:
         result = subprocess.run(
@@ -78,19 +79,29 @@ class ZellijMultiplexer(Multiplexer):
         return _session_name(ctx) in result.stdout.splitlines()
 
     def open(self, ctx: Context) -> None:
-        if os.environ.get("ZELLIJ"):
-            raise MultiplexerError(
-                "zellij cannot switch sessions from inside a session; detach first"
-            )
         session = _session_name(ctx)
-        if self.exists(ctx):
+        exists = self.exists(ctx)
+        if os.environ.get("ZELLIJ"):
+            # A nested `zellij attach` cannot run inside a session, so re-point
+            # the already-attached client instead (zellij >= 0.44). The layout
+            # only takes effect when the target session doesn't exist yet.
+            command = ["zellij", "action", "switch-session", session]
+            if not exists:
+                command += ["--layout", self._write_layout_file(ctx)]
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
+            return
+        if exists:
             os.execvp("zellij", ["zellij", "attach", session])
-        fd, layout_file = tempfile.mkstemp(prefix="ctx-", suffix=".kdl")
-        os.close(fd)
-        Path(layout_file).write_text(_render_layout(self._layout, ctx.path))
+        layout_file = self._write_layout_file(ctx)
         os.execvp(
             "zellij", ["zellij", "--session", session, "--new-session-with-layout", layout_file]
         )
+
+    def _write_layout_file(self, ctx: Context) -> str:
+        fd, layout_file = tempfile.mkstemp(prefix="ctx-", suffix=".kdl")
+        os.close(fd)
+        Path(layout_file).write_text(_render_layout(self._layout, ctx.path))
+        return layout_file
 
     def kill(self, ctx: Context) -> None:
         subprocess.run(

@@ -63,7 +63,7 @@ pane, so a custom tree is shown instead.
 contexts_dir = "~/.local/share/ctx/contexts"  # where checkouts live
 repos_dir = "~/.local/share/ctx/repos"        # internal storage for registered repos
 branch_prefix = ""                            # work branch prefix, e.g. "jane/"
-multiplexer = "tmux"                          # or "zellij"
+multiplexer = "tmux"                          # or "zellij" (requires zellij >= 0.44)
 
 # The pane layout: a tree of panes and "row"/"column" splits ("row" = side
 # by side, "column" = stacked). A pane runs `command` (default: a shell) in
