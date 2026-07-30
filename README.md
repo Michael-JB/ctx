@@ -7,6 +7,12 @@ panes already laid out.
 ## Install
 
 ```sh
+uv tool install git+https://github.com/Michael-JB/ctx
+```
+
+Or from a local checkout, e.g. for development:
+
+```sh
 uv tool install --editable .
 ```
 
