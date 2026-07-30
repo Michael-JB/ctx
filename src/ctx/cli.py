@@ -20,7 +20,10 @@ def cli() -> None:
 @click.option("-b", "--branch", "base", help="Base branch (default: the repo's default branch).")
 def new(repo: str, name: str, base: str | None) -> None:
     """Create a context: fresh checkout of REPO on a new local branch."""
-    cfg = load_config()
+    _create_and_open(load_config(), repo, name, base)
+
+
+def _create_and_open(cfg: Config, repo: str, name: str, base: str | None) -> None:
     try:
         ctx = contexts.create_context(cfg, repo, name, base)
     except (FileExistsError, FileNotFoundError) as exc:
@@ -114,6 +117,29 @@ def _remove_one(cfg: Config, mux: Multiplexer, name: str, force: bool) -> str | 
     contexts.remove_context(ctx)
     click.echo(f"removed {ctx.qualified}")
     return None
+
+
+@cli.command()
+def tui() -> None:
+    """Manage contexts and repos interactively."""
+    from ctx.tui import CtxTui, NewRequest, OpenRequest
+
+    cfg = load_config()
+    mux = get_multiplexer(cfg.multiplexer, cfg.layout)
+    # When the multiplexer can open sessions in place (e.g. inside tmux),
+    # the TUI handles everything itself and only ever exits to quit. The
+    # requests below are the fallback for terminal-takeover attaches.
+    match CtxTui(cfg, mux).run():
+        case OpenRequest(name=name):
+            try:
+                ctx = contexts.find_context(cfg, name)
+                mux.open(ctx)
+            except (LookupError, MultiplexerError) as exc:
+                raise click.ClickException(str(exc)) from exc
+        case NewRequest(repo=repo_name, name=name, base=base):
+            _create_and_open(cfg, repo_name, name, base)
+        case None:
+            pass
 
 
 @cli.group()
