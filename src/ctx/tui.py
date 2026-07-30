@@ -95,7 +95,13 @@ class AlertScreen(ModalScreen[None]):
 class ConfirmScreen(ModalScreen[bool]):
     """Yes/no confirmation with a message."""
 
-    BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]
+    BINDINGS: ClassVar = [
+        Binding("escape", "cancel", show=False),
+        Binding("j", "app.focus_next", show=False),
+        Binding("k", "app.focus_previous", show=False),
+        Binding("l", "app.focus_next", show=False),
+        Binding("h", "app.focus_previous", show=False),
+    ]
 
     def __init__(self, message: str, confirm_label: str) -> None:
         super().__init__()
@@ -162,6 +168,12 @@ class CtxTui(App[Request | None]):
         ("r", "refresh", "Refresh"),
         ("q", "quit", "Quit"),
         Binding("ctrl+c", "quit", show=False, priority=True),
+        Binding("h", "switch_panel", show=False),
+        Binding("l", "switch_panel", show=False),
+        Binding("j", "cursor_down", show=False),
+        Binding("k", "cursor_up", show=False),
+        Binding("g", "cursor_top", show=False),
+        Binding("G", "cursor_bottom", show=False),
     ]
 
     def __init__(self, cfg: Config, mux: Multiplexer) -> None:
@@ -250,6 +262,12 @@ class CtxTui(App[Request | None]):
 
     def action_focus_repos(self) -> None:
         self._repos_table.focus()
+
+    def action_switch_panel(self) -> None:
+        if self._active_table() is self._contexts_table:
+            self._repos_table.focus()
+        else:
+            self._contexts_table.focus()
 
     def action_open(self) -> None:
         key = self._selected_key(self._contexts_table)
@@ -377,3 +395,18 @@ class CtxTui(App[Request | None]):
 
     def action_refresh(self) -> None:
         self._reload()
+
+    def action_cursor_down(self) -> None:
+        table = self._active_table()
+        table.move_cursor(row=table.cursor_row + 1)
+
+    def action_cursor_up(self) -> None:
+        table = self._active_table()
+        table.move_cursor(row=table.cursor_row - 1)
+
+    def action_cursor_top(self) -> None:
+        self._active_table().move_cursor(row=0)
+
+    def action_cursor_bottom(self) -> None:
+        table = self._active_table()
+        table.move_cursor(row=table.row_count - 1)
