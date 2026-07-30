@@ -88,3 +88,4 @@ focus = true
 - [ ] Add a default project
 - [ ] Project-specific layouts (e.g. for `uv run nvim`)
 - [ ] Release/versioning mechanism
+- [ ] Support for pulling in environment vars (maybe .env files?)
