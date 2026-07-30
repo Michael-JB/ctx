@@ -1,4 +1,5 @@
 import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,7 +64,11 @@ def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -
     git("clone", str(mirror), str(path))
     git("remote", "set-url", "origin", repos.repo_url(cfg, repo), cwd=path)
     if fetch_base:
-        git("fetch", "origin", base, cwd=path)
+        try:
+            git("fetch", "origin", base, cwd=path)
+        except subprocess.CalledProcessError as exc:
+            remove_context(Context(repo, name, path))
+            raise FileNotFoundError(f"branch '{base}' not found on origin of '{repo}'") from exc
     branch = f"{cfg.branch_prefix}{name}"
     git("checkout", "--no-track", "-b", branch, f"origin/{base}", cwd=path)
     return Context(repo, name, path)
