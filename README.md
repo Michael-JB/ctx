@@ -54,9 +54,10 @@ ctx repo rm papaya-nvim
 
 ## Configuration
 
-Optional, at `$XDG_CONFIG_HOME/ctx/config.toml` (`~/.config/ctx/config.toml`).
-All fields shown with their defaults, except the layout: that defaults to a
-single shell pane, so a custom tree is shown instead.
+Optional, at `$XDG_CONFIG_HOME/ctx/config.toml`. Directories default under
+`$XDG_DATA_HOME/ctx/`; the example shows the usual fallback paths. All fields
+shown with their defaults, except the layout: that defaults to a single shell
+pane, so a custom tree is shown instead.
 
 ```toml
 contexts_dir = "~/.local/share/ctx/contexts"  # where checkouts live
@@ -90,8 +91,8 @@ example, use a tool like [direnv](https://direnv.net) to export env vars in
 all of a repo's contexts from a single `.envrc` there:
 
 ```sh
-echo 'export MY_SECRET=some-value' > ~/.local/share/ctx/contexts/papaya-nvim/.envrc
-direnv allow ~/.local/share/ctx/contexts/papaya-nvim
+echo 'export MY_SECRET=some-value' > <contexts_dir>/papaya-nvim/.envrc
+direnv allow <contexts_dir>/papaya-nvim
 ```
 
 ## TODOs
