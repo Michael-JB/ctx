@@ -35,6 +35,8 @@ Request = OpenRequest | NewRequest
 
 _SPINNER_FRAMES = "|/-\\"
 
+_MUTATING_ACTIONS = frozenset({"open", "new", "new_from_base", "add_repo", "delete"})
+
 
 @contextlib.contextmanager
 def _silenced_stderr() -> Iterator[None]:
@@ -178,6 +180,9 @@ class CtxTui(App[Request | None]):
     #contexts:focus, #repos:focus {
         border: round $primary;
     }
+    #contexts.busy, #repos.busy {
+        text-style: dim;
+    }
     #dialog {
         padding: 1 2;
         width: 60;
@@ -277,8 +282,10 @@ class CtxTui(App[Request | None]):
     def _update_titles(self) -> None:
         frame = _SPINNER_FRAMES[self._spinner_frame % len(_SPINNER_FRAMES)]
         for table_id, title in (("contexts", "[1] Contexts"), ("repos", "[2] Repos")):
-            suffix = f" {frame}" if table_id in self._busy else ""
-            self.query_one(f"#{table_id}", DataTable).border_title = title + suffix
+            busy = table_id in self._busy
+            table = self.query_one(f"#{table_id}", DataTable)
+            table.border_title = title + (f" {frame}" if busy else "")
+            table.set_class(busy, "busy")
 
     def _start_busy(self, table_id: str) -> None:
         self._busy.add(table_id)
@@ -298,25 +305,34 @@ class CtxTui(App[Request | None]):
             return None
         return table.coordinate_to_cell_key(Coordinate(table.cursor_row, 0)).row_key.value
 
-    @on(DataTable.RowSelected, "#contexts")
-    def _context_selected(self, event: DataTable.RowSelected) -> None:
-        key = event.row_key.value
-        if key:
-            self._open(key)
+    def _selected_context(self) -> Context | None:
+        """Resolve the cursor's context from disk; reloads and yields None if stale."""
+        key = self._selected_key(self._contexts_table)
+        if key is None:
+            return None
+        try:
+            return contexts.find_context(self._cfg, key)
+        except LookupError:
+            # The row went stale, e.g. the context was deleted externally.
+            self._reload()
+            return None
 
-    def _open(self, name: str) -> None:
-        """Switch to the context's session in place if possible, else exit to attach."""
-        if not self._mux.can_open_in_place():
-            self.exit(OpenRequest(name))
-            return
-        with _silenced_stderr():
-            self._mux.open(contexts.find_context(self._cfg, name))
-        if self._exit_on_open:
-            self.exit()
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Centrally disable mutating actions while a worker runs or a popup is open."""
+        if action in _MUTATING_ACTIONS and (self._busy or isinstance(self.screen, ModalScreen)):
+            return None
+        return True
+
+    @on(DataTable.RowSelected, "#contexts")
+    def _context_selected(self) -> None:
+        # Enter on the table bypasses key bindings, so apply the same policy.
+        if self.check_action("open", ()):
+            self.action_open()
 
     @on(DataTable.RowSelected, "#repos")
-    def _repo_selected(self, event: DataTable.RowSelected) -> None:
-        self.action_new()
+    def _repo_selected(self) -> None:
+        if self.check_action("new", ()):
+            self.action_new()
 
     def action_focus_contexts(self) -> None:
         self._contexts_table.focus()
@@ -331,16 +347,23 @@ class CtxTui(App[Request | None]):
             self._contexts_table.focus()
 
     def action_open(self) -> None:
-        key = self._selected_key(self._contexts_table)
-        if key:
-            self._open(key)
+        ctx = self._selected_context()
+        if ctx is None:
+            return
+        if not self._mux.can_open_in_place():
+            self.exit(OpenRequest(ctx.name))
+            return
+        with _silenced_stderr():
+            self._mux.open(ctx)
+        if self._exit_on_open:
+            self.exit()
 
     def _repo_for_new(self) -> str | None:
         """The repo the selection points at: a selected repo, or a context's repo."""
         if self._active_table() is self._contexts_table:
-            key = self._selected_key(self._contexts_table)
-            if key is not None:
-                return contexts.find_context(self._cfg, key).repo
+            ctx = self._selected_context()
+            if ctx is not None:
+                return ctx.repo
         return self._selected_key(self._repos_table)
 
     def action_new(self) -> None:
@@ -422,10 +445,9 @@ class CtxTui(App[Request | None]):
             self._delete_context()
 
     def _delete_context(self) -> None:
-        key = self._selected_key(self._contexts_table)
-        if key is None:
+        ctx = self._selected_context()
+        if ctx is None:
             return
-        ctx = contexts.find_context(self._cfg, key)
         problems = []
         if contexts.is_dirty(ctx):
             problems.append("uncommitted changes")
