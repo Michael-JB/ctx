@@ -130,7 +130,7 @@ def tui() -> None:
     cfg = load_config()
     mux = get_multiplexer(cfg.multiplexer, cfg.layout)
     # When the multiplexer can open sessions in place (e.g. inside tmux),
-    # the TUI handles everything itself and only ever exits to quit. The
+    # the TUI handles everything itself and exits with no request. The
     # requests below are the fallback for terminal-takeover attaches.
     match CtxTui(cfg, mux).run():
         case OpenRequest(name=name):
