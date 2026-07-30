@@ -9,9 +9,12 @@ from ctx.layout import LayoutError
 from ctx.multiplexer import Multiplexer, MultiplexerError, get_multiplexer
 
 
-@click.group()
-def cli() -> None:
+@click.group(invoke_without_command=True)
+@click.pass_context
+def cli(click_ctx: click.Context) -> None:
     """Manage repo-scoped work contexts."""
+    if click_ctx.invoked_subcommand is None:
+        click_ctx.invoke(tui)
 
 
 @cli.command()
