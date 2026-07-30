@@ -162,7 +162,10 @@ class CtxTui(App[Request | None]):
     ]
 
     def __init__(self, cfg: Config, mux: Multiplexer) -> None:
-        super().__init__()
+        # Render with the terminal's own ANSI palette rather than a
+        # truecolor theme.
+        super().__init__(ansi_color=True)
+        self.theme = "ansi-dark"
         self._cfg = cfg
         self._mux = mux
 
