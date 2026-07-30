@@ -15,6 +15,7 @@ from textual.widgets import Button, DataTable, Footer, Input, Label
 
 from ctx import contexts, repos
 from ctx.config import Config
+from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer
 
 
@@ -412,12 +413,19 @@ class CtxTui(App[Request | None]):
 
         def confirmed(delete: bool | None) -> None:
             if delete:
-                if self._mux.exists(ctx):
-                    self._mux.kill(ctx)
-                contexts.remove_context(ctx)
-                self._reload()
+                self._delete_context_worker(ctx)
 
         self.push_screen(ConfirmScreen(message, label), confirmed)
+
+    @work(thread=True)
+    def _delete_context_worker(self, ctx: Context) -> None:
+        try:
+            if self._mux.exists(ctx):
+                self._mux.kill(ctx)
+            contexts.remove_context(ctx)
+        except (OSError, subprocess.CalledProcessError) as exc:
+            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+        self.call_from_thread(self._reload)
 
     def _delete_repo(self) -> None:
         name = self._selected_key(self._repos_table)
@@ -426,11 +434,18 @@ class CtxTui(App[Request | None]):
 
         def confirmed(delete: bool | None) -> None:
             if delete:
-                repos.remove_repo(self._cfg, name)
-                self._reload()
+                self._delete_repo_worker(name)
 
         message = f"Remove repo '{name}'? Its contexts are left alone."
         self.push_screen(ConfirmScreen(message, "Remove"), confirmed)
+
+    @work(thread=True)
+    def _delete_repo_worker(self, name: str) -> None:
+        try:
+            repos.remove_repo(self._cfg, name)
+        except (OSError, subprocess.CalledProcessError) as exc:
+            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+        self.call_from_thread(self._reload)
 
     def action_refresh(self) -> None:
         self._reload()
