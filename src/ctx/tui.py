@@ -286,6 +286,7 @@ class CtxTui(App[Request | None]):
             return
         with _silenced_stderr():
             self._mux.open(contexts.find_context(self._cfg, name))
+        self.exit()
 
     @on(DataTable.RowSelected, "#repos")
     def _repo_selected(self, event: DataTable.RowSelected) -> None:
@@ -364,6 +365,7 @@ class CtxTui(App[Request | None]):
         self.call_from_thread(self._reload)
         with _silenced_stderr():
             self._mux.open(ctx)
+        self.call_from_thread(self.exit)
 
     def action_add_repo(self) -> None:
         def submitted(url: str | None) -> None:
