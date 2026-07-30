@@ -82,10 +82,22 @@ command = "claude"
 focus = true
 ```
 
+### Environment variables
+
+Fresh checkouts don't carry untracked files like `.env`. All contexts of a
+repo share the parent directory `<contexts_dir>/<repo>/`; you could, for
+example, use a tool like [direnv](https://direnv.net) to export env vars in
+all of a repo's contexts from a single `.envrc` there:
+
+```sh
+echo 'export MY_SECRET=some-value' > ~/.local/share/ctx/contexts/papaya-nvim/.envrc
+direnv allow ~/.local/share/ctx/contexts/papaya-nvim
+```
+
 ## TODOs
 
 - [x] Add a TUI or interactive mode
 - [ ] Add a default project
 - [ ] Project-specific layouts (e.g. for `uv run nvim`)
 - [ ] Release/versioning mechanism
-- [ ] Support for pulling in environment vars (maybe .env files?)
+- [x] Support for pulling in environment vars (maybe .env files?)
