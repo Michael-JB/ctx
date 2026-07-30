@@ -29,19 +29,27 @@ uv tool install --editable .
 ## Usage
 
 ```sh
-# One-time per repository: keep a local bare mirror to clone from.
-ctx repo add https://github.com/Michael-JB/papaya-nvim.git
+ctx repo add https://github.com/Michael-JB/papaya-nvim.git   # once per repo
+ctx new papaya-nvim my-cool-feature   # fresh checkout + session, jump in
+# ...work, commit, push...
+ctx rm my-cool-feature                # tear it all down again
+```
+
+More detail:
+
+```sh
+# List contexts with their repo, branch, and status:
+ctx list
+
+# Contexts branch off the up-to-date default branch. To base one on another branch:
+ctx new papaya-nvim follow-up -b other-base
+
+# Re-attach to a context, recreating its session if needed:
+ctx open my-cool-feature
+
+# List registered repos, or remove some (their contexts are left alone):
 ctx repo list
-ctx repo rm papaya-nvim            # removes the mirror only
-
-# Create a context: a fresh clone on a new branch off the up-to-date
-# default branch, in its own session. Names are globally unique.
-ctx new papaya-nvim my-cool-feature
-ctx new papaya-nvim follow-up -b other-base   # base on another branch
-
-ctx list                           # branch, dirty/unpushed flags, session state
-ctx open my-cool-feature           # attach, recreating the session if needed
-ctx rm my-cool-feature             # refuses if dirty/unpushed; --force overrides
+ctx repo rm papaya-nvim
 ```
 
 ## Configuration
@@ -52,7 +60,7 @@ single shell pane, so a custom tree is shown instead.
 
 ```toml
 contexts_dir = "~/.local/share/ctx/contexts"  # where checkouts live
-repos_dir = "~/.local/share/ctx/repos"        # where the bare mirrors live
+repos_dir = "~/.local/share/ctx/repos"        # internal storage for registered repos
 branch_prefix = ""                            # work branch prefix, e.g. "jane/"
 multiplexer = "tmux"                          # or "zellij"
 
