@@ -1,8 +1,18 @@
 # ctx
 
-Manage repo-scoped work contexts: each context is a fresh full checkout on
-its own local branch, wrapped in a terminal multiplexer session with your
-panes already laid out.
+The way I write code has changed. With agents, I context-switch more, and the
+time it takes to spin up or tear down a context became increasingly noticeable.
+I didn't enjoy the `git worktree` UX, so I ended up maintaining multiple
+long-lived clones of the same repository nestled in different tmux sessions to
+work concurrently. This worked well for me, but it wasn't exactly elegant. So
+here we are.
+
+`ctx` lets you manage repo-scoped work contexts: each context is a fresh full
+checkout on its own local branch, wrapped in a terminal multiplexer session
+with your panes already laid out.
+
+
+Disclaimer: this is fully vibe-coded.
 
 ## Install
 
