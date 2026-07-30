@@ -62,6 +62,9 @@ class ZellijMultiplexer(Multiplexer):
     def __init__(self, layout: Node) -> None:
         self._layout = layout
 
+    def can_open_in_place(self) -> bool:
+        return False
+
     def exists(self, ctx: Context) -> bool:
         result = subprocess.run(
             ["zellij", "list-sessions", "--short"],

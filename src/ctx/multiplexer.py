@@ -20,6 +20,10 @@ class MultiplexerError(Exception):
 
 class Multiplexer(ABC):
     @abstractmethod
+    def can_open_in_place(self) -> bool:
+        """Whether open() returns control instead of taking over the terminal."""
+
+    @abstractmethod
     def exists(self, ctx: Context) -> bool:
         """Whether a session for this context is running."""
 

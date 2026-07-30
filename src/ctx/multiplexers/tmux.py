@@ -52,6 +52,10 @@ class TmuxMultiplexer(Multiplexer):
     def __init__(self, layout: Node) -> None:
         self._layout = layout
 
+    def can_open_in_place(self) -> bool:
+        # Inside tmux, open() switches the client and returns.
+        return bool(os.environ.get("TMUX"))
+
     def exists(self, ctx: Context) -> bool:
         result = subprocess.run(
             ["tmux", "has-session", "-t", f"={_session_name(ctx)}"], capture_output=True
