@@ -84,7 +84,7 @@ focus = true
 
 ## TODOs
 
-- [ ] Add a TUI or interactive mode (?)
+- [x] Add a TUI or interactive mode
 - [ ] Add a default project
 - [ ] Project-specific layouts (e.g. for `uv run nvim`)
 - [ ] Release/versioning mechanism
