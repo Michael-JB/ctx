@@ -101,3 +101,4 @@ direnv allow ~/.local/share/ctx/contexts/papaya-nvim
 - [ ] Project-specific layouts (e.g. for `uv run nvim`)
 - [ ] Release/versioning mechanism
 - [x] Support for pulling in environment vars (maybe .env files?)
+- [ ] Post-create hook command (e.g. `direnv allow`, `uv sync`)
