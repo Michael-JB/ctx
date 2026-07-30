@@ -89,6 +89,3 @@ def unpushed_commits(ctx: Context) -> list[str]:
 
 def remove_context(ctx: Context) -> None:
     shutil.rmtree(ctx.path)
-    repo_dir = ctx.path.parent
-    if repo_dir.is_dir() and not any(repo_dir.iterdir()):
-        repo_dir.rmdir()

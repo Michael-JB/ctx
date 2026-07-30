@@ -28,6 +28,9 @@ def add_repo(cfg: Config, url: str, name: str | None = None) -> str:
     # Bare clones get no fetch refspec; mirror only the default branch.
     branch = git("symbolic-ref", "--short", "HEAD", cwd=path)
     git("config", "remote.origin.fetch", f"+refs/heads/{branch}:refs/heads/{branch}", cwd=path)
+    # The repo's contexts directory is part of its registration: users may
+    # place files there (e.g. an .envrc) before any context exists.
+    (cfg.contexts_dir / name).mkdir(parents=True, exist_ok=True)
     return name
 
 
