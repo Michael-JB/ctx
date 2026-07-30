@@ -33,6 +33,8 @@ class NewRequest:
 
 Request = OpenRequest | NewRequest
 
+_SPINNER_FRAMES = "|/-\\"
+
 
 @contextlib.contextmanager
 def _silenced_stderr() -> Iterator[None]:
@@ -219,6 +221,8 @@ class CtxTui(App[Request | None]):
         self._cfg = cfg
         self._mux = mux
         self._exit_on_open = exit_on_open
+        self._busy: set[str] = set()
+        self._spinner_frame = 0
 
     def compose(self) -> ComposeResult:
         yield DataTable(id="contexts", cursor_type="row")
@@ -227,13 +231,13 @@ class CtxTui(App[Request | None]):
 
     def on_mount(self) -> None:
         ctx_table = self._contexts_table
-        ctx_table.border_title = "[1] Contexts"
         ctx_table.add_columns("NAME", "REPO", "BRANCH", "STATUS")
         repo_table = self._repos_table
-        repo_table.border_title = "[2] Repos"
         repo_table.add_columns("NAME", "URL")
+        self._update_titles()
         self._reload()
         ctx_table.focus()
+        self.set_interval(0.1, self._spin)
 
     @property
     def _contexts_table(self) -> DataTable[str]:
@@ -264,6 +268,25 @@ class CtxTui(App[Request | None]):
         repo_table.clear()
         for name in repos.repo_names(self._cfg):
             repo_table.add_row(name, repos.repo_url(self._cfg, name), key=name)
+
+    def _spin(self) -> None:
+        if self._busy:
+            self._spinner_frame += 1
+            self._update_titles()
+
+    def _update_titles(self) -> None:
+        frame = _SPINNER_FRAMES[self._spinner_frame % len(_SPINNER_FRAMES)]
+        for table_id, title in (("contexts", "[1] Contexts"), ("repos", "[2] Repos")):
+            suffix = f" {frame}" if table_id in self._busy else ""
+            self.query_one(f"#{table_id}", DataTable).border_title = title + suffix
+
+    def _start_busy(self, table_id: str) -> None:
+        self._busy.add(table_id)
+        self._update_titles()
+
+    def _finish_busy(self) -> None:
+        self._busy.clear()
+        self._update_titles()
 
     def _active_table(self) -> DataTable[str]:
         if self.focused is self._repos_table:
@@ -355,6 +378,7 @@ class CtxTui(App[Request | None]):
         if not self._mux.can_open_in_place():
             self.exit(NewRequest(repo, name, base))
             return
+        self._start_busy("contexts")
         self._create_worker(repo, name, base)
 
     @work(thread=True)
@@ -363,9 +387,11 @@ class CtxTui(App[Request | None]):
             with _silenced_stderr():
                 ctx = contexts.create_context(self._cfg, repo, name, base)
         except (FileExistsError, FileNotFoundError, subprocess.CalledProcessError) as exc:
+            self.call_from_thread(self._finish_busy)
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
             return
         self.call_from_thread(self._reload)
+        self.call_from_thread(self._finish_busy)
         with _silenced_stderr():
             self._mux.open(ctx)
         if self._exit_on_open:
@@ -374,6 +400,7 @@ class CtxTui(App[Request | None]):
     def action_add_repo(self) -> None:
         def submitted(url: str | None) -> None:
             if url:
+                self._start_busy("repos")
                 self._add_repo_worker(url)
 
         self.push_screen(PromptScreen("Add repo", "clone URL"), submitted)
@@ -385,8 +412,8 @@ class CtxTui(App[Request | None]):
                 repos.add_repo(self._cfg, url)
         except (FileExistsError, subprocess.CalledProcessError) as exc:
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
-            return
         self.call_from_thread(self._reload)
+        self.call_from_thread(self._finish_busy)
 
     def action_delete(self) -> None:
         if self._active_table() is self._repos_table:
@@ -413,6 +440,7 @@ class CtxTui(App[Request | None]):
 
         def confirmed(delete: bool | None) -> None:
             if delete:
+                self._start_busy("contexts")
                 self._delete_context_worker(ctx)
 
         self.push_screen(ConfirmScreen(message, label), confirmed)
@@ -426,6 +454,7 @@ class CtxTui(App[Request | None]):
         except (OSError, subprocess.CalledProcessError) as exc:
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
         self.call_from_thread(self._reload)
+        self.call_from_thread(self._finish_busy)
 
     def _delete_repo(self) -> None:
         name = self._selected_key(self._repos_table)
@@ -434,6 +463,7 @@ class CtxTui(App[Request | None]):
 
         def confirmed(delete: bool | None) -> None:
             if delete:
+                self._start_busy("repos")
                 self._delete_repo_worker(name)
 
         message = f"Remove repo '{name}'? Its contexts are left alone."
@@ -446,6 +476,7 @@ class CtxTui(App[Request | None]):
         except (OSError, subprocess.CalledProcessError) as exc:
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
         self.call_from_thread(self._reload)
+        self.call_from_thread(self._finish_busy)
 
     def action_refresh(self) -> None:
         self._reload()
