@@ -28,6 +28,9 @@ uv tool install --editable .
 
 ## Usage
 
+Run `ctx` to manage contexts and repos interactively in the TUI (`?` lists
+the keybindings). The same operations are available as subcommands:
+
 ```sh
 ctx repo add https://github.com/Michael-JB/papaya-nvim.git   # once per repo
 ctx new papaya-nvim my-cool-feature   # fresh checkout + session, jump in
