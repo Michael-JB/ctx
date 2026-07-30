@@ -210,13 +210,14 @@ class CtxTui(App[Request | None]):
         Binding("G", "cursor_bottom", show=False),
     ]
 
-    def __init__(self, cfg: Config, mux: Multiplexer) -> None:
+    def __init__(self, cfg: Config, mux: Multiplexer, exit_on_open: bool = False) -> None:
         # Render with the terminal's own ANSI palette rather than a
         # truecolor theme.
         super().__init__(ansi_color=True)
         self.theme = "ansi-dark"
         self._cfg = cfg
         self._mux = mux
+        self._exit_on_open = exit_on_open
 
     def compose(self) -> ComposeResult:
         yield DataTable(id="contexts", cursor_type="row")
@@ -286,7 +287,8 @@ class CtxTui(App[Request | None]):
             return
         with _silenced_stderr():
             self._mux.open(contexts.find_context(self._cfg, name))
-        self.exit()
+        if self._exit_on_open:
+            self.exit()
 
     @on(DataTable.RowSelected, "#repos")
     def _repo_selected(self, event: DataTable.RowSelected) -> None:
@@ -365,7 +367,8 @@ class CtxTui(App[Request | None]):
         self.call_from_thread(self._reload)
         with _silenced_stderr():
             self._mux.open(ctx)
-        self.call_from_thread(self.exit)
+        if self._exit_on_open:
+            self.call_from_thread(self.exit)
 
     def action_add_repo(self) -> None:
         def submitted(url: str | None) -> None:

@@ -123,7 +123,8 @@ def _remove_one(cfg: Config, mux: Multiplexer, name: str, force: bool) -> str | 
 
 
 @cli.command()
-def tui() -> None:
+@click.option("--exit", "exit_on_open", is_flag=True, help="Exit the TUI after opening a context.")
+def tui(exit_on_open: bool) -> None:
     """Manage contexts and repos interactively."""
     from ctx.tui import CtxTui, NewRequest, OpenRequest
 
@@ -132,7 +133,7 @@ def tui() -> None:
     # When the multiplexer can open sessions in place (e.g. inside tmux),
     # the TUI handles everything itself and exits with no request. The
     # requests below are the fallback for terminal-takeover attaches.
-    match CtxTui(cfg, mux).run():
+    match CtxTui(cfg, mux, exit_on_open=exit_on_open).run():
         case OpenRequest(name=name):
             try:
                 ctx = contexts.find_context(cfg, name)
