@@ -92,6 +92,39 @@ class AlertScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
+_KEYBINDINGS = """\
+j / k        move within panel
+g / G        jump to top / bottom
+h / l        switch panel (also 1 / 2)
+enter        open context (also space / o)
+n            new context
+N            new context from a base branch
+a            add repo
+d            delete context or repo
+r            refresh
+?            this help
+q / ctrl+c   quit\
+"""
+
+
+class HelpScreen(ModalScreen[None]):
+    """Keybinding reference, dismissed like an alert."""
+
+    BINDINGS: ClassVar = [
+        Binding("escape", "close", show=False),
+        Binding("enter", "close", show=False),
+        Binding("question_mark", "close", show=False),
+    ]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Label("Keybindings")
+            yield Label(_KEYBINDINGS)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
 class ConfirmScreen(ModalScreen[bool]):
     """Yes/no confirmation with a message."""
 
@@ -153,7 +186,7 @@ class CtxTui(App[Request | None]):
     #dialog Label { margin-bottom: 1; }
     #buttons { height: auto; align-horizontal: right; }
     #buttons Button { margin-left: 2; }
-    PromptScreen, ConfirmScreen, AlertScreen { align: center middle; }
+    PromptScreen, ConfirmScreen, AlertScreen, HelpScreen { align: center middle; }
     """
 
     BINDINGS: ClassVar = [
@@ -167,6 +200,7 @@ class CtxTui(App[Request | None]):
         ("d", "delete", "Delete"),
         ("r", "refresh", "Refresh"),
         ("q", "quit", "Quit"),
+        Binding("question_mark", "help", "Help", key_display="?"),
         Binding("ctrl+c", "quit", show=False, priority=True),
         Binding("h", "switch_panel", show=False),
         Binding("l", "switch_panel", show=False),
@@ -395,6 +429,9 @@ class CtxTui(App[Request | None]):
 
     def action_refresh(self) -> None:
         self._reload()
+
+    def action_help(self) -> None:
+        self.push_screen(HelpScreen())
 
     def action_cursor_down(self) -> None:
         table = self._active_table()
