@@ -124,6 +124,9 @@ class ConfirmScreen(ModalScreen[bool]):
 class CtxTui(App[Request | None]):
     """Interactive manager for contexts and repos, lazygit-style."""
 
+    # No command palette: it exposes theme switching and search we don't want.
+    ENABLE_COMMAND_PALETTE: ClassVar[bool] = False
+
     CSS = """
     #contexts { height: 2fr; }
     #repos { height: 1fr; }
