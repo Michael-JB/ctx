@@ -9,6 +9,16 @@ from ctx.layout import Node, Pane, SplitDirection
 from ctx.multiplexer import Multiplexer
 
 
+def _env() -> dict[str, str]:
+    # XXX: macOS caps unix socket paths at 103 bytes and its $TMPDIR is long,
+    # so zellij's default socket path overflows for longer session names.
+    # Point zellij at a short socket dir instead (it creates the dir itself).
+    # Remove once https://github.com/zellij-org/zellij/issues/5081 is fixed.
+    env = os.environ.copy()
+    env.setdefault("ZELLIJ_SOCKET_DIR", f"/tmp/zellij-{os.getuid()}")
+    return env
+
+
 def _session_name(ctx: Context) -> str:
     raw = f"{ctx.repo}--{ctx.name}"
     return raw.replace(".", "-").replace(":", "-")
@@ -72,6 +82,7 @@ class ZellijMultiplexer(Multiplexer):
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
+            env=_env(),
         )
         # Nonzero means no zellij server is running.
         if result.returncode != 0:
@@ -88,13 +99,15 @@ class ZellijMultiplexer(Multiplexer):
             command = ["zellij", "action", "switch-session", session]
             if not exists:
                 command += ["--layout", self._write_layout_file(ctx)]
-            subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, env=_env())
             return
         if exists:
-            os.execvp("zellij", ["zellij", "attach", session])
+            os.execvpe("zellij", ["zellij", "attach", session], _env())
         layout_file = self._write_layout_file(ctx)
-        os.execvp(
-            "zellij", ["zellij", "--session", session, "--new-session-with-layout", layout_file]
+        os.execvpe(
+            "zellij",
+            ["zellij", "--session", session, "--new-session-with-layout", layout_file],
+            _env(),
         )
 
     def _write_layout_file(self, ctx: Context) -> str:
@@ -108,4 +121,5 @@ class ZellijMultiplexer(Multiplexer):
             ["zellij", "delete-session", "--force", _session_name(ctx)],
             check=True,
             stdout=subprocess.DEVNULL,
+            env=_env(),
         )
