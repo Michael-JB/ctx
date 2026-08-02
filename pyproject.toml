@@ -1,7 +1,7 @@
 [project]
 name = "ctx-tui"
 version = "0.1.0"
-description = "Manage repo-scoped work contexts: fresh checkouts plus a tmux session per context"
+description = "Manage repo-scoped work contexts: fresh checkouts wrapped in terminal multiplexer sessions"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
