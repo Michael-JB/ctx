@@ -20,12 +20,6 @@ Disclaimer: this is fully vibe-coded.
 uv tool install ctx-tui
 ```
 
-Or from a local checkout, e.g. for development:
-
-```sh
-uv tool install --editable .
-```
-
 ## Usage
 
 Run `ctx` to manage contexts and repos interactively in the TUI (`?` lists
@@ -98,12 +92,9 @@ echo 'export MY_SECRET=some-value' > <contexts_dir>/papaya-nvim/.envrc
 direnv allow <contexts_dir>/papaya-nvim
 ```
 
-## Releases
+## Contributing
 
-Releases are cut by [release-please](https://github.com/googleapis/release-please):
-merging its release PR tags a GitHub release, which publishes to PyPI.
-Version bumps are derived from [conventional commit](https://www.conventionalcommits.org)
-messages, so use `feat:`/`fix:` prefixes for user-facing changes.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## TODOs
 
