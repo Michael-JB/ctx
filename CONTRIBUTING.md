@@ -36,3 +36,12 @@ uv run mypy src
 Releases are cut by [release-please](https://github.com/googleapis/release-please):
 merging its release PR bumps the version, updates the changelog, and tags a
 GitHub release, which publishes to PyPI.
+
+## TODOs
+
+- [x] Add a TUI or interactive mode
+- [ ] Add a default project
+- [ ] Project-specific layouts (e.g. for `uv run nvim`)
+- [x] Release/versioning mechanism
+- [x] Support for pulling in environment vars (maybe .env files?)
+- [ ] Post-create hook command (e.g. `direnv allow`, `uv sync`)

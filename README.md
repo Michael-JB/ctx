@@ -95,12 +95,3 @@ direnv allow <contexts_dir>/papaya-nvim
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## TODOs
-
-- [x] Add a TUI or interactive mode
-- [ ] Add a default project
-- [ ] Project-specific layouts (e.g. for `uv run nvim`)
-- [x] Release/versioning mechanism
-- [x] Support for pulling in environment vars (maybe .env files?)
-- [ ] Post-create hook command (e.g. `direnv allow`, `uv sync`)
