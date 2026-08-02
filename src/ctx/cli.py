@@ -10,6 +10,7 @@ from ctx.multiplexer import Multiplexer, MultiplexerError, get_multiplexer
 
 
 @click.group(invoke_without_command=True)
+@click.version_option(package_name="ctx-tui")
 @click.pass_context
 def cli(click_ctx: click.Context) -> None:
     """Manage repo-scoped work contexts."""
