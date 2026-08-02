@@ -17,7 +17,7 @@ Disclaimer: this is fully vibe-coded.
 ## Install
 
 ```sh
-uv tool install git+https://github.com/Michael-JB/ctx
+uv tool install ctx-tui
 ```
 
 Or from a local checkout, e.g. for development:
@@ -98,11 +98,18 @@ echo 'export MY_SECRET=some-value' > <contexts_dir>/papaya-nvim/.envrc
 direnv allow <contexts_dir>/papaya-nvim
 ```
 
+## Releases
+
+Releases are cut by [release-please](https://github.com/googleapis/release-please):
+merging its release PR tags a GitHub release, which publishes to PyPI.
+Version bumps are derived from [conventional commit](https://www.conventionalcommits.org)
+messages, so use `feat:`/`fix:` prefixes for user-facing changes.
+
 ## TODOs
 
 - [x] Add a TUI or interactive mode
 - [ ] Add a default project
 - [ ] Project-specific layouts (e.g. for `uv run nvim`)
-- [ ] Release/versioning mechanism
+- [x] Release/versioning mechanism
 - [x] Support for pulling in environment vars (maybe .env files?)
 - [ ] Post-create hook command (e.g. `direnv allow`, `uv sync`)
