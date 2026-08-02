@@ -1,5 +1,5 @@
 [project]
-name = "ctx"
+name = "ctx-tui"
 version = "0.1.0"
 description = "Manage repo-scoped work contexts: fresh checkouts plus a tmux session per context"
 readme = "README.md"
@@ -17,6 +17,9 @@ ctx = "ctx.cli:main"
 [build-system]
 requires = ["uv_build>=0.7,<0.9"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "ctx"
 
 [dependency-groups]
 dev = [
