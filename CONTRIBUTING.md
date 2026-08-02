@@ -31,6 +31,11 @@ uv run mypy src
 - Explain the why in the body when it isn't obvious; the diff already
   shows the what.
 
+## XXX comments
+
+Mark known compromises with an `XXX:` comment saying why the code exists,
+together with a removal condition.
+
 ## Releases
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please):
