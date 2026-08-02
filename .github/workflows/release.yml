@@ -1,0 +1,35 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  # Manual fallback to (re)publish the current main, e.g. if a publish failed.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          release-type: python
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      # Authenticates to PyPI via trusted publishing; no token needed.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - run: uv publish --trusted-publishing always
