@@ -47,6 +47,12 @@ def update_repo(cfg: Config, name: str) -> None:
     """Refresh only the default branch; contexts fetch other branches from origin on demand."""
     path = repo_path(cfg, name)
     branch = default_branch(cfg, name)
+    # A branch unborn on both ends (empty repo) has nothing to fetch, and
+    # fetching it would fail; the local check keeps the common case one roundtrip.
+    if not git("for-each-ref", f"refs/heads/{branch}", cwd=path) and not git(
+        "ls-remote", "--heads", "origin", f"refs/heads/{branch}", cwd=path
+    ):
+        return
     git("fetch", "origin", f"+refs/heads/{branch}:refs/heads/{branch}", cwd=path)
 
 

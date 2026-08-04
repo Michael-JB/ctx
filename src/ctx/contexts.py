@@ -70,7 +70,11 @@ def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -
             remove_context(Context(repo, name, path))
             raise FileNotFoundError(f"branch '{base}' not found on origin of '{repo}'") from exc
     branch = f"{cfg.branch_prefix}{name}"
-    git("checkout", "--no-track", "-b", branch, f"origin/{base}", cwd=path)
+    if git("for-each-ref", f"refs/remotes/origin/{base}", cwd=path):
+        git("checkout", "--no-track", "-b", branch, f"origin/{base}", cwd=path)
+    else:
+        # An empty repo has no commit to branch from; start the work branch unborn.
+        git("checkout", "--no-track", "-b", branch, cwd=path)
     return Context(repo, name, path)
 
 
