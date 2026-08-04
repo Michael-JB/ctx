@@ -1,3 +1,4 @@
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -85,12 +86,43 @@ def test_create_from_an_empty_repo(cfg: Config, make_origin: MakeOrigin) -> None
     ctx = contexts.create_context(cfg, "empty", "feat")
 
     assert contexts.current_branch(ctx) == "feat"
+    # Listing must not choke on the missing reflog/index of an unborn branch.
+    assert contexts.list_contexts(cfg) == [ctx]
 
 
 def test_list_contexts_returns_created_contexts(cfg: Config, registered: Path) -> None:
     created = contexts.create_context(cfg, "origin", "feat")
 
     assert contexts.list_contexts(cfg) == [created]
+
+
+def _set_activity(ctx: contexts.Context, when: int) -> None:
+    for rel in (".git/logs/HEAD", ".git/index"):
+        os.utime(ctx.path / rel, (when, when))
+
+
+def test_list_contexts_sorts_most_recently_active_first(cfg: Config, registered: Path) -> None:
+    older = contexts.create_context(cfg, "origin", "older")
+    newer = contexts.create_context(cfg, "origin", "newer")
+    _set_activity(older, 1_000)
+    _set_activity(newer, 2_000)
+
+    assert contexts.list_contexts(cfg) == [newer, older]
+
+    _set_activity(older, 3_000)
+
+    assert contexts.list_contexts(cfg) == [older, newer]
+
+
+def test_index_activity_alone_counts_as_recency(cfg: Config, registered: Path) -> None:
+    quiet = contexts.create_context(cfg, "origin", "quiet")
+    staged = contexts.create_context(cfg, "origin", "staged")
+    _set_activity(quiet, 1_000)
+    _set_activity(staged, 1_000)
+
+    os.utime(staged.path / ".git" / "index", (2_000, 2_000))
+
+    assert contexts.list_contexts(cfg) == [staged, quiet]
 
 
 def test_find_context_resolves_by_name(cfg: Config, registered: Path) -> None:

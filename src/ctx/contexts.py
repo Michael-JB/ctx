@@ -23,7 +23,20 @@ def context_path(cfg: Config, repo: str, name: str) -> Path:
     return cfg.contexts_dir / repo / name
 
 
+def last_active(ctx: Context) -> float:
+    """Proxy for the last interaction: the latest git activity in the checkout.
+
+    `.git/logs/HEAD` is appended to on commits, checkouts, and resets;
+    `.git/index` is rewritten by staging and status refreshes. Neither sees
+    plain file edits, but agent-driven work touches git constantly.
+    """
+    candidates = (ctx.path / ".git" / "logs" / "HEAD", ctx.path / ".git" / "index")
+    times = [path.stat().st_mtime for path in candidates if path.exists()]
+    return max(times, default=ctx.path.stat().st_mtime)
+
+
 def list_contexts(cfg: Config) -> list[Context]:
+    """All contexts, most recently active first."""
     if not cfg.contexts_dir.is_dir():
         return []
     found = []
@@ -33,6 +46,7 @@ def list_contexts(cfg: Config) -> list[Context]:
         for ctx_dir in sorted(repo_dir.iterdir()):
             if (ctx_dir / ".git").exists():
                 found.append(Context(repo_dir.name, ctx_dir.name, ctx_dir))
+    found.sort(key=lambda c: (-last_active(c), c.qualified))
     return found
 
 
