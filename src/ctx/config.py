@@ -29,10 +29,10 @@ class Config:
     layout: Node = DEFAULT_LAYOUT
 
 
-def load_config() -> Config:
-    if not CONFIG_PATH.exists():
+def load_config(path: Path = CONFIG_PATH) -> Config:
+    if not path.exists():
         return Config()
-    data = tomllib.loads(CONFIG_PATH.read_text())
+    data = tomllib.loads(path.read_text())
     cfg = Config()
     if "contexts_dir" in data:
         cfg = replace(cfg, contexts_dir=Path(data["contexts_dir"]).expanduser())
