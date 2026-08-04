@@ -20,7 +20,10 @@ uv tool install --editable .
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy src
+uv run pytest
 ```
+
+CI runs the same checks on every pull request.
 
 ## Commit messages
 
