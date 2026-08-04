@@ -24,6 +24,7 @@ module-name = "ctx"
 [dependency-groups]
 dev = [
     "mypy>=2.3.0",
+    "pytest>=8.3",
     "ruff>=0.16.0",
 ]
 
