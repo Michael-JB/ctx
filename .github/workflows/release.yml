@@ -16,10 +16,10 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
     steps:
+      # Configured by release-please-config.json; the extra-files entry
+      # there keeps uv.lock's version in step with pyproject.toml.
       - uses: googleapis/release-please-action@v4
         id: release
-        with:
-          release-type: python
 
   publish:
     needs: release-please
