@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/Michael-JB/ctx/compare/v0.2.0...v0.3.0) (2026-08-05)
+
+
+### Features
+
+* archive contexts ([e23ace3](https://github.com/Michael-JB/ctx/commit/e23ace3a1cf0bdf8e18f2cd99b70e5b53d3ba09e))
+* **tui:** panel-contextual keybindings help ([5522b5c](https://github.com/Michael-JB/ctx/commit/5522b5ceb415a77e88324e667fe70c905151bfe0))
+
+
+### Bug Fixes
+
+* **tui:** wrap long dialog messages ([046eb7b](https://github.com/Michael-JB/ctx/commit/046eb7b6bbcd08f396cd97511c4c3d57f3e11900))
+
+
+### Documentation
+
+* describe archiving in the README ([0801bc6](https://github.com/Michael-JB/ctx/commit/0801bc60e315edf217dd75b3bfadfb80cdfaeb3c))
+
 ## [0.2.0](https://github.com/Michael-JB/ctx/compare/v0.1.1...v0.2.0) (2026-08-04)
 
 
