@@ -261,7 +261,6 @@ class CtxTui(App[Request | None]):
         Binding("2", "focus_repos", show=False),
         Binding("3", "focus_archived", show=False),
         ("o", "open", "Open"),
-        Binding("space", "open", show=False),
         ("n", "new", "New context"),
         Binding("N", "new_from_base", show=False),
         ("a", "add_repo", "Add repo"),
