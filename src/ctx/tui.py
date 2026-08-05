@@ -230,7 +230,7 @@ class CtxTui(App[Request | None]):
         background: $background;
         align-horizontal: center;
     }
-    #dialog Label { margin-bottom: 1; }
+    #dialog Label { margin-bottom: 1; width: 100%; }
     #buttons { height: auto; align-horizontal: right; }
     #buttons Button { margin-left: 2; }
     PromptScreen, ConfirmScreen, ChoiceScreen, AlertScreen, HelpScreen { align: center middle; }
