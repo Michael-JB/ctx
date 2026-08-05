@@ -100,25 +100,39 @@ class AlertScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
-_KEYBINDINGS = """\
-j / k        move within panel
-g / G        jump to top / bottom
-h / l        switch panel (also 1 / 2 / 3)
-enter        open context (also space / o)
-n            new context
-N            new context from a base branch
-a            add repo
-d            archive or delete the selection
-u            unarchive context (also enter in the archived panel)
-e            empty the archive (in the archived panel)
-r            refresh
-?            this help
-q / ctrl+c   quit\
-"""
+_PANEL_KEYBINDINGS: dict[str, tuple[tuple[str, str], ...]] = {
+    "contexts": (
+        ("enter / o", "open context"),
+        ("n", "new context"),
+        ("N", "new context from a base branch"),
+        ("d", "archive or delete context"),
+    ),
+    "repos": (
+        ("enter / n", "new context"),
+        ("N", "new context from a base branch"),
+        ("d", "remove repo"),
+    ),
+    "archived": (
+        ("enter / u", "unarchive context"),
+        ("d", "permanently delete context"),
+        ("e", "empty the archive"),
+    ),
+}
+
+_COMMON_KEYBINDINGS = (
+    ("j / k", "move within panel"),
+    ("g / G", "jump to top / bottom"),
+    ("h / l", "switch panel"),
+    ("1 / 2 / 3", "jump to panel"),
+    ("a", "add repo"),
+    ("r", "refresh"),
+    ("?", "this help"),
+    ("q / ctrl+c", "quit"),
+)
 
 
 class HelpScreen(ModalScreen[None]):
-    """Keybinding reference, dismissed like an alert."""
+    """Keybinding reference for one panel, dismissed like an alert."""
 
     BINDINGS: ClassVar = [
         Binding("escape", "close", show=False),
@@ -126,10 +140,15 @@ class HelpScreen(ModalScreen[None]):
         Binding("question_mark", "close", show=False),
     ]
 
+    def __init__(self, panel: str) -> None:
+        super().__init__()
+        self._panel = panel
+
     def compose(self) -> ComposeResult:
+        bindings = _PANEL_KEYBINDINGS[self._panel] + _COMMON_KEYBINDINGS
         with Vertical(id="dialog"):
-            yield Label("Keybindings")
-            yield Label(_KEYBINDINGS)
+            yield Label(f"Keybindings ({self._panel})")
+            yield Label("\n".join(f"{key:<13}{desc}" for key, desc in bindings))
 
     def action_close(self) -> None:
         self.dismiss(None)
@@ -674,7 +693,7 @@ class CtxTui(App[Request | None]):
         self._reload()
 
     def action_help(self) -> None:
-        self.push_screen(HelpScreen())
+        self.push_screen(HelpScreen(self._active_table().id or "contexts"))
 
     def action_cursor_down(self) -> None:
         table = self._active_table()
