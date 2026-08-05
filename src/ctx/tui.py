@@ -115,6 +115,8 @@ _PANEL_KEYBINDINGS: dict[str, tuple[tuple[str, str], ...]] = {
     "archived": (
         ("enter", "unarchive and open context"),
         ("u", "unarchive context"),
+        ("n", "new context"),
+        ("N", "new context from a base branch"),
         ("d", "permanently delete context"),
         ("e", "empty the archive"),
     ),
@@ -484,8 +486,13 @@ class CtxTui(App[Request | None]):
 
     def _repo_for_new(self) -> str | None:
         """The repo the selection points at: a selected repo, or a context's repo."""
-        if self._active_table() is self._contexts_table:
+        active = self._active_table()
+        if active is self._contexts_table:
             ctx = self._selected_context()
+            if ctx is not None:
+                return ctx.repo
+        elif active is self._archived_table:
+            ctx = self._selected_archived()
             if ctx is not None:
                 return ctx.repo
         return self._selected_key(self._repos_table)
