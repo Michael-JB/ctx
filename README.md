@@ -36,7 +36,7 @@ ctx rm my-cool-feature                # ...or tear it all down again
 Not ready to tear a context down? Archive it instead (in the TUI, `d` offers
 Archive next to Delete): its session is killed and the checkout moves aside to
 `archive_dir`, freeing the name. The TUI's archived panel lets you unarchive
-(`u`, recreating the session), delete permanently (`d`), or empty the whole
+(`u`, or enter to also open it), delete permanently (`d`), or empty the whole
 archive (`e`).
 
 More detail:

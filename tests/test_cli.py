@@ -277,7 +277,7 @@ def test_archive_empty_rejects_names(runner: CliRunner, deps: Deps) -> None:
     assert result.exit_code == 2
 
 
-def test_unarchive_restores_the_context_and_opens_a_session(
+def test_unarchive_restores_the_context_without_opening(
     runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
 ) -> None:
     contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "feat"))
@@ -286,7 +286,7 @@ def test_unarchive_restores_the_context_and_opens_a_session(
 
     assert result.exit_code == 0
     assert "unarchived origin/feat" in result.output
-    assert mux.opened == ["origin/feat"]
+    assert mux.opened == []
     assert contexts.find_context(deps.cfg, "feat").path.exists()
 
 
