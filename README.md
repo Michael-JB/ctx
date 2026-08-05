@@ -59,6 +59,7 @@ pane, so a custom tree is shown instead.
 ```toml
 contexts_dir = "~/.local/share/ctx/contexts"  # where checkouts live
 repos_dir = "~/.local/share/ctx/repos"        # internal storage for registered repos
+archive_dir = "~/.local/share/ctx/archive"    # where archived contexts go
 branch_prefix = ""                            # work branch prefix, e.g. "jane/"
 multiplexer = "tmux"                          # or "zellij" (requires zellij >= 0.44)
 

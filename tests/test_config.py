@@ -35,6 +35,14 @@ def test_repos_dir_override_expands_user(tmp_path: Path) -> None:
     assert cfg.repos_dir == Path.home() / "repos"
 
 
+def test_archive_dir_override_expands_user(tmp_path: Path) -> None:
+    path = write_config(tmp_path, 'archive_dir = "~/archive"')
+
+    cfg = load_config(path)
+
+    assert cfg.archive_dir == Path.home() / "archive"
+
+
 def test_branch_prefix_override(tmp_path: Path) -> None:
     path = write_config(tmp_path, 'branch_prefix = "mb/"')
 
