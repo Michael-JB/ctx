@@ -187,17 +187,13 @@ def _archive_one(deps: Deps, name: str) -> str | None:
 @click.argument("name")
 @click.pass_obj
 def unarchive(deps: Deps, name: str) -> None:
-    """Restore an archived context and open its session."""
+    """Restore an archived context."""
     try:
         archived = contexts.find_archived(deps.cfg, name)
         ctx = contexts.unarchive_context(deps.cfg, archived)
     except (LookupError, FileExistsError) as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"unarchived {ctx.qualified}")
-    try:
-        deps.mux.open(ctx)
-    except MultiplexerError as exc:
-        raise click.ClickException(str(exc)) from exc
 
 
 @cli.command()
