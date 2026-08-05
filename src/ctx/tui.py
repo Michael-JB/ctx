@@ -100,7 +100,7 @@ class AlertScreen(ModalScreen[None]):
 _KEYBINDINGS = """\
 j / k        move within panel
 g / G        jump to top / bottom
-h / l        switch panel (also 1 / 2)
+h / l        switch panel (also 1 / 2 / 3)
 enter        open context (also space / o)
 n            new context
 N            new context from a base branch
@@ -174,13 +174,14 @@ class CtxTui(App[Request | None]):
     CSS = """
     #contexts { height: 2fr; }
     #repos { height: 1fr; }
-    #contexts, #repos {
+    #archived { height: 1fr; }
+    #contexts, #repos, #archived {
         border: round $foreground;
     }
-    #contexts:focus, #repos:focus {
+    #contexts:focus, #repos:focus, #archived:focus {
         border: round $primary;
     }
-    #contexts.busy, #repos.busy {
+    #contexts.busy, #repos.busy, #archived.busy {
         text-style: dim;
     }
     #dialog {
@@ -200,6 +201,7 @@ class CtxTui(App[Request | None]):
     BINDINGS: ClassVar = [
         Binding("1", "focus_contexts", show=False),
         Binding("2", "focus_repos", show=False),
+        Binding("3", "focus_archived", show=False),
         ("o", "open", "Open"),
         Binding("space", "open", show=False),
         ("n", "new", "New context"),
@@ -210,8 +212,8 @@ class CtxTui(App[Request | None]):
         ("q", "quit", "Quit"),
         Binding("question_mark", "help", "Help", key_display="?"),
         Binding("ctrl+c", "quit", show=False, priority=True),
-        Binding("h", "switch_panel", show=False),
-        Binding("l", "switch_panel", show=False),
+        Binding("h", "prev_panel", show=False),
+        Binding("l", "next_panel", show=False),
         Binding("j", "cursor_down", show=False),
         Binding("k", "cursor_up", show=False),
         Binding("g", "cursor_top", show=False),
@@ -232,6 +234,7 @@ class CtxTui(App[Request | None]):
     def compose(self) -> ComposeResult:
         yield DataTable(id="contexts", cursor_type="row")
         yield DataTable(id="repos", cursor_type="row")
+        yield DataTable(id="archived", cursor_type="row")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -239,6 +242,7 @@ class CtxTui(App[Request | None]):
         ctx_table.add_columns("NAME", "REPO", "BRANCH", "STATUS")
         repo_table = self._repos_table
         repo_table.add_columns("NAME", "URL")
+        self._archived_table.add_columns("NAME", "REPO", "BRANCH")
         self._update_titles()
         self._reload()
         ctx_table.focus()
@@ -251,6 +255,10 @@ class CtxTui(App[Request | None]):
     @property
     def _repos_table(self) -> DataTable[str]:
         return self.query_one("#repos", DataTable)
+
+    @property
+    def _archived_table(self) -> DataTable[str]:
+        return self.query_one("#archived", DataTable)
 
     def _reload(self) -> None:
         ctx_table = self._contexts_table
@@ -273,6 +281,10 @@ class CtxTui(App[Request | None]):
         repo_table.clear()
         for name in repos.repo_names(self._cfg):
             repo_table.add_row(name, repos.repo_url(self._cfg, name), key=name)
+        archived_table = self._archived_table
+        archived_table.clear()
+        for ctx in contexts.list_archived(self._cfg):
+            archived_table.add_row(ctx.name, ctx.repo, contexts.current_branch(ctx), key=ctx.name)
 
     def _spin(self) -> None:
         if self._busy:
@@ -281,7 +293,12 @@ class CtxTui(App[Request | None]):
 
     def _update_titles(self) -> None:
         frame = _SPINNER_FRAMES[self._spinner_frame % len(_SPINNER_FRAMES)]
-        for table_id, title in (("contexts", "[1] Contexts"), ("repos", "[2] Repos")):
+        titles = (
+            ("contexts", "[1] Contexts"),
+            ("repos", "[2] Repos"),
+            ("archived", "[3] Archived"),
+        )
+        for table_id, title in titles:
             busy = table_id in self._busy
             table = self.query_one(f"#{table_id}", DataTable)
             table.border_title = title + (f" {frame}" if busy else "")
@@ -296,8 +313,9 @@ class CtxTui(App[Request | None]):
         self._update_titles()
 
     def _active_table(self) -> DataTable[str]:
-        if self.focused is self._repos_table:
-            return self._repos_table
+        for table in (self._repos_table, self._archived_table):
+            if self.focused is table:
+                return table
         return self._contexts_table
 
     def _selected_key(self, table: DataTable[str]) -> str | None:
@@ -340,11 +358,19 @@ class CtxTui(App[Request | None]):
     def action_focus_repos(self) -> None:
         self._repos_table.focus()
 
-    def action_switch_panel(self) -> None:
-        if self._active_table() is self._contexts_table:
-            self._repos_table.focus()
-        else:
-            self._contexts_table.focus()
+    def action_focus_archived(self) -> None:
+        self._archived_table.focus()
+
+    def _cycle_panel(self, step: int) -> None:
+        tables = [self._contexts_table, self._repos_table, self._archived_table]
+        current = tables.index(self._active_table())
+        tables[(current + step) % len(tables)].focus()
+
+    def action_next_panel(self) -> None:
+        self._cycle_panel(1)
+
+    def action_prev_panel(self) -> None:
+        self._cycle_panel(-1)
 
     def action_open(self) -> None:
         ctx = self._selected_context()
