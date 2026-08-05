@@ -32,12 +32,7 @@ class NewRequest:
     base: str | None
 
 
-@dataclass(frozen=True)
-class UnarchiveRequest:
-    name: str
-
-
-Request = OpenRequest | NewRequest | UnarchiveRequest
+Request = OpenRequest | NewRequest
 
 _SPINNER_FRAMES = "|/-\\"
 
@@ -533,26 +528,17 @@ class CtxTui(App[Request | None]):
         ctx = self._selected_archived()
         if ctx is None:
             return
-        if not self._mux.can_open_in_place():
-            self.exit(UnarchiveRequest(ctx.name))
-            return
         self._start_busy("archived")
         self._unarchive_worker(ctx)
 
     @work(thread=True)
     def _unarchive_worker(self, ctx: Context) -> None:
         try:
-            restored = contexts.unarchive_context(self._cfg, ctx)
+            contexts.unarchive_context(self._cfg, ctx)
         except (OSError, subprocess.CalledProcessError) as exc:
-            self.call_from_thread(self._finish_busy)
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
-            return
         self.call_from_thread(self._reload)
         self.call_from_thread(self._finish_busy)
-        with _silenced_stderr():
-            self._mux.open(restored)
-        if self._exit_on_open:
-            self.call_from_thread(self.exit)
 
     def action_empty_archive(self) -> None:
         if self._active_table() is not self._archived_table:
