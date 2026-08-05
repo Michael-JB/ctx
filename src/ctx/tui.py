@@ -32,11 +32,18 @@ class NewRequest:
     base: str | None
 
 
-Request = OpenRequest | NewRequest
+@dataclass(frozen=True)
+class UnarchiveRequest:
+    name: str
+
+
+Request = OpenRequest | NewRequest | UnarchiveRequest
 
 _SPINNER_FRAMES = "|/-\\"
 
-_MUTATING_ACTIONS = frozenset({"open", "new", "new_from_base", "add_repo", "delete"})
+_MUTATING_ACTIONS = frozenset(
+    {"open", "new", "new_from_base", "add_repo", "delete", "unarchive"}
+)
 
 
 @contextlib.contextmanager
@@ -107,6 +114,7 @@ n            new context
 N            new context from a base branch
 a            add repo
 d            archive or delete the selection
+u            unarchive context (also enter in the archived panel)
 r            refresh
 ?            this help
 q / ctrl+c   quit\
@@ -240,6 +248,7 @@ class CtxTui(App[Request | None]):
         ("n", "new", "New context"),
         Binding("N", "new_from_base", show=False),
         ("a", "add_repo", "Add repo"),
+        Binding("u", "unarchive", show=False),
         ("d", "delete", "Delete"),
         ("r", "refresh", "Refresh"),
         ("q", "quit", "Quit"),
@@ -368,6 +377,17 @@ class CtxTui(App[Request | None]):
             self._reload()
             return None
 
+    def _selected_archived(self) -> Context | None:
+        """Resolve the archived panel's cursor from disk; reloads and yields None if stale."""
+        key = self._selected_key(self._archived_table)
+        if key is None:
+            return None
+        try:
+            return contexts.find_archived(self._cfg, key)
+        except LookupError:
+            self._reload()
+            return None
+
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Centrally disable mutating actions while a worker runs or a popup is open."""
         if action in _MUTATING_ACTIONS and (self._busy or isinstance(self.screen, ModalScreen)):
@@ -384,6 +404,11 @@ class CtxTui(App[Request | None]):
     def _repo_selected(self) -> None:
         if self.check_action("new", ()):
             self.action_new()
+
+    @on(DataTable.RowSelected, "#archived")
+    def _archived_selected(self) -> None:
+        if self.check_action("unarchive", ()):
+            self.action_unarchive()
 
     def action_focus_contexts(self) -> None:
         self._contexts_table.focus()
@@ -496,6 +521,33 @@ class CtxTui(App[Request | None]):
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
         self.call_from_thread(self._reload)
         self.call_from_thread(self._finish_busy)
+
+    def action_unarchive(self) -> None:
+        if self._active_table() is not self._archived_table:
+            return
+        ctx = self._selected_archived()
+        if ctx is None:
+            return
+        if not self._mux.can_open_in_place():
+            self.exit(UnarchiveRequest(ctx.name))
+            return
+        self._start_busy("archived")
+        self._unarchive_worker(ctx)
+
+    @work(thread=True)
+    def _unarchive_worker(self, ctx: Context) -> None:
+        try:
+            restored = contexts.unarchive_context(self._cfg, ctx)
+        except (OSError, subprocess.CalledProcessError) as exc:
+            self.call_from_thread(self._finish_busy)
+            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+            return
+        self.call_from_thread(self._reload)
+        self.call_from_thread(self._finish_busy)
+        with _silenced_stderr():
+            self._mux.open(restored)
+        if self._exit_on_open:
+            self.call_from_thread(self.exit)
 
     def action_delete(self) -> None:
         if self._active_table() is self._repos_table:
