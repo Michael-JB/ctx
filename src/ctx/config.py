@@ -24,6 +24,7 @@ class ConfigError(Exception):
 class Config:
     contexts_dir: Path = _DATA_DIR / "contexts"
     repos_dir: Path = _DATA_DIR / "repos"
+    archive_dir: Path = _DATA_DIR / "archive"
     branch_prefix: str = ""
     multiplexer: MultiplexerKind = MultiplexerKind.TMUX
     layout: Node = DEFAULT_LAYOUT
@@ -38,6 +39,8 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         cfg = replace(cfg, contexts_dir=Path(data["contexts_dir"]).expanduser())
     if "repos_dir" in data:
         cfg = replace(cfg, repos_dir=Path(data["repos_dir"]).expanduser())
+    if "archive_dir" in data:
+        cfg = replace(cfg, archive_dir=Path(data["archive_dir"]).expanduser())
     if "branch_prefix" in data:
         cfg = replace(cfg, branch_prefix=str(data["branch_prefix"]))
     if "multiplexer" in data:
