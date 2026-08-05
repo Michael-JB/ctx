@@ -150,3 +150,9 @@ def unpushed_commits(ctx: Context) -> list[str]:
 
 def remove_context(ctx: Context) -> None:
     shutil.rmtree(ctx.path)
+
+
+def empty_archive(cfg: Config) -> None:
+    """Permanently delete every archived context."""
+    for ctx in list_archived(cfg):
+        remove_context(ctx)

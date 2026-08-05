@@ -226,3 +226,14 @@ def test_remove_context_deletes_the_checkout(cfg: Config, registered: Path) -> N
     contexts.remove_context(ctx)
 
     assert contexts.list_contexts(cfg) == []
+
+
+def test_empty_archive_deletes_all_archived_contexts(cfg: Config, registered: Path) -> None:
+    contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "one"))
+    contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "two"))
+    kept = contexts.create_context(cfg, "origin", "live")
+
+    contexts.empty_archive(cfg)
+
+    assert contexts.list_archived(cfg) == []
+    assert contexts.list_contexts(cfg) == [kept]
