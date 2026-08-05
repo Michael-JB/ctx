@@ -113,7 +113,8 @@ _PANEL_KEYBINDINGS: dict[str, tuple[tuple[str, str], ...]] = {
         ("d", "remove repo"),
     ),
     "archived": (
-        ("enter / u", "unarchive context"),
+        ("enter", "unarchive and open context"),
+        ("u", "unarchive context"),
         ("d", "permanently delete context"),
         ("e", "empty the archive"),
     ),
@@ -427,7 +428,7 @@ class CtxTui(App[Request | None]):
     @on(DataTable.RowSelected, "#archived")
     def _archived_selected(self) -> None:
         if self.check_action("unarchive", ()):
-            self.action_unarchive()
+            self._open_archived()
 
     def action_focus_contexts(self) -> None:
         self._contexts_table.focus()
@@ -548,16 +549,40 @@ class CtxTui(App[Request | None]):
         if ctx is None:
             return
         self._start_busy("archived")
-        self._unarchive_worker(ctx)
+        self._unarchive_worker(ctx, open_after=False)
+
+    def _open_archived(self) -> None:
+        """Enter on an archived context: unarchive it and open its session."""
+        ctx = self._selected_archived()
+        if ctx is None:
+            return
+        if not self._mux.can_open_in_place():
+            try:
+                contexts.unarchive_context(self._cfg, ctx)
+            except OSError as exc:
+                self.push_screen(AlertScreen(str(exc)))
+                return
+            self.exit(OpenRequest(ctx.name))
+            return
+        self._start_busy("archived")
+        self._unarchive_worker(ctx, open_after=True)
 
     @work(thread=True)
-    def _unarchive_worker(self, ctx: Context) -> None:
+    def _unarchive_worker(self, ctx: Context, open_after: bool) -> None:
         try:
-            contexts.unarchive_context(self._cfg, ctx)
+            restored = contexts.unarchive_context(self._cfg, ctx)
         except (OSError, subprocess.CalledProcessError) as exc:
+            self.call_from_thread(self._finish_busy)
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+            return
         self.call_from_thread(self._reload)
         self.call_from_thread(self._finish_busy)
+        if not open_after:
+            return
+        with _silenced_stderr():
+            self._mux.open(restored)
+        if self._exit_on_open:
+            self.call_from_thread(self.exit)
 
     def action_empty_archive(self) -> None:
         if self._active_table() is not self._archived_table:
