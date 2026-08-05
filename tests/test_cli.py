@@ -220,6 +220,26 @@ def test_list_archived_shows_archived_contexts_only(
     assert row.split()[:2] == ["cold", "origin"]
 
 
+def test_unarchive_restores_the_context_and_opens_a_session(
+    runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
+) -> None:
+    contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "feat"))
+
+    result = runner.invoke(cli, ["unarchive", "feat"], obj=deps)
+
+    assert result.exit_code == 0
+    assert "unarchived origin/feat" in result.output
+    assert mux.opened == ["origin/feat"]
+    assert contexts.find_context(deps.cfg, "feat").path.exists()
+
+
+def test_unarchive_rejects_an_unknown_context(runner: CliRunner, deps: Deps) -> None:
+    result = runner.invoke(cli, ["unarchive", "feat"], obj=deps)
+
+    assert result.exit_code == 1
+    assert "no archived context 'feat'" in result.stderr
+
+
 def test_repo_add_registers(runner: CliRunner, deps: Deps, origin: Path) -> None:
     result = runner.invoke(cli, ["repo", "add", str(origin)], obj=deps)
 

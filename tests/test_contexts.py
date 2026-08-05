@@ -199,6 +199,27 @@ def test_find_archived_rejects_unknown_names(cfg: Config) -> None:
         contexts.find_archived(cfg, "feat")
 
 
+def test_unarchive_restores_the_context(cfg: Config, registered: Path) -> None:
+    created = contexts.create_context(cfg, "origin", "feat")
+    archived = contexts.archive_context(cfg, created)
+
+    restored = contexts.unarchive_context(cfg, archived)
+
+    assert restored == created
+    assert contexts.list_contexts(cfg) == [created]
+    assert contexts.list_archived(cfg) == []
+
+
+def test_unarchive_rejects_a_name_taken_meanwhile(cfg: Config, registered: Path) -> None:
+    archived = contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "feat"))
+    contexts.create_context(cfg, "origin", "feat")
+
+    with pytest.raises(FileExistsError, match="already used by origin/feat"):
+        contexts.unarchive_context(cfg, archived)
+
+    assert contexts.list_archived(cfg) == [archived]
+
+
 def test_remove_context_deletes_the_checkout(cfg: Config, registered: Path) -> None:
     ctx = contexts.create_context(cfg, "origin", "feat")
 

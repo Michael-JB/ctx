@@ -168,6 +168,23 @@ def _archive_one(deps: Deps, name: str) -> str | None:
 
 
 @cli.command()
+@click.argument("name")
+@click.pass_obj
+def unarchive(deps: Deps, name: str) -> None:
+    """Restore an archived context and open its session."""
+    try:
+        archived = contexts.find_archived(deps.cfg, name)
+        ctx = contexts.unarchive_context(deps.cfg, archived)
+    except (LookupError, FileExistsError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"unarchived {ctx.qualified}")
+    try:
+        deps.mux.open(ctx)
+    except MultiplexerError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+@cli.command()
 @click.option("--exit", "exit_on_open", is_flag=True, help="Exit the TUI after opening a context.")
 @click.pass_obj
 def tui(deps: Deps, exit_on_open: bool) -> None:
