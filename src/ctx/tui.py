@@ -550,10 +550,35 @@ class CtxTui(App[Request | None]):
             self.call_from_thread(self.exit)
 
     def action_delete(self) -> None:
-        if self._active_table() is self._repos_table:
+        active = self._active_table()
+        if active is self._repos_table:
             self._delete_repo()
+        elif active is self._archived_table:
+            self._delete_archived()
         else:
             self._delete_context()
+
+    def _delete_archived(self) -> None:
+        ctx = self._selected_archived()
+        if ctx is None:
+            return
+
+        def confirmed(delete: bool | None) -> None:
+            if delete:
+                self._start_busy("archived")
+                self._delete_archived_worker(ctx)
+
+        message = f"Permanently delete {ctx.qualified}?"
+        self.push_screen(ConfirmScreen(message, "Delete"), confirmed)
+
+    @work(thread=True)
+    def _delete_archived_worker(self, ctx: Context) -> None:
+        try:
+            contexts.remove_context(ctx)
+        except OSError as exc:
+            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+        self.call_from_thread(self._reload)
+        self.call_from_thread(self._finish_busy)
 
     def _delete_context(self) -> None:
         ctx = self._selected_context()
