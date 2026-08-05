@@ -205,7 +205,7 @@ def unarchive(deps: Deps, name: str) -> None:
 @click.pass_obj
 def tui(deps: Deps, exit_on_open: bool) -> None:
     """Manage contexts and repos interactively."""
-    from ctx.tui import CtxTui, NewRequest, OpenRequest, UnarchiveRequest
+    from ctx.tui import CtxTui, NewRequest, OpenRequest
 
     # When the multiplexer can open sessions in place (e.g. inside tmux),
     # the TUI handles everything itself and exits with no request. The
@@ -219,13 +219,6 @@ def tui(deps: Deps, exit_on_open: bool) -> None:
                 raise click.ClickException(str(exc)) from exc
         case NewRequest(repo=repo_name, name=name, base=base):
             _create_and_open(deps, repo_name, name, base)
-        case UnarchiveRequest(name=name):
-            try:
-                archived = contexts.find_archived(deps.cfg, name)
-                restored = contexts.unarchive_context(deps.cfg, archived)
-                deps.mux.open(restored)
-            except (LookupError, FileExistsError, MultiplexerError) as exc:
-                raise click.ClickException(str(exc)) from exc
         case None:
             pass
 
