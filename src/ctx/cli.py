@@ -140,10 +140,20 @@ def _remove_one(deps: Deps, name: str, force: bool) -> str | None:
 
 
 @cli.command()
-@click.argument("names", nargs=-1, required=True)
+@click.argument("names", nargs=-1)
+@click.option("--empty", is_flag=True, help="Permanently delete all archived contexts.")
 @click.pass_obj
-def archive(deps: Deps, names: tuple[str, ...]) -> None:
+def archive(deps: Deps, names: tuple[str, ...], empty: bool) -> None:
     """Archive contexts: kill their sessions and move the checkouts aside."""
+    if empty:
+        if names:
+            raise click.UsageError("--empty takes no context names")
+        count = len(contexts.list_archived(deps.cfg))
+        contexts.empty_archive(deps.cfg)
+        click.echo(f"emptied archive ({count} context(s))")
+        return
+    if not names:
+        raise click.UsageError("provide context names or --empty")
     failed = False
     for name in names:
         error = _archive_one(deps, name)

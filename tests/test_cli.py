@@ -220,6 +220,26 @@ def test_list_archived_shows_archived_contexts_only(
     assert row.split()[:2] == ["cold", "origin"]
 
 
+def test_archive_empty_deletes_all_archived_contexts(
+    runner: CliRunner, deps: Deps, registered: Path
+) -> None:
+    contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "cold"))
+    kept = contexts.create_context(deps.cfg, "origin", "hot")
+
+    result = runner.invoke(cli, ["archive", "--empty"], obj=deps)
+
+    assert result.exit_code == 0
+    assert "emptied archive (1 context(s))" in result.output
+    assert contexts.list_archived(deps.cfg) == []
+    assert kept.path.exists()
+
+
+def test_archive_empty_rejects_names(runner: CliRunner, deps: Deps) -> None:
+    result = runner.invoke(cli, ["archive", "--empty", "feat"], obj=deps)
+
+    assert result.exit_code == 2
+
+
 def test_unarchive_restores_the_context_and_opens_a_session(
     runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
 ) -> None:
