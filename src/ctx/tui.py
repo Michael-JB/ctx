@@ -42,7 +42,7 @@ Request = OpenRequest | NewRequest | UnarchiveRequest
 _SPINNER_FRAMES = "|/-\\"
 
 _MUTATING_ACTIONS = frozenset(
-    {"open", "new", "new_from_base", "add_repo", "delete", "unarchive"}
+    {"open", "new", "new_from_base", "add_repo", "delete", "unarchive", "empty_archive"}
 )
 
 
@@ -115,6 +115,7 @@ N            new context from a base branch
 a            add repo
 d            archive or delete the selection
 u            unarchive context (also enter in the archived panel)
+e            empty the archive (in the archived panel)
 r            refresh
 ?            this help
 q / ctrl+c   quit\
@@ -249,6 +250,7 @@ class CtxTui(App[Request | None]):
         Binding("N", "new_from_base", show=False),
         ("a", "add_repo", "Add repo"),
         Binding("u", "unarchive", show=False),
+        Binding("e", "empty_archive", show=False),
         ("d", "delete", "Delete"),
         ("r", "refresh", "Refresh"),
         ("q", "quit", "Quit"),
@@ -548,6 +550,30 @@ class CtxTui(App[Request | None]):
             self._mux.open(restored)
         if self._exit_on_open:
             self.call_from_thread(self.exit)
+
+    def action_empty_archive(self) -> None:
+        if self._active_table() is not self._archived_table:
+            return
+        archived = contexts.list_archived(self._cfg)
+        if not archived:
+            return
+
+        def confirmed(empty: bool | None) -> None:
+            if empty:
+                self._start_busy("archived")
+                self._empty_archive_worker()
+
+        message = f"Permanently delete all {len(archived)} archived context(s)?"
+        self.push_screen(ConfirmScreen(message, "Empty"), confirmed)
+
+    @work(thread=True)
+    def _empty_archive_worker(self) -> None:
+        try:
+            contexts.empty_archive(self._cfg)
+        except OSError as exc:
+            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+        self.call_from_thread(self._reload)
+        self.call_from_thread(self._finish_busy)
 
     def action_delete(self) -> None:
         active = self._active_table()
