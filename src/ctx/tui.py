@@ -222,6 +222,31 @@ class ChoiceScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class ContextsTable(DataTable[str]):
+    """Contexts panel; its bindings surface in the footer while focused."""
+
+    BINDINGS: ClassVar = [
+        ("o", "app.open", "Open"),
+        ("d", "app.delete", "Archive/delete"),
+    ]
+
+
+class ReposTable(DataTable[str]):
+    """Repos panel; its bindings surface in the footer while focused."""
+
+    BINDINGS: ClassVar = [("d", "app.delete", "Remove repo")]
+
+
+class ArchivedTable(DataTable[str]):
+    """Archived panel; its bindings surface in the footer while focused."""
+
+    BINDINGS: ClassVar = [
+        ("u", "app.unarchive", "Unarchive"),
+        ("d", "app.delete", "Delete"),
+        ("e", "app.empty_archive", "Empty"),
+    ]
+
+
 class CtxTui(App[Request | None]):
     """Interactive manager for contexts and repos, lazygit-style."""
 
@@ -260,13 +285,9 @@ class CtxTui(App[Request | None]):
         Binding("1", "focus_contexts", show=False),
         Binding("2", "focus_repos", show=False),
         Binding("3", "focus_archived", show=False),
-        ("o", "open", "Open"),
         ("n", "new", "New context"),
         Binding("N", "new_from_base", show=False),
         ("a", "add_repo", "Add repo"),
-        Binding("u", "unarchive", show=False),
-        Binding("e", "empty_archive", show=False),
-        ("d", "delete", "Delete"),
         ("r", "refresh", "Refresh"),
         ("q", "quit", "Quit"),
         Binding("question_mark", "help", "Help", key_display="?"),
@@ -293,9 +314,9 @@ class CtxTui(App[Request | None]):
     def compose(self) -> ComposeResult:
         with Horizontal():
             with Vertical(id="left"):
-                yield DataTable(id="contexts", cursor_type="row")
-                yield DataTable(id="archived", cursor_type="row")
-            yield DataTable(id="repos", cursor_type="row")
+                yield ContextsTable(id="contexts", cursor_type="row")
+                yield ArchivedTable(id="archived", cursor_type="row")
+            yield ReposTable(id="repos", cursor_type="row")
         yield Footer()
 
     def on_mount(self) -> None:
