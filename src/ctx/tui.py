@@ -1,7 +1,7 @@
 import contextlib
 import os
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -12,6 +12,7 @@ from textual.containers import Horizontal, Vertical
 from textual.coordinate import Coordinate
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Input, Label
+from textual.widgets.button import ButtonVariant
 
 from ctx import contexts, repos
 from ctx.config import Config
@@ -105,7 +106,7 @@ enter        open context (also space / o)
 n            new context
 N            new context from a base branch
 a            add repo
-d            delete context or repo
+d            archive or delete the selection
 r            refresh
 ?            this help
 q / ctrl+c   quit\
@@ -165,6 +166,38 @@ class ConfirmScreen(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class ChoiceScreen(ModalScreen[str | None]):
+    """Message with one button per choice; escape cancels."""
+
+    BINDINGS: ClassVar = [
+        Binding("escape", "cancel", show=False),
+        Binding("j", "app.focus_next", show=False),
+        Binding("k", "app.focus_previous", show=False),
+        Binding("l", "app.focus_next", show=False),
+        Binding("h", "app.focus_previous", show=False),
+    ]
+
+    def __init__(self, message: str, choices: Sequence[tuple[str, str, ButtonVariant]]) -> None:
+        """Choices are (result, button label, button variant) triples."""
+        super().__init__()
+        self._message = message
+        self._choices = choices
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Label(self._message)
+            with Horizontal(id="buttons"):
+                for result, label, variant in self._choices:
+                    yield Button(label, variant=variant, id=result)
+
+    @on(Button.Pressed)
+    def _chosen(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class CtxTui(App[Request | None]):
     """Interactive manager for contexts and repos, lazygit-style."""
 
@@ -195,7 +228,7 @@ class CtxTui(App[Request | None]):
     #dialog Label { margin-bottom: 1; }
     #buttons { height: auto; align-horizontal: right; }
     #buttons Button { margin-left: 2; }
-    PromptScreen, ConfirmScreen, AlertScreen, HelpScreen { align: center middle; }
+    PromptScreen, ConfirmScreen, ChoiceScreen, AlertScreen, HelpScreen { align: center middle; }
     """
 
     BINDINGS: ClassVar = [
@@ -480,18 +513,37 @@ class CtxTui(App[Request | None]):
         if contexts.unpushed_commits(ctx):
             problems.append("unpushed commits")
         if problems:
-            message = f"{ctx.qualified} has {' and '.join(problems)}. Delete anyway?"
-            label = "Force delete"
+            message = f"{ctx.qualified} has {' and '.join(problems)}. Archive or delete?"
+            delete_label = "Force delete"
         else:
-            message = f"Delete {ctx.qualified}?"
-            label = "Delete"
+            message = f"Archive or delete {ctx.qualified}?"
+            delete_label = "Delete"
 
-        def confirmed(delete: bool | None) -> None:
-            if delete:
+        def chosen(choice: str | None) -> None:
+            if choice == "archive":
+                self._start_busy("contexts")
+                self._archive_worker(ctx)
+            elif choice == "delete":
                 self._start_busy("contexts")
                 self._delete_context_worker(ctx)
 
-        self.push_screen(ConfirmScreen(message, label), confirmed)
+        choices: list[tuple[str, str, ButtonVariant]] = [
+            ("archive", "Archive", "primary"),
+            ("delete", delete_label, "error"),
+            ("cancel", "Cancel", "default"),
+        ]
+        self.push_screen(ChoiceScreen(message, choices), chosen)
+
+    @work(thread=True)
+    def _archive_worker(self, ctx: Context) -> None:
+        try:
+            if self._mux.exists(ctx):
+                self._mux.kill(ctx)
+            contexts.archive_context(self._cfg, ctx)
+        except (OSError, subprocess.CalledProcessError) as exc:
+            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+        self.call_from_thread(self._reload)
+        self.call_from_thread(self._finish_busy)
 
     @work(thread=True)
     def _delete_context_worker(self, ctx: Context) -> None:
