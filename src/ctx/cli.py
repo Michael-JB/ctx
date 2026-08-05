@@ -104,12 +104,13 @@ def list_(deps: Deps, archived: bool) -> None:
 @cli.command()
 @click.argument("names", nargs=-1, required=True)
 @click.option("--force", is_flag=True, help="Delete even with uncommitted or unpushed work.")
+@click.option("--archived", is_flag=True, help="Delete archived contexts instead.")
 @click.pass_obj
-def rm(deps: Deps, names: tuple[str, ...], force: bool) -> None:
+def rm(deps: Deps, names: tuple[str, ...], force: bool, archived: bool) -> None:
     """Delete contexts: kill their sessions and remove the checkouts."""
     failed = False
     for name in names:
-        error = _remove_one(deps, name, force)
+        error = _remove_one(deps, name, force, archived)
         if error:
             click.echo(f"error: {error}", err=True)
             failed = True
@@ -117,10 +118,13 @@ def rm(deps: Deps, names: tuple[str, ...], force: bool) -> None:
         sys.exit(1)
 
 
-def _remove_one(deps: Deps, name: str, force: bool) -> str | None:
+def _remove_one(deps: Deps, name: str, force: bool, archived: bool) -> str | None:
     """Delete one context, returning an error message instead of raising."""
     try:
-        ctx = contexts.find_context(deps.cfg, name)
+        if archived:
+            ctx = contexts.find_archived(deps.cfg, name)
+        else:
+            ctx = contexts.find_context(deps.cfg, name)
     except LookupError as exc:
         return str(exc)
     if not force:
@@ -132,7 +136,9 @@ def _remove_one(deps: Deps, name: str, force: bool) -> str | None:
             problems.append(f"{len(unpushed)} unpushed commit(s)")
         if problems:
             return f"{ctx.qualified} has {' and '.join(problems)}; use --force to delete anyway"
-    if deps.mux.exists(ctx):
+    # A live context may have reused an archived one's name, and with it the
+    # session name; only ever kill sessions for live contexts.
+    if not archived and deps.mux.exists(ctx):
         deps.mux.kill(ctx)
     contexts.remove_context(ctx)
     click.echo(f"removed {ctx.qualified}")
