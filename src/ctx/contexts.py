@@ -124,6 +124,17 @@ def archive_context(cfg: Config, ctx: Context) -> Context:
     return Context(ctx.repo, ctx.name, dest)
 
 
+def unarchive_context(cfg: Config, ctx: Context) -> Context:
+    """Move an archived checkout back among the live contexts."""
+    taken = next((c for c in list_contexts(cfg) if c.name == ctx.name), None)
+    if taken is not None:
+        raise FileExistsError(f"context name '{ctx.name}' is already used by {taken.qualified}")
+    dest = context_path(cfg, ctx.repo, ctx.name)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(ctx.path, dest)
+    return Context(ctx.repo, ctx.name, dest)
+
+
 def current_branch(ctx: Context) -> str:
     return git("branch", "--show-current", cwd=ctx.path)
 
