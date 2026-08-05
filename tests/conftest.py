@@ -22,7 +22,11 @@ def isolated_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def cfg(tmp_path: Path) -> Config:
-    return Config(contexts_dir=tmp_path / "contexts", repos_dir=tmp_path / "repos")
+    return Config(
+        contexts_dir=tmp_path / "contexts",
+        repos_dir=tmp_path / "repos",
+        archive_dir=tmp_path / "archive",
+    )
 
 
 @pytest.fixture

@@ -97,6 +97,33 @@ def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -
     return Context(repo, name, path)
 
 
+def archive_path(cfg: Config, repo: str, name: str) -> Path:
+    return cfg.archive_dir / repo / name
+
+
+def list_archived(cfg: Config) -> list[Context]:
+    """All archived contexts, most recently active first."""
+    return _scan(cfg.archive_dir)
+
+
+def find_archived(cfg: Config, name: str) -> Context:
+    """Resolve an archived context by name."""
+    matches = [c for c in list_archived(cfg) if c.name == name]
+    if not matches:
+        raise LookupError(f"no archived context '{name}'")
+    return matches[0]
+
+
+def archive_context(cfg: Config, ctx: Context) -> Context:
+    """Move a context's checkout into the archive."""
+    dest = archive_path(cfg, ctx.repo, ctx.name)
+    if dest.exists():
+        raise FileExistsError(f"'{ctx.qualified}' is already archived")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(ctx.path, dest)
+    return Context(ctx.repo, ctx.name, dest)
+
+
 def current_branch(ctx: Context) -> str:
     return git("branch", "--show-current", cwd=ctx.path)
 
