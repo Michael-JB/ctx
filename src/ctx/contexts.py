@@ -35,12 +35,12 @@ def last_active(ctx: Context) -> float:
     return max(times, default=ctx.path.stat().st_mtime)
 
 
-def list_contexts(cfg: Config) -> list[Context]:
-    """All contexts, most recently active first."""
-    if not cfg.contexts_dir.is_dir():
+def _scan(root: Path) -> list[Context]:
+    """Contexts under a <root>/<repo>/<name> tree, most recently active first."""
+    if not root.is_dir():
         return []
     found = []
-    for repo_dir in sorted(cfg.contexts_dir.iterdir()):
+    for repo_dir in sorted(root.iterdir()):
         if not repo_dir.is_dir():
             continue
         for ctx_dir in sorted(repo_dir.iterdir()):
@@ -48,6 +48,11 @@ def list_contexts(cfg: Config) -> list[Context]:
                 found.append(Context(repo_dir.name, ctx_dir.name, ctx_dir))
     found.sort(key=lambda c: (-last_active(c), c.qualified))
     return found
+
+
+def list_contexts(cfg: Config) -> list[Context]:
+    """All contexts, most recently active first."""
+    return _scan(cfg.contexts_dir)
 
 
 def find_context(cfg: Config, name: str) -> Context:
