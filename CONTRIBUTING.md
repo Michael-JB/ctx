@@ -17,13 +17,9 @@ uv tool install --editable .
 ## Checks
 
 ```sh
-uv run ruff format --check .
-uv run ruff check .
-uv run mypy src
-uv run pytest
+./lint.sh        # check; CI runs this on every pull request
+./lint.sh --fix  # also apply formatting and lint fixes
 ```
-
-CI runs the same checks on every pull request.
 
 ## Commit messages
 
