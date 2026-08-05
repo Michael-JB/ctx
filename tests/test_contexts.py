@@ -159,6 +159,46 @@ def test_local_commit_counts_as_unpushed(cfg: Config, registered: Path) -> None:
     assert len(contexts.unpushed_commits(ctx)) == 1
 
 
+def test_archive_moves_the_checkout_out_of_the_contexts(cfg: Config, registered: Path) -> None:
+    ctx = contexts.create_context(cfg, "origin", "feat")
+
+    archived = contexts.archive_context(cfg, ctx)
+
+    assert archived.path == cfg.archive_dir / "origin" / "feat"
+    assert (archived.path / "README.md").exists()
+    assert contexts.list_contexts(cfg) == []
+    assert contexts.list_archived(cfg) == [archived]
+
+
+def test_archive_frees_the_context_name(cfg: Config, registered: Path) -> None:
+    contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "feat"))
+
+    recreated = contexts.create_context(cfg, "origin", "feat")
+
+    assert contexts.list_contexts(cfg) == [recreated]
+
+
+def test_archive_rejects_an_already_archived_name(cfg: Config, registered: Path) -> None:
+    contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "feat"))
+    ctx = contexts.create_context(cfg, "origin", "feat")
+
+    with pytest.raises(FileExistsError, match="already archived"):
+        contexts.archive_context(cfg, ctx)
+
+    assert contexts.list_contexts(cfg) == [ctx]
+
+
+def test_find_archived_resolves_by_name(cfg: Config, registered: Path) -> None:
+    archived = contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "feat"))
+
+    assert contexts.find_archived(cfg, "feat") == archived
+
+
+def test_find_archived_rejects_unknown_names(cfg: Config) -> None:
+    with pytest.raises(LookupError, match="no archived context 'feat'"):
+        contexts.find_archived(cfg, "feat")
+
+
 def test_remove_context_deletes_the_checkout(cfg: Config, registered: Path) -> None:
     ctx = contexts.create_context(cfg, "origin", "feat")
 

@@ -179,6 +179,47 @@ def test_rm_rejects_an_unknown_context(runner: CliRunner, deps: Deps) -> None:
     assert "no context 'feat'" in result.stderr
 
 
+def test_archive_moves_the_context_and_kills_its_session(
+    runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
+) -> None:
+    ctx = contexts.create_context(deps.cfg, "origin", "feat")
+    mux.running.add("origin/feat")
+
+    result = runner.invoke(cli, ["archive", "feat"], obj=deps)
+
+    assert result.exit_code == 0
+    assert "archived origin/feat" in result.output
+    assert mux.killed == ["origin/feat"]
+    assert not ctx.path.exists()
+    assert contexts.find_archived(deps.cfg, "feat").path.exists()
+
+
+def test_archive_rejects_an_unknown_context(runner: CliRunner, deps: Deps) -> None:
+    result = runner.invoke(cli, ["archive", "feat"], obj=deps)
+
+    assert result.exit_code == 1
+    assert "no context 'feat'" in result.stderr
+
+
+def test_list_archived_without_archived_contexts(runner: CliRunner, deps: Deps) -> None:
+    result = runner.invoke(cli, ["list", "--archived"], obj=deps)
+
+    assert result.output == "no archived contexts\n"
+
+
+def test_list_archived_shows_archived_contexts_only(
+    runner: CliRunner, deps: Deps, registered: Path
+) -> None:
+    contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "cold"))
+    contexts.create_context(deps.cfg, "origin", "hot")
+
+    result = runner.invoke(cli, ["list", "--archived"], obj=deps)
+
+    header, row = result.output.splitlines()
+    assert header.split() == ["NAME", "REPO", "BRANCH", "STATUS"]
+    assert row.split()[:2] == ["cold", "origin"]
+
+
 def test_repo_add_registers(runner: CliRunner, deps: Deps, origin: Path) -> None:
     result = runner.invoke(cli, ["repo", "add", str(origin)], obj=deps)
 

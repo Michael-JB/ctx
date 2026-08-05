@@ -68,12 +68,16 @@ def open_(deps: Deps, name: str) -> None:
 
 
 @cli.command("list")
+@click.option("--archived", is_flag=True, help="List archived contexts instead.")
 @click.pass_obj
-def list_(deps: Deps) -> None:
+def list_(deps: Deps, archived: bool) -> None:
     """List contexts with branch, dirtiness, and session state."""
-    all_contexts = contexts.list_contexts(deps.cfg)
+    if archived:
+        all_contexts = contexts.list_archived(deps.cfg)
+    else:
+        all_contexts = contexts.list_contexts(deps.cfg)
     if not all_contexts:
-        click.echo("no contexts")
+        click.echo("no archived contexts" if archived else "no contexts")
         return
     rows = [("NAME", "REPO", "BRANCH", "STATUS")]
     for ctx in all_contexts:
@@ -132,6 +136,34 @@ def _remove_one(deps: Deps, name: str, force: bool) -> str | None:
         deps.mux.kill(ctx)
     contexts.remove_context(ctx)
     click.echo(f"removed {ctx.qualified}")
+    return None
+
+
+@cli.command()
+@click.argument("names", nargs=-1, required=True)
+@click.pass_obj
+def archive(deps: Deps, names: tuple[str, ...]) -> None:
+    """Archive contexts: kill their sessions and move the checkouts aside."""
+    failed = False
+    for name in names:
+        error = _archive_one(deps, name)
+        if error:
+            click.echo(f"error: {error}", err=True)
+            failed = True
+    if failed:
+        sys.exit(1)
+
+
+def _archive_one(deps: Deps, name: str) -> str | None:
+    """Archive one context, returning an error message instead of raising."""
+    try:
+        ctx = contexts.find_context(deps.cfg, name)
+        contexts.archive_context(deps.cfg, ctx)
+    except (LookupError, FileExistsError) as exc:
+        return str(exc)
+    if deps.mux.exists(ctx):
+        deps.mux.kill(ctx)
+    click.echo(f"archived {ctx.qualified}")
     return None
 
 
