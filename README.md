@@ -29,8 +29,15 @@ the keybindings). The same operations are available as subcommands:
 ctx repo add https://github.com/Michael-JB/papaya-nvim.git   # once per repo
 ctx new papaya-nvim my-cool-feature   # fresh checkout + session, jump in
 # ...work, commit, push...
-ctx rm my-cool-feature                # tear it all down again
+ctx archive my-cool-feature           # or set it aside for later...
+ctx rm my-cool-feature                # ...or tear it all down again
 ```
+
+Not ready to tear a context down? Archive it instead (in the TUI, `d` offers
+Archive next to Delete): its session is killed and the checkout moves aside to
+`archive_dir`, freeing the name. The TUI's archived panel lets you unarchive
+(`u`, recreating the session), delete permanently (`d`), or empty the whole
+archive (`e`).
 
 More detail:
 
@@ -47,6 +54,15 @@ ctx open my-cool-feature
 # List registered repos, or remove some (their contexts are left alone):
 ctx repo list
 ctx repo rm papaya-nvim
+
+# Set contexts aside without deleting them (kills their sessions), and bring one back:
+ctx archive my-cool-feature
+ctx unarchive my-cool-feature
+
+# List archived contexts, delete some permanently, or empty the whole archive:
+ctx list --archived
+ctx rm --archived my-cool-feature
+ctx archive --empty
 ```
 
 ## Configuration
