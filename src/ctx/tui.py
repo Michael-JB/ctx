@@ -214,9 +214,10 @@ class CtxTui(App[Request | None]):
     ENABLE_COMMAND_PALETTE: ClassVar[bool] = False
 
     CSS = """
-    #contexts { height: 2fr; }
-    #repos { height: 1fr; }
-    #archived { height: 1fr; }
+    #left { width: 3fr; }
+    #repos { width: 2fr; height: 100%; }
+    #contexts { height: 7fr; }
+    #archived { height: 3fr; }
     #contexts, #repos, #archived {
         border: round $foreground;
     }
@@ -276,9 +277,11 @@ class CtxTui(App[Request | None]):
         self._spinner_frame = 0
 
     def compose(self) -> ComposeResult:
-        yield DataTable(id="contexts", cursor_type="row")
-        yield DataTable(id="repos", cursor_type="row")
-        yield DataTable(id="archived", cursor_type="row")
+        with Horizontal():
+            with Vertical(id="left"):
+                yield DataTable(id="contexts", cursor_type="row")
+                yield DataTable(id="archived", cursor_type="row")
+            yield DataTable(id="repos", cursor_type="row")
         yield Footer()
 
     def on_mount(self) -> None:
