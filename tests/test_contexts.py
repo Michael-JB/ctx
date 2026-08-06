@@ -37,6 +37,40 @@ def test_create_applies_the_branch_prefix(cfg: Config, registered: Path) -> None
     assert contexts.current_branch(ctx) == "mb/feat"
 
 
+def test_create_maps_name_spaces_to_branch_dashes(cfg: Config, registered: Path) -> None:
+    ctx = contexts.create_context(cfg, "origin", "two words")
+
+    assert contexts.current_branch(ctx) == "two-words"
+    assert contexts.find_context(cfg, "two words") == ctx
+
+
+@pytest.mark.parametrize("name", ["", "   "])
+def test_create_rejects_an_empty_name(cfg: Config, registered: Path, name: str) -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        contexts.create_context(cfg, "origin", name)
+
+
+@pytest.mark.parametrize("name", ["a/b", ".", ".."])
+def test_create_rejects_path_like_names(cfg: Config, registered: Path, name: str) -> None:
+    with pytest.raises(ValueError, match="single path component"):
+        contexts.create_context(cfg, "origin", name)
+
+    assert contexts.list_contexts(cfg) == []
+
+
+def test_create_rejects_an_option_like_name(cfg: Config, registered: Path) -> None:
+    with pytest.raises(ValueError, match="must not start with '-'"):
+        contexts.create_context(cfg, "origin", "-feat")
+
+
+@pytest.mark.parametrize("name", ["feat~1", "a..b", "what?", "tab\there", ".hidden", "feat.lock"])
+def test_create_rejects_names_unfit_for_branches(cfg: Config, registered: Path, name: str) -> None:
+    with pytest.raises(ValueError, match="valid branch name"):
+        contexts.create_context(cfg, "origin", name)
+
+    assert contexts.list_contexts(cfg) == []
+
+
 def test_create_points_the_remote_at_the_registered_url(cfg: Config, registered: Path) -> None:
     ctx = contexts.create_context(cfg, "origin", "feat")
 

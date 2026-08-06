@@ -43,7 +43,7 @@ def new(deps: Deps, repo: str, name: str, base: str | None) -> None:
 def _create_and_open(deps: Deps, repo: str, name: str, base: str | None) -> None:
     try:
         ctx = contexts.create_context(deps.cfg, repo, name, base)
-    except (FileExistsError, FileNotFoundError) as exc:
+    except (ValueError, FileExistsError, FileNotFoundError) as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"created {ctx.qualified} at {ctx.path} on {contexts.current_branch(ctx)}")
     try:

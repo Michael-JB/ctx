@@ -87,6 +87,13 @@ def test_new_rejects_an_unregistered_repo(runner: CliRunner, deps: Deps) -> None
     assert "not registered" in result.stderr
 
 
+def test_new_rejects_an_invalid_name(runner: CliRunner, deps: Deps, registered: Path) -> None:
+    result = runner.invoke(cli, ["new", "origin", "feat~1"], obj=deps)
+
+    assert result.exit_code == 1
+    assert "valid branch name" in result.stderr
+
+
 def test_open_opens_the_context_session(
     runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
 ) -> None:

@@ -63,7 +63,24 @@ def find_context(cfg: Config, name: str) -> Context:
     return matches[0]
 
 
+def _check_name(name: str, branch: str) -> None:
+    """Reject names that break the paths, branches, or commands they feed."""
+    if not name.strip():
+        raise ValueError("context name must not be empty")
+    if "/" in name or name in {".", ".."}:
+        raise ValueError(f"context name '{name}' must be a single path component")
+    if name.startswith("-"):
+        raise ValueError(f"context name '{name}' must not start with '-'")
+    check = subprocess.run(["git", "check-ref-format", f"refs/heads/{branch}"], capture_output=True)
+    if check.returncode != 0:
+        raise ValueError(f"context name '{name}' does not make a valid branch name ('{branch}')")
+
+
 def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -> Context:
+    # Spaces are welcome in context names but not in branch names; dash them
+    # out. Anything else unfit for a branch is rejected, not rewritten.
+    branch = cfg.branch_prefix + name.replace(" ", "-")
+    _check_name(name, branch)
     mirror = repos.repo_path(cfg, repo)
     if not mirror.exists():
         raise FileNotFoundError(f"repo '{repo}' is not registered (ctx repo add <url>)")
@@ -88,7 +105,6 @@ def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -
         except subprocess.CalledProcessError as exc:
             remove_context(Context(repo, name, path))
             raise FileNotFoundError(f"branch '{base}' not found on origin of '{repo}'") from exc
-    branch = f"{cfg.branch_prefix}{name}"
     if git("for-each-ref", f"refs/remotes/origin/{base}", cwd=path):
         git("checkout", "--no-track", "-b", branch, f"origin/{base}", cwd=path)
     else:
