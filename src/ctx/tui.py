@@ -540,7 +540,12 @@ class CtxTui(App[Request | None]):
         try:
             with _silenced_stderr():
                 ctx = contexts.create_context(self._cfg, repo, name, base)
-        except (FileExistsError, FileNotFoundError, subprocess.CalledProcessError) as exc:
+        except (
+            ValueError,
+            FileExistsError,
+            FileNotFoundError,
+            subprocess.CalledProcessError,
+        ) as exc:
             self.call_from_thread(self._finish_busy)
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
             return
