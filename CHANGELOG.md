@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/Michael-JB/ctx/compare/v0.3.0...v0.3.1) (2026-08-06)
+
+
+### Bug Fixes
+
+* support spaces in context names ([ccfc4ad](https://github.com/Michael-JB/ctx/commit/ccfc4adbcb46c822f716ab3a2f8edcc4c7669103))
+
 ## [0.3.0](https://github.com/Michael-JB/ctx/compare/v0.2.0...v0.3.0) (2026-08-05)
 
 
