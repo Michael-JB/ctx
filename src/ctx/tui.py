@@ -19,7 +19,7 @@ from textual.widgets.data_table import CellDoesNotExist
 from ctx import contexts, repos, status
 from ctx.config import Config
 from ctx.contexts import Context
-from ctx.multiplexer import Multiplexer
+from ctx.multiplexer import Multiplexer, MultiplexerError
 
 
 @dataclass(frozen=True)
@@ -525,8 +525,12 @@ class CtxTui(App[Request | None]):
         if not self._mux.can_open_in_place():
             self.exit(OpenRequest(ctx.name))
             return
-        with _silenced_stderr():
-            self._mux.open(ctx)
+        try:
+            with _silenced_stderr():
+                self._mux.open(ctx)
+        except (MultiplexerError, subprocess.CalledProcessError) as exc:
+            self.push_screen(AlertScreen(str(exc)))
+            return
         if self._exit_on_open:
             self.exit()
 
@@ -597,8 +601,12 @@ class CtxTui(App[Request | None]):
             return
         self.call_from_thread(self._reload)
         self.call_from_thread(self._finish_busy)
-        with _silenced_stderr():
-            self._mux.open(ctx)
+        try:
+            with _silenced_stderr():
+                self._mux.open(ctx)
+        except (MultiplexerError, subprocess.CalledProcessError) as exc:
+            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+            return
         if self._exit_on_open:
             self.call_from_thread(self.exit)
 
@@ -657,8 +665,12 @@ class CtxTui(App[Request | None]):
         self.call_from_thread(self._finish_busy)
         if not open_after:
             return
-        with _silenced_stderr():
-            self._mux.open(restored)
+        try:
+            with _silenced_stderr():
+                self._mux.open(restored)
+        except (MultiplexerError, subprocess.CalledProcessError) as exc:
+            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+            return
         if self._exit_on_open:
             self.call_from_thread(self.exit)
 

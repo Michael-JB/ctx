@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ctx.contexts import Context
 from ctx.layout import Node, Pane, SplitDirection
-from ctx.multiplexer import Multiplexer
+from ctx.multiplexer import Multiplexer, MultiplexerError
 
 
 def _env() -> dict[str, str]:
@@ -99,7 +99,11 @@ class ZellijMultiplexer(Multiplexer):
             command = ["zellij", "action", "switch-session", session]
             if not exists:
                 command += ["--layout", self._write_layout_file(ctx)]
-            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, env=_env())
+            result = subprocess.run(command, capture_output=True, text=True, env=_env())
+            if result.returncode != 0:
+                detail = result.stderr.strip() or result.stdout.strip()
+                message = f"zellij could not switch to '{session}'"
+                raise MultiplexerError(f"{message}: {detail}" if detail else message)
             return
         if exists:
             os.execvpe("zellij", ["zellij", "attach", session], _env())
