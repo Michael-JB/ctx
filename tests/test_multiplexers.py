@@ -17,6 +17,31 @@ def test_zellij_session_name_replaces_forbidden_characters() -> None:
     assert zellij._session_name(ctx) == "my-repo--a-b"
 
 
+def test_zellij_session_name_within_budget_is_unchanged(monkeypatch) -> None:
+    monkeypatch.setattr(zellij, "_session_name_budget", lambda: 20)
+    ctx = Context(repo="repo", name="short", path=Path("/w"))
+
+    assert zellij._session_name(ctx) == "repo--short"
+
+
+def test_zellij_session_name_over_budget_is_shortened(monkeypatch) -> None:
+    monkeypatch.setattr(zellij, "_session_name_budget", lambda: 20)
+    ctx = Context(repo="repo", name="a-very-long-context-name", path=Path("/w"))
+
+    name = zellij._session_name(ctx)
+
+    assert len(name) == 20
+    assert name.startswith("repo--a-very-")
+
+
+def test_zellij_shortened_session_names_stay_unique(monkeypatch) -> None:
+    monkeypatch.setattr(zellij, "_session_name_budget", lambda: 20)
+    first = Context(repo="repo", name="a-very-long-context-name", path=Path("/w"))
+    second = Context(repo="repo", name="a-very-long-context-nam2", path=Path("/w"))
+
+    assert zellij._session_name(first) != zellij._session_name(second)
+
+
 def test_zellij_layout_puts_pane_in_cwd() -> None:
     out = zellij._render_layout(Pane(), Path("/w"))
 
