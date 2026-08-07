@@ -1,6 +1,8 @@
+import hashlib
 import os
 import shlex
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -8,10 +10,30 @@ from ctx.contexts import Context
 from ctx.layout import Node, Pane, SplitDirection
 from ctx.multiplexer import Multiplexer, MultiplexerError
 
+# macOS caps sockaddr_un paths at 104 bytes including the terminator, and
+# zellij offers no working way to relocate its socket dir, so session names
+# must be short enough for the socket path to fit.
+# See https://github.com/zellij-org/zellij/issues/5081.
+_SOCKET_PATH_MAX = 103
+
+
+def _session_name_budget() -> int | None:
+    """Longest session name whose zellij socket path still fits, if capped."""
+    if sys.platform != "darwin":
+        return None
+    # zellij 0.44 places sockets in <tmp>/zellij-<uid>/<contract version>/<name>.
+    sock_dir = Path(tempfile.gettempdir()) / f"zellij-{os.getuid()}" / "contract_version_1"
+    return _SOCKET_PATH_MAX - len(str(sock_dir)) - 1
+
 
 def _session_name(ctx: Context) -> str:
-    raw = f"{ctx.repo}--{ctx.name}"
-    return raw.replace(".", "-").replace(":", "-")
+    name = f"{ctx.repo}--{ctx.name}".replace(".", "-").replace(":", "-")
+    budget = _session_name_budget()
+    if budget is None or len(name) <= budget:
+        return name
+    # Truncate over-budget names; a digest of the full name keeps them unique.
+    digest = hashlib.sha256(name.encode()).hexdigest()[:6]
+    return f"{name[: max(budget - 7, 1)]}-{digest}"
 
 
 def _render_node(node: Node, cwd: Path, indent: int) -> str:
