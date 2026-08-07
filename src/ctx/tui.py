@@ -102,7 +102,7 @@ class AlertScreen(ModalScreen[None]):
 
 _PANEL_KEYBINDINGS: dict[str, tuple[tuple[str, str], ...]] = {
     "contexts": (
-        ("enter / o", "open context"),
+        ("enter / space / o", "open context"),
         ("n", "new context"),
         ("N", "new context from a base branch"),
         ("d", "archive or delete context"),
@@ -229,6 +229,7 @@ class ContextsTable(DataTable[str]):
 
     BINDINGS: ClassVar = [
         ("o", "app.open", "Open"),
+        Binding("space", "app.open", show=False),
         ("d", "app.delete", "Archive/delete"),
     ]
 
