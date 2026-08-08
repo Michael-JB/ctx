@@ -69,6 +69,20 @@ def _silenced_stderr() -> Iterator[None]:
         os.close(devnull)
 
 
+# One row of buttons, so either axis moves along it.
+_BUTTON_NAV_BINDINGS: tuple[Binding, ...] = (
+    Binding("j,l,down,right", "app.focus_next", show=False),
+    Binding("k,h,up,left", "app.focus_previous", show=False),
+)
+
+# Arrow keys mirror h / l. A row cursor makes the tables' own left / right
+# (cell cursor movement) invisible, so the keys are free for panel switching.
+_PANEL_NAV_BINDINGS: tuple[Binding, ...] = (
+    Binding("left", "app.prev_panel", show=False),
+    Binding("right", "app.next_panel", show=False),
+)
+
+
 class PromptScreen(ModalScreen[str | None]):
     """Lazygit-style single-line prompt: enter submits, escape cancels."""
 
@@ -137,9 +151,9 @@ _PANEL_KEYBINDINGS: dict[str, tuple[tuple[str, str], ...]] = {
 }
 
 _COMMON_KEYBINDINGS = (
-    ("j / k", "move within panel"),
+    ("j / k / ↓ / ↑", "move within panel"),
     ("g / G", "jump to top / bottom"),
-    ("h / l", "switch panel"),
+    ("h / l / ← / →", "switch panel"),
     ("1 / 2 / 3", "jump to panel"),
     ("a", "add repo"),
     ("r", "refresh"),
@@ -165,7 +179,7 @@ class HelpScreen(ModalScreen[None]):
         bindings = _PANEL_KEYBINDINGS[self._panel] + _COMMON_KEYBINDINGS
         with Vertical(id="dialog"):
             yield Label(f"Keybindings ({self._panel})")
-            yield Label("\n".join(f"{key:<13}{desc}" for key, desc in bindings))
+            yield Label("\n".join(f"{key:<16}{desc}" for key, desc in bindings))
 
     def action_close(self) -> None:
         self.dismiss(None)
@@ -176,10 +190,7 @@ class ConfirmScreen(ModalScreen[bool]):
 
     BINDINGS: ClassVar = [
         Binding("escape", "cancel", show=False),
-        Binding("j", "app.focus_next", show=False),
-        Binding("k", "app.focus_previous", show=False),
-        Binding("l", "app.focus_next", show=False),
-        Binding("h", "app.focus_previous", show=False),
+        *_BUTTON_NAV_BINDINGS,
     ]
 
     def __init__(self, message: str, confirm_label: str) -> None:
@@ -211,10 +222,7 @@ class ChoiceScreen(ModalScreen[str | None]):
 
     BINDINGS: ClassVar = [
         Binding("escape", "cancel", show=False),
-        Binding("j", "app.focus_next", show=False),
-        Binding("k", "app.focus_previous", show=False),
-        Binding("l", "app.focus_next", show=False),
-        Binding("h", "app.focus_previous", show=False),
+        *_BUTTON_NAV_BINDINGS,
     ]
 
     def __init__(self, message: str, choices: Sequence[tuple[str, str, ButtonVariant]]) -> None:
@@ -245,13 +253,14 @@ class ContextsTable(DataTable[str | Text]):
         ("o", "app.open", "Open"),
         Binding("space", "app.open", show=False),
         ("d", "app.delete", "Archive/delete"),
+        *_PANEL_NAV_BINDINGS,
     ]
 
 
 class ReposTable(DataTable[str]):
     """Repos panel; its bindings surface in the footer while focused."""
 
-    BINDINGS: ClassVar = [("d", "app.delete", "Remove repo")]
+    BINDINGS: ClassVar = [("d", "app.delete", "Remove repo"), *_PANEL_NAV_BINDINGS]
 
 
 class ArchivedTable(DataTable[str]):
@@ -261,6 +270,7 @@ class ArchivedTable(DataTable[str]):
         ("u", "app.unarchive", "Unarchive"),
         ("d", "app.delete", "Delete"),
         ("e", "app.empty_archive", "Empty"),
+        *_PANEL_NAV_BINDINGS,
     ]
 
 

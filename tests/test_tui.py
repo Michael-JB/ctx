@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from textual.widgets import Button
 
 from ctx import contexts, repos
 from ctx.config import Config, StatusColumn
@@ -69,6 +70,46 @@ def test_panels_are_populated_before_the_statuses_are(cfg: Config, origin: Path)
             assert _slow_cells(app) == ["hi", "hi"], "statuses never filled in"
 
     run_async(drive())
+
+
+def test_arrow_keys_navigate_like_the_vim_keys(cfg: Config, origin: Path) -> None:
+    repos.add_repo(cfg, str(origin))
+    for name in ("one", "two"):
+        contexts.create_context(cfg, "origin", name)
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+
+            await pilot.press("down")
+            assert app._contexts_table.cursor_row == 1
+            await pilot.press("up")
+            assert app._contexts_table.cursor_row == 0
+
+            await pilot.press("right")
+            assert app.focused is app._repos_table
+            await pilot.press("right")
+            assert app.focused is app._archived_table
+            await pilot.press("left")
+            assert app.focused is app._repos_table
+
+            app._contexts_table.focus()
+            await pilot.press("d")
+            await pilot.pause()
+            first = _focused_button_index(app)
+            await pilot.press("right")
+            assert _focused_button_index(app) == first + 1
+            await pilot.press("up")
+            assert _focused_button_index(app) == first
+
+    run_async(drive())
+
+
+def _focused_button_index(app: CtxTui) -> int:
+    focused = app.focused
+    assert isinstance(focused, Button)
+    return list(app.screen.query(Button)).index(focused)
 
 
 def _slow_cells(app: CtxTui) -> list[str]:
