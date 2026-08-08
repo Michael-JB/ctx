@@ -152,6 +152,10 @@ def find_any(cfg: Config, name: str) -> Context:
     return matches[0]
 
 
+def is_archived(cfg: Config, ctx: Context) -> bool:
+    return ctx.path.is_relative_to(cfg.archive_dir)
+
+
 def archive_context(cfg: Config, ctx: Context) -> Context:
     """Move a context's checkout into the archive."""
     _check_name_free(cfg, ctx.name, exclude=ctx.path)

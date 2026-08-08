@@ -56,10 +56,13 @@ def _create_and_open(deps: Deps, repo: str, name: str, base: str | None) -> None
 @click.argument("name")
 @click.pass_obj
 def open_(deps: Deps, name: str) -> None:
-    """Attach to a context's session, recreating it if needed."""
+    """Attach to a context's session, unarchiving it and recreating the session if needed."""
     try:
-        ctx = contexts.find_context(deps.cfg, name)
-    except LookupError as exc:
+        ctx = contexts.find_any(deps.cfg, name)
+        if contexts.is_archived(deps.cfg, ctx):
+            ctx = contexts.unarchive_context(deps.cfg, ctx)
+            click.echo(f"unarchived {ctx.qualified}")
+    except (LookupError, FileExistsError) as exc:
         raise click.ClickException(str(exc)) from exc
     try:
         deps.mux.open(ctx)
