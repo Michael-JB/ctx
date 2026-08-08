@@ -218,17 +218,18 @@ def test_archive_moves_the_checkout_out_of_the_contexts(cfg: Config, registered:
     assert contexts.list_archived(cfg) == [archived]
 
 
-def test_archive_frees_the_context_name(cfg: Config, registered: Path) -> None:
-    contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "feat"))
+def test_archive_keeps_the_context_name_reserved(cfg: Config, registered: Path) -> None:
+    archived = contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "feat"))
 
-    recreated = contexts.create_context(cfg, "origin", "feat")
+    with pytest.raises(FileExistsError, match="already used by archived origin/feat"):
+        contexts.create_context(cfg, "origin", "feat")
 
-    assert contexts.list_contexts(cfg) == [recreated]
+    assert contexts.list_archived(cfg) == [archived]
 
 
-def test_archive_rejects_an_already_archived_name(cfg: Config, registered: Path) -> None:
-    contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "feat"))
+def test_archive_refuses_to_move_onto_an_occupied_path(cfg: Config, registered: Path) -> None:
     ctx = contexts.create_context(cfg, "origin", "feat")
+    (cfg.archive_dir / "origin" / "feat").mkdir(parents=True)
 
     with pytest.raises(FileExistsError, match="already archived"):
         contexts.archive_context(cfg, ctx)
@@ -258,14 +259,18 @@ def test_unarchive_restores_the_context(cfg: Config, registered: Path) -> None:
     assert contexts.list_archived(cfg) == []
 
 
-def test_unarchive_rejects_a_name_taken_meanwhile(cfg: Config, registered: Path) -> None:
-    archived = contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "feat"))
-    contexts.create_context(cfg, "origin", "feat")
+def test_unarchive_rejects_a_name_taken_by_a_live_context(cfg: Config, registered: Path) -> None:
+    stale = contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "old"))
+    live = contexts.create_context(cfg, "origin", "feat")
+    # Archives predating global uniqueness can still clash with a live name.
+    clash = stale.path.with_name("feat")
+    stale.path.rename(clash)
 
     with pytest.raises(FileExistsError, match="already used by origin/feat"):
-        contexts.unarchive_context(cfg, archived)
+        contexts.unarchive_context(cfg, contexts.Context("origin", "feat", clash))
 
-    assert contexts.list_archived(cfg) == [archived]
+    assert live.path.exists()
+    assert clash.exists()
 
 
 def test_remove_context_deletes_the_checkout(cfg: Config, registered: Path) -> None:

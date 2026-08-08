@@ -63,6 +63,22 @@ def find_context(cfg: Config, name: str) -> Context:
     return matches[0]
 
 
+def _check_name_free(cfg: Config, name: str, *, exclude: Path | None = None) -> None:
+    """Names are unique across live and archived contexts alike.
+
+    Sharing a name with an archived context would leave that archive
+    unrestorable, so the two pools compete for the same names.
+    """
+    for ctx in list_contexts(cfg):
+        if ctx.name == name and ctx.path != exclude:
+            raise FileExistsError(f"context name '{name}' is already used by {ctx.qualified}")
+    for ctx in list_archived(cfg):
+        if ctx.name == name and ctx.path != exclude:
+            raise FileExistsError(
+                f"context name '{name}' is already used by archived {ctx.qualified}"
+            )
+
+
 def _check_name(name: str, branch: str) -> None:
     """Reject names that break the paths, branches, or commands they feed."""
     if not name.strip():
@@ -84,9 +100,7 @@ def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -
     mirror = repos.repo_path(cfg, repo)
     if not mirror.exists():
         raise FileNotFoundError(f"repo '{repo}' is not registered (ctx repo add <url>)")
-    taken = next((c for c in list_contexts(cfg) if c.name == name), None)
-    if taken is not None:
-        raise FileExistsError(f"context name '{name}' is already used by {taken.qualified}")
+    _check_name_free(cfg, name)
     path = context_path(cfg, repo, name)
 
     if base is None:
@@ -132,6 +146,7 @@ def find_archived(cfg: Config, name: str) -> Context:
 
 def archive_context(cfg: Config, ctx: Context) -> Context:
     """Move a context's checkout into the archive."""
+    _check_name_free(cfg, ctx.name, exclude=ctx.path)
     dest = archive_path(cfg, ctx.repo, ctx.name)
     if dest.exists():
         raise FileExistsError(f"'{ctx.qualified}' is already archived")
@@ -142,9 +157,7 @@ def archive_context(cfg: Config, ctx: Context) -> Context:
 
 def unarchive_context(cfg: Config, ctx: Context) -> Context:
     """Move an archived checkout back among the live contexts."""
-    taken = next((c for c in list_contexts(cfg) if c.name == ctx.name), None)
-    if taken is not None:
-        raise FileExistsError(f"context name '{ctx.name}' is already used by {taken.qualified}")
+    _check_name_free(cfg, ctx.name, exclude=ctx.path)
     dest = context_path(cfg, ctx.repo, ctx.name)
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(ctx.path, dest)
