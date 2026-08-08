@@ -371,16 +371,18 @@ class CtxTui(App[Request | None]):
         return self.query_one("#archived", DataTable)
 
     def _reload(self) -> None:
+        """Repaint the panels from what is cheap to read; statuses fill in after.
+
+        A status provider may take seconds per context (the GitHub built-ins
+        shell out to `gh`), which is more than the panels can wait for and far
+        more than the interface can stop responding for.
+        """
+        blanks = [""] * (1 + len(self._cfg.status))
         ctx_table = self._contexts_table
         ctx_table.clear()
         for ctx in contexts.list_contexts(self._cfg):
-            cells = status.status_cells(self._cfg, ctx)
             ctx_table.add_row(
-                ctx.name,
-                ctx.repo,
-                contexts.current_branch(ctx),
-                *map(_styled, cells),
-                key=ctx.name,
+                ctx.name, ctx.repo, contexts.current_branch(ctx), *blanks, key=ctx.name
             )
         repo_table = self._repos_table
         repo_table.clear()
@@ -390,10 +392,16 @@ class CtxTui(App[Request | None]):
         archived_table.clear()
         for ctx in contexts.list_archived(self._cfg):
             archived_table.add_row(ctx.name, ctx.repo, contexts.current_branch(ctx), key=ctx.name)
+        self._refresh_statuses()
 
     def _poll_statuses(self) -> None:
         """Keep the status columns live without a full (cursor-resetting) reload."""
-        if self._busy or self._polling:
+        if self._busy:
+            return
+        self._refresh_statuses()
+
+    def _refresh_statuses(self) -> None:
+        if self._polling:
             return
         self._polling = True
         self._poll_statuses_worker()
