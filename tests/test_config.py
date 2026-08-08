@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ctx.config import Config, ConfigError, load_config
+from ctx.config import Config, ConfigError, StatusColumn, load_config
 from ctx.layout import Pane
 from ctx.multiplexer import MultiplexerKind
 
@@ -49,6 +49,98 @@ def test_branch_prefix_override(tmp_path: Path) -> None:
     cfg = load_config(path)
 
     assert cfg.branch_prefix == "mb/"
+
+
+def test_status_columns_override(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path,
+        """
+        [[status]]
+        name = "claude"
+        builtin = "agent"
+
+        [[status]]
+        name = "ci"
+        command = "my-ci-status"
+        """,
+    )
+
+    cfg = load_config(path)
+
+    assert cfg.status == (
+        StatusColumn("claude", builtin="agent"),
+        StatusColumn("ci", command="my-ci-status"),
+    )
+
+
+def test_status_requires_a_name(tmp_path: Path) -> None:
+    path = write_config(tmp_path, '[[status]]\ncommand = "true"')
+
+    with pytest.raises(ConfigError, match="needs a name"):
+        load_config(path)
+
+
+def test_status_requires_a_command_or_a_builtin(tmp_path: Path) -> None:
+    path = write_config(tmp_path, '[[status]]\nname = "ci"')
+
+    with pytest.raises(ConfigError, match="either a command or a builtin"):
+        load_config(path)
+
+
+def test_status_rejects_a_command_combined_with_a_builtin(tmp_path: Path) -> None:
+    path = write_config(tmp_path, '[[status]]\nname = "ci"\ncommand = "true"\nbuiltin = "agent"')
+
+    with pytest.raises(ConfigError, match="either a command or a builtin"):
+        load_config(path)
+
+
+def test_status_interval_override(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path, '[[status]]\nname = "ci"\nbuiltin = "github-checks"\ninterval = 60'
+    )
+
+    cfg = load_config(path)
+
+    assert cfg.status == (StatusColumn("ci", builtin="github-checks", interval=60.0),)
+
+
+def test_status_rejects_negative_intervals(tmp_path: Path) -> None:
+    path = write_config(tmp_path, '[[status]]\nname = "ci"\ncommand = "true"\ninterval = -1')
+
+    with pytest.raises(ConfigError, match="non-negative number"):
+        load_config(path)
+
+
+def test_status_rejects_non_numeric_intervals(tmp_path: Path) -> None:
+    path = write_config(tmp_path, '[[status]]\nname = "ci"\ncommand = "true"\ninterval = "60"')
+
+    with pytest.raises(ConfigError, match="non-negative number"):
+        load_config(path)
+
+
+def test_status_rejects_unknown_builtins(tmp_path: Path) -> None:
+    path = write_config(tmp_path, '[[status]]\nname = "ci"\nbuiltin = "gitlab"')
+
+    with pytest.raises(ConfigError, match="unknown status builtin 'gitlab'"):
+        load_config(path)
+
+
+def test_status_rejects_duplicate_names(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path,
+        """
+        [[status]]
+        name = "ci"
+        command = "true"
+
+        [[status]]
+        name = "ci"
+        builtin = "github-checks"
+        """,
+    )
+
+    with pytest.raises(ConfigError, match="unique"):
+        load_config(path)
 
 
 def test_multiplexer_override(tmp_path: Path) -> None:
