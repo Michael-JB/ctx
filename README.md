@@ -78,6 +78,7 @@ repos_dir = "~/.local/share/ctx/repos"        # internal storage for registered 
 archive_dir = "~/.local/share/ctx/archive"    # where archived contexts go
 branch_prefix = ""                            # work branch prefix, e.g. "jane/"
 multiplexer = "tmux"                          # or "zellij" (requires zellij >= 0.44)
+# [[status]] tables add extra columns; see "Status columns" (none by default)
 
 # The pane layout: a tree of panes and "row"/"column" splits ("row" = side
 # by side, "column" = stacked). A pane runs `command` (default: a shell) in
@@ -95,6 +96,49 @@ command = "nvim"
 [[layout.panes]]
 command = "claude"
 focus = true
+```
+
+### Status columns
+
+The STATUS column shows the git state: `*` for uncommitted changes, `↑n`
+for n unpushed commits. `[[status]]` tables add further columns:
+
+```toml
+[[status]]
+name = "pr"
+builtin = "github-pr"      # the branch's latest PR: open / draft / merged / closed
+
+[[status]]
+name = "ci"
+builtin = "github-checks"  # checks on the branch's open PR: success / failure / pending
+
+[[status]]
+name = "claude"
+builtin = "agent"          # .git/agent-status, hook-written by your agent (see below)
+
+[[status]]
+name = "anything"
+command = "my-status"      # first line of any command, run in the checkout
+```
+
+An empty cell means "no status": no PR, a stale agent file, a silent or
+failing command. The GitHub built-ins need an authenticated `gh`. The TUI
+re-polls every few seconds and colours known states.
+
+For the `agent` column, make your agent write its state on its lifecycle hooks
+to `.git/agent-status`. For example, for Claude Code, add to
+`~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "[ -d .git ] && echo working > .git/agent-status || true"}]}],
+    "PreToolUse": [{"hooks": [{"type": "command", "command": "[ -d .git ] && echo working > .git/agent-status || true"}]}],
+    "Notification": [{"matcher": "permission_prompt|elicitation_dialog|agent_needs_input", "hooks": [{"type": "command", "command": "[ -d .git ] && echo blocked > .git/agent-status || true"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "[ -d .git ] && echo idle > .git/agent-status || true"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "rm -f .git/agent-status"}]}]
+  }
+}
 ```
 
 ### Environment variables

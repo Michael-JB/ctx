@@ -5,6 +5,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import ClassVar
 
+from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -13,8 +14,9 @@ from textual.coordinate import Coordinate
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Input, Label
 from textual.widgets.button import ButtonVariant
+from textual.widgets.data_table import CellDoesNotExist
 
-from ctx import contexts, repos
+from ctx import contexts, repos, status
 from ctx.config import Config
 from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer
@@ -35,6 +37,18 @@ class NewRequest:
 Request = OpenRequest | NewRequest
 
 _SPINNER_FRAMES = "|/-\\"
+
+_STATUS_POLL_SECONDS = 2.0
+
+# The panels' tables differ only in cell type; navigation code takes any.
+_AnyTable = DataTable[str] | DataTable[str | Text]
+
+
+def _styled(cell: str) -> Text | str:
+    """Colour a status cell if its value is a well-known status word."""
+    style = status.STATUS_STYLES.get(cell)
+    return Text(cell, style=style) if style else cell
+
 
 _MUTATING_ACTIONS = frozenset(
     {"open", "new", "new_from_base", "add_repo", "delete", "unarchive", "empty_archive"}
@@ -224,7 +238,7 @@ class ChoiceScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class ContextsTable(DataTable[str]):
+class ContextsTable(DataTable[str | Text]):
     """Contexts panel; its bindings surface in the footer while focused."""
 
     BINDINGS: ClassVar = [
@@ -312,18 +326,25 @@ class CtxTui(App[Request | None]):
         self._exit_on_open = exit_on_open
         self._busy: set[str] = set()
         self._spinner_frame = 0
+        self._polling = False
 
     def compose(self) -> ComposeResult:
         with Horizontal():
             with Vertical(id="left"):
-                yield ContextsTable(id="contexts", cursor_type="row")
+                # Renderable priority keeps status colours visible under the
+                # cursor; the cursor still paints its background.
+                yield ContextsTable(
+                    id="contexts", cursor_type="row", cursor_foreground_priority="renderable"
+                )
                 yield ArchivedTable(id="archived", cursor_type="row")
             yield ReposTable(id="repos", cursor_type="row")
         yield Footer()
 
     def on_mount(self) -> None:
         ctx_table = self._contexts_table
-        ctx_table.add_columns("NAME", "REPO", "BRANCH", "STATUS")
+        status_names = tuple(s.name.upper() for s in self._cfg.status)
+        columns = ctx_table.add_columns("NAME", "REPO", "BRANCH", "STATUS", *status_names)
+        self._status_columns = columns[3:]
         repo_table = self._repos_table
         repo_table.add_columns("NAME", "URL")
         self._archived_table.add_columns("NAME", "REPO", "BRANCH")
@@ -331,9 +352,11 @@ class CtxTui(App[Request | None]):
         self._reload()
         ctx_table.focus()
         self.set_interval(0.1, self._spin)
+        if self._cfg.status:
+            self.set_interval(_STATUS_POLL_SECONDS, self._poll_statuses)
 
     @property
-    def _contexts_table(self) -> DataTable[str]:
+    def _contexts_table(self) -> DataTable[str | Text]:
         return self.query_one("#contexts", DataTable)
 
     @property
@@ -348,11 +371,12 @@ class CtxTui(App[Request | None]):
         ctx_table = self._contexts_table
         ctx_table.clear()
         for ctx in contexts.list_contexts(self._cfg):
+            cells = status.status_cells(self._cfg, ctx)
             ctx_table.add_row(
                 ctx.name,
                 ctx.repo,
                 contexts.current_branch(ctx),
-                contexts.describe_status(ctx),
+                *map(_styled, cells),
                 key=ctx.name,
             )
         repo_table = self._repos_table
@@ -363,6 +387,32 @@ class CtxTui(App[Request | None]):
         archived_table.clear()
         for ctx in contexts.list_archived(self._cfg):
             archived_table.add_row(ctx.name, ctx.repo, contexts.current_branch(ctx), key=ctx.name)
+
+    def _poll_statuses(self) -> None:
+        """Keep the status columns live without a full (cursor-resetting) reload."""
+        if self._busy or self._polling:
+            return
+        self._polling = True
+        self._poll_statuses_worker()
+
+    @work(thread=True)
+    def _poll_statuses_worker(self) -> None:
+        try:
+            statuses = [
+                (ctx.name, status.status_cells(self._cfg, ctx))
+                for ctx in contexts.list_contexts(self._cfg)
+            ]
+            self.call_from_thread(self._apply_statuses, statuses)
+        finally:
+            self._polling = False
+
+    def _apply_statuses(self, statuses: list[tuple[str, list[str]]]) -> None:
+        table = self._contexts_table
+        for name, cells in statuses:
+            for column, cell in zip(self._status_columns, cells, strict=True):
+                # A context may have been deleted or archived since the poll started.
+                with contextlib.suppress(CellDoesNotExist):
+                    table.update_cell(name, column, _styled(cell), update_width=True)
 
     def _spin(self) -> None:
         if self._busy:
@@ -390,13 +440,13 @@ class CtxTui(App[Request | None]):
         self._busy.clear()
         self._update_titles()
 
-    def _active_table(self) -> DataTable[str]:
+    def _active_table(self) -> _AnyTable:
         for table in (self._repos_table, self._archived_table):
             if self.focused is table:
                 return table
         return self._contexts_table
 
-    def _selected_key(self, table: DataTable[str]) -> str | None:
+    def _selected_key(self, table: _AnyTable) -> str | None:
         if table.row_count == 0:
             return None
         return table.coordinate_to_cell_key(Coordinate(table.cursor_row, 0)).row_key.value
@@ -456,7 +506,7 @@ class CtxTui(App[Request | None]):
         self._archived_table.focus()
 
     def _cycle_panel(self, step: int) -> None:
-        tables = [self._contexts_table, self._repos_table, self._archived_table]
+        tables: list[_AnyTable] = [self._contexts_table, self._repos_table, self._archived_table]
         current = tables.index(self._active_table())
         tables[(current + step) % len(tables)].focus()
 
