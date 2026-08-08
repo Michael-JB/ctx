@@ -1,11 +1,13 @@
+import asyncio
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 import ctx.git
-from ctx.git import git
+from ctx.git import git, git_async
 
 
 class Recorder:
@@ -54,3 +56,33 @@ def test_the_stall_config_reaches_git(origin: Path) -> None:
 def test_git_still_reports_failure(origin: Path) -> None:
     with pytest.raises(subprocess.CalledProcessError):
         git("rev-parse", "--verify", "no-such-ref", cwd=origin)
+
+
+def test_git_async_returns_output_and_reports_failure(origin: Path) -> None:
+    assert asyncio.run(git_async("rev-parse", "--abbrev-ref", "HEAD", cwd=origin)) == "main"
+
+    with pytest.raises(subprocess.CalledProcessError) as exc_info:
+        asyncio.run(git_async("rev-parse", "--verify", "no-such-ref", cwd=origin))
+    assert "fatal" in exc_info.value.stderr
+
+
+def test_git_async_cancellation_kills_the_transport(
+    origin: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cancelling a fetch must end git and its transport, not orphan them."""
+    # A transport that hangs forever; the trailing # swallows git's arguments.
+    monkeypatch.setenv("GIT_SSH_COMMAND", "sleep 599 #")
+
+    async def drive() -> None:
+        fetch = asyncio.create_task(git_async("fetch", "ssh://host.invalid/x", cwd=origin))
+        await asyncio.sleep(0.5)
+        fetch.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await fetch
+
+    start = time.perf_counter()
+    asyncio.run(drive())
+
+    assert time.perf_counter() - start < 3, "cancellation waited for the transfer"
+    lingering = subprocess.run(["pgrep", "-f", "sleep 599"], capture_output=True, text=True)
+    assert not lingering.stdout.strip(), "the transport outlived the cancelled fetch"

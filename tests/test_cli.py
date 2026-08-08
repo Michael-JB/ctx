@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from conftest import commit_file
+from conftest import add_repo, commit_file, create_context
 
-from ctx import contexts, repos
+from ctx import contexts
 from ctx.cli import Deps, cli
 from ctx.config import Config, StatusColumn
 from ctx.contexts import Context
@@ -50,7 +50,7 @@ def runner() -> CliRunner:
 
 @pytest.fixture
 def registered(cfg: Config, origin: Path) -> Path:
-    repos.add_repo(cfg, str(origin))
+    add_repo(cfg, str(origin))
     return origin
 
 
@@ -98,7 +98,7 @@ def test_new_rejects_an_invalid_name(runner: CliRunner, deps: Deps, registered: 
 def test_open_opens_the_context_session(
     runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
 ) -> None:
-    contexts.create_context(deps.cfg, "origin", "feat")
+    create_context(deps.cfg, "origin", "feat")
 
     result = runner.invoke(cli, ["open", "feat"], obj=deps)
 
@@ -109,7 +109,7 @@ def test_open_opens_the_context_session(
 def test_open_unarchives_an_archived_context(
     runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
 ) -> None:
-    contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "feat"))
+    contexts.archive_context(deps.cfg, create_context(deps.cfg, "origin", "feat"))
 
     result = runner.invoke(cli, ["open", "feat"], obj=deps)
 
@@ -134,7 +134,7 @@ def test_list_without_contexts(runner: CliRunner, deps: Deps) -> None:
 
 
 def test_list_shows_each_context(runner: CliRunner, deps: Deps, registered: Path) -> None:
-    contexts.create_context(deps.cfg, "origin", "feat")
+    create_context(deps.cfg, "origin", "feat")
 
     result = runner.invoke(cli, ["list"], obj=deps)
 
@@ -148,7 +148,7 @@ def test_list_adds_a_column_per_status_column(
 ) -> None:
     columns = (StatusColumn("claude", command="echo working"),)
     deps = Deps(replace(deps.cfg, status=columns), deps.mux)
-    contexts.create_context(deps.cfg, "origin", "feat")
+    create_context(deps.cfg, "origin", "feat")
 
     result = runner.invoke(cli, ["list"], obj=deps)
 
@@ -158,7 +158,7 @@ def test_list_adds_a_column_per_status_column(
 
 
 def test_list_marks_dirty_contexts(runner: CliRunner, deps: Deps, registered: Path) -> None:
-    ctx = contexts.create_context(deps.cfg, "origin", "feat")
+    ctx = create_context(deps.cfg, "origin", "feat")
     (ctx.path / "scratch.txt").write_text("x\n")
 
     result = runner.invoke(cli, ["list"], obj=deps)
@@ -167,7 +167,7 @@ def test_list_marks_dirty_contexts(runner: CliRunner, deps: Deps, registered: Pa
 
 
 def test_rm_deletes_the_checkout(runner: CliRunner, deps: Deps, registered: Path) -> None:
-    ctx = contexts.create_context(deps.cfg, "origin", "feat")
+    ctx = create_context(deps.cfg, "origin", "feat")
 
     result = runner.invoke(cli, ["rm", "feat"], obj=deps)
 
@@ -179,7 +179,7 @@ def test_rm_deletes_the_checkout(runner: CliRunner, deps: Deps, registered: Path
 def test_rm_kills_a_running_session(
     runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
 ) -> None:
-    contexts.create_context(deps.cfg, "origin", "feat")
+    create_context(deps.cfg, "origin", "feat")
     mux.running.add("origin/feat")
 
     runner.invoke(cli, ["rm", "feat"], obj=deps)
@@ -188,7 +188,7 @@ def test_rm_kills_a_running_session(
 
 
 def test_rm_refuses_unpushed_work(runner: CliRunner, deps: Deps, registered: Path) -> None:
-    ctx = contexts.create_context(deps.cfg, "origin", "feat")
+    ctx = create_context(deps.cfg, "origin", "feat")
     commit_file(ctx.path, "work.txt")
 
     result = runner.invoke(cli, ["rm", "feat"], obj=deps)
@@ -199,7 +199,7 @@ def test_rm_refuses_unpushed_work(runner: CliRunner, deps: Deps, registered: Pat
 
 
 def test_rm_force_overrides_the_guard(runner: CliRunner, deps: Deps, registered: Path) -> None:
-    ctx = contexts.create_context(deps.cfg, "origin", "feat")
+    ctx = create_context(deps.cfg, "origin", "feat")
     commit_file(ctx.path, "work.txt")
 
     result = runner.invoke(cli, ["rm", "--force", "feat"], obj=deps)
@@ -211,7 +211,7 @@ def test_rm_force_overrides_the_guard(runner: CliRunner, deps: Deps, registered:
 def test_rm_archived_deletes_the_archived_checkout(
     runner: CliRunner, deps: Deps, registered: Path
 ) -> None:
-    ctx = contexts.create_context(deps.cfg, "origin", "feat")
+    ctx = create_context(deps.cfg, "origin", "feat")
     archived = contexts.archive_context(deps.cfg, ctx)
 
     result = runner.invoke(cli, ["rm", "feat"], obj=deps)
@@ -223,7 +223,7 @@ def test_rm_archived_deletes_the_archived_checkout(
 def test_rm_archived_kills_a_lingering_session(
     runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
 ) -> None:
-    contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "feat"))
+    contexts.archive_context(deps.cfg, create_context(deps.cfg, "origin", "feat"))
     mux.running.add("origin/feat")
 
     result = runner.invoke(cli, ["rm", "feat"], obj=deps)
@@ -233,7 +233,7 @@ def test_rm_archived_kills_a_lingering_session(
 
 
 def test_rm_archived_refuses_unpushed_work(runner: CliRunner, deps: Deps, registered: Path) -> None:
-    ctx = contexts.create_context(deps.cfg, "origin", "feat")
+    ctx = create_context(deps.cfg, "origin", "feat")
     commit_file(ctx.path, "work.txt")
     contexts.archive_context(deps.cfg, ctx)
 
@@ -253,7 +253,7 @@ def test_rm_rejects_an_unknown_context(runner: CliRunner, deps: Deps) -> None:
 def test_archive_moves_the_context_and_kills_its_session(
     runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
 ) -> None:
-    ctx = contexts.create_context(deps.cfg, "origin", "feat")
+    ctx = create_context(deps.cfg, "origin", "feat")
     mux.running.add("origin/feat")
 
     result = runner.invoke(cli, ["archive", "feat"], obj=deps)
@@ -281,8 +281,8 @@ def test_list_archived_without_archived_contexts(runner: CliRunner, deps: Deps) 
 def test_list_archived_shows_archived_contexts_only(
     runner: CliRunner, deps: Deps, registered: Path
 ) -> None:
-    contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "cold"))
-    contexts.create_context(deps.cfg, "origin", "hot")
+    contexts.archive_context(deps.cfg, create_context(deps.cfg, "origin", "cold"))
+    create_context(deps.cfg, "origin", "hot")
 
     result = runner.invoke(cli, ["list", "--archived"], obj=deps)
 
@@ -294,8 +294,8 @@ def test_list_archived_shows_archived_contexts_only(
 def test_archive_empty_deletes_all_archived_contexts(
     runner: CliRunner, deps: Deps, registered: Path
 ) -> None:
-    contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "cold"))
-    kept = contexts.create_context(deps.cfg, "origin", "hot")
+    contexts.archive_context(deps.cfg, create_context(deps.cfg, "origin", "cold"))
+    kept = create_context(deps.cfg, "origin", "hot")
 
     result = runner.invoke(cli, ["archive", "--empty"], obj=deps)
 
@@ -314,7 +314,7 @@ def test_archive_empty_rejects_names(runner: CliRunner, deps: Deps) -> None:
 def test_unarchive_restores_the_context_without_opening(
     runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
 ) -> None:
-    contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "feat"))
+    contexts.archive_context(deps.cfg, create_context(deps.cfg, "origin", "feat"))
 
     result = runner.invoke(cli, ["unarchive", "feat"], obj=deps)
 

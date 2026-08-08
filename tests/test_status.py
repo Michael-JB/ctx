@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import commit_file
+from conftest import add_repo, commit_file, create_context
 
-from ctx import config, contexts, repos, status
+from ctx import config, contexts, status
 from ctx.config import Config, StatusColumn
 
 
@@ -18,13 +18,13 @@ def run[T](coro: Coroutine[Any, Any, T]) -> T:
 
 @pytest.fixture
 def registered(cfg: Config, origin: Path) -> Path:
-    repos.add_repo(cfg, str(origin))
+    add_repo(cfg, str(origin))
     return origin
 
 
 @pytest.fixture
 def ctx(cfg: Config, registered: Path) -> contexts.Context:
-    return contexts.create_context(cfg, "origin", "feat")
+    return create_context(cfg, "origin", "feat")
 
 
 def fake_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script: str) -> None:
