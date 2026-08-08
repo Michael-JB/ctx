@@ -50,10 +50,16 @@ def update_repo(cfg: Config, name: str) -> None:
     # A branch unborn on both ends (empty repo) has nothing to fetch, and
     # fetching it would fail; the local check keeps the common case one roundtrip.
     if not git("for-each-ref", f"refs/heads/{branch}", cwd=path) and not git(
-        "ls-remote", "--heads", "origin", f"refs/heads/{branch}", cwd=path
+        "ls-remote", "--heads", "origin", f"refs/heads/{branch}", cwd=path, interruptible=True
     ):
         return
-    git("fetch", "origin", f"+refs/heads/{branch}:refs/heads/{branch}", cwd=path)
+    git(
+        "fetch",
+        "origin",
+        f"+refs/heads/{branch}:refs/heads/{branch}",
+        cwd=path,
+        interruptible=True,
+    )
 
 
 def repo_url(cfg: Config, name: str) -> str:

@@ -1,4 +1,8 @@
+import os
 import subprocess
+import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +48,55 @@ def test_a_configured_ssh_command_wins(recorder: Recorder, monkeypatch: pytest.M
     git("fetch", "origin")
 
     assert recorder.env["GIT_SSH_COMMAND"] == "my-ssh"
+
+
+def _run_in_thread(target: Callable[[], None]) -> threading.Thread:
+    thread = threading.Thread(target=target)
+    thread.start()
+    return thread
+
+
+def _wait_for(condition: Callable[[], bool], timeout: float = 10.0) -> None:
+    deadline = time.perf_counter() + timeout
+    while time.perf_counter() < deadline:
+        if condition():
+            return
+        time.sleep(0.01)
+    raise AssertionError("condition never held")
+
+
+def test_terminate_running_frees_an_interruptible_call(origin: Path) -> None:
+    outcome: list[BaseException] = []
+
+    def call() -> None:
+        try:
+            git("-c", "alias.stall=!sleep 30", "stall", cwd=origin, interruptible=True)
+        except BaseException as exc:
+            outcome.append(exc)
+
+    caller = _run_in_thread(call)
+    _wait_for(lambda: bool(ctx.git._running))
+    pids = [proc.pid for proc in ctx.git._running]
+
+    ctx.git.terminate_running()
+    caller.join(timeout=10)
+
+    assert not caller.is_alive(), "the git call outlived its kill"
+    assert isinstance(outcome[0], subprocess.CalledProcessError)
+    assert not ctx.git._running
+    for pid in pids:
+        # The group, not just git: a hung ssh must not outlive it.
+        with pytest.raises(ProcessLookupError):
+            os.killpg(pid, 0)
+
+
+def test_other_calls_are_not_interruptible(origin: Path) -> None:
+    """Killing a clone would leave a half-written checkout behind."""
+    caller = _run_in_thread(lambda: git("-c", "alias.nap=!sleep 2", "nap", cwd=origin))
+
+    _wait_for(lambda: not caller.is_alive(), timeout=10)
+
+    assert not ctx.git._running
 
 
 def test_the_stall_config_reaches_git(origin: Path) -> None:

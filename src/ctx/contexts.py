@@ -115,7 +115,7 @@ def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -
     git("remote", "set-url", "origin", repos.repo_url(cfg, repo), cwd=path)
     if fetch_base:
         try:
-            git("fetch", "origin", base, cwd=path)
+            git("fetch", "origin", base, cwd=path, interruptible=True)
         except subprocess.CalledProcessError as exc:
             remove_context(Context(repo, name, path))
             raise FileNotFoundError(f"branch '{base}' not found on origin of '{repo}'") from exc

@@ -67,6 +67,31 @@ def test_quitting_does_not_wait_for_a_status_poll(cfg: Config, origin: Path) -> 
     assert took < 7, f"quit took {took:.1f}s"
 
 
+def test_quitting_does_not_wait_for_a_git_call(cfg: Config, origin: Path) -> None:
+    """A stalled fetch must not hold the process open once you quit."""
+    repos.add_repo(cfg, str(origin))
+    contexts.create_context(cfg, "origin", "one")
+
+    took, proc = _run_quit_probe(cfg, "git")
+
+    assert proc.returncode == 0, proc.stderr
+    assert "exited" in proc.stdout
+    # The git call stalls for 30s; quitting must not sit through it.
+    assert took < 10, f"quit took {took:.1f}s"
+
+
+def _run_quit_probe(cfg: Config, mode: str) -> tuple[float, subprocess.CompletedProcess[str]]:
+    probe = Path(__file__).parent / "quit_probe.py"
+    started = time.perf_counter()
+    proc = subprocess.run(
+        [sys.executable, str(probe), str(cfg.contexts_dir.parent), mode],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    return time.perf_counter() - started, proc
+
+
 def _slow_status(cfg: Config) -> Config:
     return Config(
         contexts_dir=cfg.contexts_dir,

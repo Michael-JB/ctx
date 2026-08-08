@@ -5,6 +5,7 @@ import pytest
 from click.testing import CliRunner
 from conftest import commit_file
 
+import ctx.cli as cli_module
 from ctx import contexts, repos
 from ctx.cli import Deps, cli
 from ctx.config import Config, StatusColumn
@@ -241,6 +242,23 @@ def test_rm_archived_refuses_unpushed_work(runner: CliRunner, deps: Deps, regist
 
     assert result.exit_code == 1
     assert "unpushed commit" in result.stderr
+
+
+def test_interrupting_kills_git_and_exits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ctrl-c reaches python, not an interruptible git call's own group."""
+    killed = []
+    monkeypatch.setattr(cli_module, "cli", _raise_keyboard_interrupt)
+    monkeypatch.setattr(cli_module.git, "terminate_running", lambda: killed.append(True))
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli_module.main()
+
+    assert exit_info.value.code == 130
+    assert killed
+
+
+def _raise_keyboard_interrupt() -> None:
+    raise KeyboardInterrupt
 
 
 def test_rm_rejects_an_unknown_context(runner: CliRunner, deps: Deps) -> None:

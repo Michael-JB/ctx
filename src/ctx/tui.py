@@ -5,6 +5,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import ClassVar
 
+from rich.console import RenderableType
 from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
@@ -17,7 +18,7 @@ from textual.widgets.button import ButtonVariant
 from textual.widgets.data_table import CellDoesNotExist
 from textual.worker import get_current_worker
 
-from ctx import contexts, repos, status
+from ctx import contexts, git, repos, status
 from ctx.config import Config
 from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer, MultiplexerError
@@ -506,6 +507,18 @@ class CtxTui(App[Request | None]):
         except LookupError:
             self._reload()
             return None
+
+    def exit(
+        self,
+        result: Request | None = None,
+        return_code: int = 0,
+        message: RenderableType | None = None,
+    ) -> None:
+        # Leaving joins the worker threads, and a thread waiting on git cannot
+        # be interrupted; ending the call is what bounds the wait. Every way
+        # out lands here, keybinding or not.
+        git.terminate_running()
+        super().exit(result, return_code, message)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Centrally disable mutating actions while a worker runs or a popup is open."""

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import click
 
-from ctx import contexts, repos, status
+from ctx import contexts, git, repos, status
 from ctx.config import Config, ConfigError, load_config
 from ctx.layout import LayoutError
 from ctx.multiplexer import Multiplexer, MultiplexerError, get_multiplexer
@@ -258,6 +258,11 @@ def repo_rm(deps: Deps, names: tuple[str, ...]) -> None:
 def main() -> None:
     try:
         cli()
+    except KeyboardInterrupt:
+        # An interruptible call runs outside this terminal's process group,
+        # so the signal that reached us did not reach it.
+        git.terminate_running()
+        sys.exit(130)
     except subprocess.CalledProcessError as exc:
         cmd = " ".join(map(str, exc.cmd))
         click.echo(f"error: command failed ({cmd})", err=True)
