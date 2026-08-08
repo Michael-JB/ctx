@@ -97,7 +97,7 @@ class PromptScreen(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Label(self._title)
+            yield Label(self._title, markup=False)
             yield Input(placeholder=self._placeholder)
 
     @on(Input.Submitted)
@@ -124,7 +124,9 @@ class AlertScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Label(self._message)
+            # Errors quote whatever failed (git argv, paths); bracketed text
+            # must render verbatim, not parse as markup.
+            yield Label(self._message, markup=False)
 
     def action_close(self) -> None:
         self.dismiss(None)
@@ -202,7 +204,7 @@ class ConfirmScreen(ModalScreen[bool]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Label(self._message)
+            yield Label(self._message, markup=False)
             with Horizontal(id="buttons"):
                 yield Button(self._confirm_label, variant="error", id="confirm")
                 yield Button("Cancel", id="cancel")
@@ -235,7 +237,7 @@ class ChoiceScreen(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Label(self._message)
+            yield Label(self._message, markup=False)
             with Horizontal(id="buttons"):
                 for result, label, variant in self._choices:
                     yield Button(label, variant=variant, id=result)
