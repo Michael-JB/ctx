@@ -1,17 +1,19 @@
+import asyncio
 import os
-import time
+from collections.abc import Coroutine
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
+from conftest import commit_file
 
 from ctx import config, contexts, repos, status
 from ctx.config import Config, StatusColumn
 
 
-@pytest.fixture(autouse=True)
-def fresh_samples() -> None:
-    status._samples.clear()
+def run[T](coro: Coroutine[Any, Any, T]) -> T:
+    return asyncio.run(coro)
 
 
 @pytest.fixture
@@ -40,32 +42,32 @@ def test_builtins_match_the_config_allowlist() -> None:
 
 
 def test_command_status_returns_the_first_output_line(ctx: contexts.Context) -> None:
-    assert status.command_status(ctx, "printf 'working\\nextra'") == "working"
+    assert run(status.command_status(ctx, "printf 'working\\nextra'")) == "working"
 
 
 def test_command_status_runs_in_the_checkout(ctx: contexts.Context) -> None:
     (ctx.path / ".git" / "agent-status").write_text("blocked\n")
 
-    assert status.command_status(ctx, "cat .git/agent-status") == "blocked"
+    assert run(status.command_status(ctx, "cat .git/agent-status")) == "blocked"
 
 
 def test_command_status_exposes_the_context_in_env(ctx: contexts.Context) -> None:
-    assert status.command_status(ctx, 'echo "$CTX_REPO/$CTX_NAME"') == "origin/feat"
+    assert run(status.command_status(ctx, 'echo "$CTX_REPO/$CTX_NAME"')) == "origin/feat"
 
 
 def test_command_status_swallows_failures_and_silence(ctx: contexts.Context) -> None:
-    assert status.command_status(ctx, "cat .git/agent-status") is None
-    assert status.command_status(ctx, "true") is None
+    assert run(status.command_status(ctx, "cat .git/agent-status")) is None
+    assert run(status.command_status(ctx, "true")) is None
 
 
 def test_agent_status_reads_the_status_file(ctx: contexts.Context) -> None:
     (ctx.path / ".git" / "agent-status").write_text("working\n")
 
-    assert status.agent_status(ctx) == "working"
+    assert run(status.agent_status(ctx)) == "working"
 
 
 def test_agent_status_without_a_file_is_empty(ctx: contexts.Context) -> None:
-    assert status.agent_status(ctx) is None
+    assert run(status.agent_status(ctx)) is None
 
 
 def test_agent_status_ignores_stale_files(ctx: contexts.Context) -> None:
@@ -73,7 +75,7 @@ def test_agent_status_ignores_stale_files(ctx: contexts.Context) -> None:
     path.write_text("working\n")
     os.utime(path, (1_000, 1_000))
 
-    assert status.agent_status(ctx) is None
+    assert run(status.agent_status(ctx)) is None
 
 
 @pytest.mark.parametrize(
@@ -99,7 +101,7 @@ def test_github_checks_lowercases_the_rollup_state(
 ) -> None:
     fake_gh(tmp_path, monkeypatch, "echo SUCCESS")
 
-    assert status.github_checks_status(ctx) == "success"
+    assert run(status.github_checks_status(ctx)) == "success"
 
 
 def test_github_pr_lowercases_the_pr_state(
@@ -107,55 +109,22 @@ def test_github_pr_lowercases_the_pr_state(
 ) -> None:
     fake_gh(tmp_path, monkeypatch, "echo MERGED")
 
-    assert status.github_pr_status(ctx) == "merged"
+    assert run(status.github_pr_status(ctx)) == "merged"
 
 
-def test_columns_are_sampled_not_refetched(
-    ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake_gh(tmp_path, monkeypatch, f"echo run >> {tmp_path}/calls; echo SUCCESS")
-    column = StatusColumn("ci", builtin="github-checks")
-
-    assert status.column_status(ctx, column) == "success"
-    assert status.column_status(ctx, column) == "success"
-
-    assert (tmp_path / "calls").read_text().splitlines() == ["run"]
+def test_github_builtins_default_to_a_coarse_interval() -> None:
+    assert status.refresh_interval(StatusColumn("ci", builtin="github-checks")) == 30.0
+    assert status.refresh_interval(StatusColumn("pr", builtin="github-pr")) == 30.0
 
 
-def test_sampling_expires(
-    ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake_gh(tmp_path, monkeypatch, f"echo run >> {tmp_path}/calls; echo SUCCESS")
-    column = StatusColumn("ci", builtin="github-checks")
-    status.column_status(ctx, column)
-
-    later = time.time() + status.sample_interval(column) + 1
-    monkeypatch.setattr(status.time, "time", lambda: later)
-    status.column_status(ctx, column)
-
-    assert (tmp_path / "calls").read_text().splitlines() == ["run", "run"]
+def test_other_columns_default_to_every_ask() -> None:
+    assert status.refresh_interval(StatusColumn("a", builtin="agent")) == 0.0
+    assert status.refresh_interval(StatusColumn("c", command="echo hi")) == 0.0
 
 
-def test_a_zero_interval_disables_sampling(
-    ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake_gh(tmp_path, monkeypatch, f"echo run >> {tmp_path}/calls; echo SUCCESS")
-    column = StatusColumn("ci", builtin="github-checks", interval=0)
-
-    status.column_status(ctx, column)
-    status.column_status(ctx, column)
-
-    assert (tmp_path / "calls").read_text().splitlines() == ["run", "run"]
-
-
-def test_command_columns_can_be_sampled(ctx: contexts.Context, tmp_path: Path) -> None:
-    command = f"echo run >> {tmp_path}/calls; echo hi"
-    column = StatusColumn("mine", command=command, interval=60)
-
-    assert status.column_status(ctx, column) == "hi"
-    assert status.column_status(ctx, column) == "hi"
-
-    assert (tmp_path / "calls").read_text().splitlines() == ["run"]
+def test_a_user_interval_overrides_the_default() -> None:
+    assert status.refresh_interval(StatusColumn("ci", builtin="github-checks", interval=5)) == 5.0
+    assert status.refresh_interval(StatusColumn("c", command="echo hi", interval=60)) == 60.0
 
 
 def test_github_pr_without_a_pr_is_empty(
@@ -163,7 +132,7 @@ def test_github_pr_without_a_pr_is_empty(
 ) -> None:
     fake_gh(tmp_path, monkeypatch, "exit 0")
 
-    assert status.github_pr_status(ctx) is None
+    assert run(status.github_pr_status(ctx)) is None
 
 
 def test_github_checks_swallows_gh_failures(
@@ -171,7 +140,7 @@ def test_github_checks_swallows_gh_failures(
 ) -> None:
     fake_gh(tmp_path, monkeypatch, "exit 1")
 
-    assert status.github_checks_status(ctx) is None
+    assert run(status.github_checks_status(ctx)) is None
 
 
 def test_github_checks_without_a_pr_is_empty(
@@ -180,7 +149,7 @@ def test_github_checks_without_a_pr_is_empty(
     # gh prints nothing when the branch has no open PR (jq's `// empty`).
     fake_gh(tmp_path, monkeypatch, "exit 0")
 
-    assert status.github_checks_status(ctx) is None
+    assert run(status.github_checks_status(ctx)) is None
 
 
 def test_column_status_dispatches_on_the_column_kind(
@@ -189,9 +158,20 @@ def test_column_status_dispatches_on_the_column_kind(
     fake_gh(tmp_path, monkeypatch, "echo FAILURE")
     (ctx.path / ".git" / "agent-status").write_text("idle\n")
 
-    assert status.column_status(ctx, StatusColumn("c", command="echo hi")) == "hi"
-    assert status.column_status(ctx, StatusColumn("a", builtin="agent")) == "idle"
-    assert status.column_status(ctx, StatusColumn("g", builtin="github-checks")) == "failure"
+    assert run(status.column_status(ctx, StatusColumn("c", command="echo hi"))) == "hi"
+    assert run(status.column_status(ctx, StatusColumn("a", builtin="agent"))) == "idle"
+    assert run(status.column_status(ctx, StatusColumn("g", builtin="github-checks"))) == "failure"
+
+
+def test_git_state_is_empty_for_a_clean_checkout(ctx: contexts.Context) -> None:
+    assert run(status.git_state(ctx)) == ""
+
+
+def test_git_state_marks_dirty_and_unpushed_work(ctx: contexts.Context) -> None:
+    commit_file(ctx.path, "work.txt")
+    (ctx.path / "scratch.txt").write_text("x\n")
+
+    assert run(status.git_state(ctx)) == "* ↑1"
 
 
 def test_status_cells_hold_git_state_and_column_output(cfg: Config, ctx: contexts.Context) -> None:
@@ -202,8 +182,8 @@ def test_status_cells_hold_git_state_and_column_output(cfg: Config, ctx: context
     (ctx.path / ".git" / "agent-status").write_text("working\n")
     (ctx.path / "scratch.txt").write_text("x\n")
 
-    assert status.status_cells(cfg, ctx) == ["*", "working", ""]
+    assert run(status.status_cells(cfg, ctx)) == ["*", "working", ""]
 
 
 def test_status_cells_without_columns_report_git_state(cfg: Config, ctx: contexts.Context) -> None:
-    assert status.status_cells(cfg, ctx) == [""]
+    assert run(status.status_cells(cfg, ctx)) == [""]

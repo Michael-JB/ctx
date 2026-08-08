@@ -193,20 +193,6 @@ def test_local_commit_counts_as_unpushed(cfg: Config, registered: Path) -> None:
     assert len(contexts.unpushed_commits(ctx)) == 1
 
 
-def test_describe_status_is_empty_for_a_clean_checkout(cfg: Config, registered: Path) -> None:
-    ctx = contexts.create_context(cfg, "origin", "feat")
-
-    assert contexts.describe_status(ctx) == ""
-
-
-def test_describe_status_marks_dirty_and_unpushed_work(cfg: Config, registered: Path) -> None:
-    ctx = contexts.create_context(cfg, "origin", "feat")
-    commit_file(ctx.path, "work.txt")
-    (ctx.path / "scratch.txt").write_text("x\n")
-
-    assert contexts.describe_status(ctx) == "* ↑1"
-
-
 def test_archive_moves_the_checkout_out_of_the_contexts(cfg: Config, registered: Path) -> None:
     ctx = contexts.create_context(cfg, "origin", "feat")
 
