@@ -270,10 +270,10 @@ class CtxTui(App[Request | None]):
     ENABLE_COMMAND_PALETTE: ClassVar[bool] = False
 
     CSS = """
-    #left { width: 3fr; }
-    #repos { width: 2fr; height: 100%; }
     #contexts { height: 7fr; }
-    #archived { height: 3fr; }
+    #bottom { height: 3fr; }
+    #repos { width: 1fr; height: 100%; }
+    #archived { width: 1fr; height: 100%; }
     #contexts, #repos, #archived {
         border: round $foreground;
     }
@@ -329,15 +329,17 @@ class CtxTui(App[Request | None]):
         self._polling = False
 
     def compose(self) -> ComposeResult:
-        with Horizontal():
-            with Vertical(id="left"):
-                # Renderable priority keeps status colours visible under the
-                # cursor; the cursor still paints its background.
-                yield ContextsTable(
-                    id="contexts", cursor_type="row", cursor_foreground_priority="renderable"
-                )
+        # Contexts gets the full width: it grows status columns. Panels
+        # appear in reading order matching the 1/2/3 keys and the h/l ring.
+        with Vertical():
+            # Renderable priority keeps status colours visible under the
+            # cursor; the cursor still paints its background.
+            yield ContextsTable(
+                id="contexts", cursor_type="row", cursor_foreground_priority="renderable"
+            )
+            with Horizontal(id="bottom"):
+                yield ReposTable(id="repos", cursor_type="row")
                 yield ArchivedTable(id="archived", cursor_type="row")
-            yield ReposTable(id="repos", cursor_type="row")
         yield Footer()
 
     def on_mount(self) -> None:
