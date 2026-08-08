@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/Michael-JB/ctx/compare/v0.4.0...v0.5.0) (2026-08-08)
+
+
+### Features
+
+* keep context names unique whether archived or not ([36ae559](https://github.com/Michael-JB/ctx/commit/36ae559214a8e8c9747e3704262d748ced39f9ff))
+* navigate with the arrow keys as well as h/j/k/l ([989fb9a](https://github.com/Michael-JB/ctx/commit/989fb9afea992ca56239094c68cdb89b8f80fb6e))
+
+
+### Bug Fixes
+
+* quit immediately even while a fetch or clone is running ([ae65476](https://github.com/Michael-JB/ctx/commit/ae65476b8386cfb13ed173b8b88e09f28cd0a85e))
+* show the error popup instead of crashing when a git command fails ([af01e6d](https://github.com/Michael-JB/ctx/commit/af01e6d5cae83259050c6188337119f8b1cd1eeb))
+* stop new contexts hanging and freezing the TUI ([5d717d0](https://github.com/Michael-JB/ctx/commit/5d717d05a3d07a08cf92bde772af9e89dfbb903a))
+* stop slow status lookups delaying other status columns ([d6be30d](https://github.com/Michael-JB/ctx/commit/d6be30d1be17da3e0533f7f5e5710f2cbb3e4794))
+
 ## [0.4.0](https://github.com/Michael-JB/ctx/compare/v0.3.1...v0.4.0) (2026-08-08)
 
 
