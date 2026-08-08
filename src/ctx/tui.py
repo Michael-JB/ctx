@@ -17,7 +17,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Input, Label
 from textual.widgets.button import ButtonVariant
 from textual.widgets.data_table import CellDoesNotExist
-from textual.worker import get_current_worker
+from textual.worker import Worker, WorkerState, get_current_worker
 
 from ctx import contexts, git, repos, status
 from ctx.config import Config, StatusColumn
@@ -407,9 +407,11 @@ class CtxTui(App[Request | None]):
         self._sample_columns()
 
     def _poll_statuses(self) -> None:
-        """Keep the status columns live without a full (cursor-resetting) reload."""
-        if self._busy:
-            return
+        """Keep the status columns live without a full (cursor-resetting) reload.
+
+        This runs while an action does, too: sampling is per column and cheap,
+        and a column left unsampled shows a value that is quietly wrong.
+        """
         self._sample_columns()
 
     def _sample_columns(self) -> None:
@@ -484,6 +486,19 @@ class CtxTui(App[Request | None]):
     def _finish_busy(self) -> None:
         self._busy.clear()
         self._update_titles()
+
+    @on(Worker.StateChanged)
+    def _worker_settled(self, event: Worker.StateChanged) -> None:
+        """Clear the marker once nothing is running, however a worker ended.
+
+        Workers clear it themselves on the paths they expect. One that dies on
+        an unexpected error clears nothing, and a marker left set used to be
+        permanent.
+        """
+        if event.state in (WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED) and not [
+            worker for worker in self.workers if worker.state == WorkerState.RUNNING
+        ]:
+            self._finish_busy()
 
     def _active_table(self) -> _AnyTable:
         for table in (self._repos_table, self._archived_table):

@@ -126,6 +126,49 @@ def test_a_cheap_column_updates_while_a_slow_one_samples(cfg: Config, origin: Pa
     run_async(drive())
 
 
+def test_statuses_keep_updating_while_an_action_runs(cfg: Config, origin: Path) -> None:
+    """An action must not freeze the columns; a stuck marker must not either."""
+    cfg = Config(
+        contexts_dir=cfg.contexts_dir,
+        repos_dir=cfg.repos_dir,
+        archive_dir=cfg.archive_dir,
+        status=(StatusColumn("claude", builtin="agent"),),
+    )
+    repos.add_repo(cfg, str(origin))
+    ctx = contexts.create_context(cfg, "origin", "one")
+    (ctx.path / ".git" / "agent-status").write_text("idle\n")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await _wait_until(pilot, lambda: _agent_cells(app) == ["idle"], timeout=30)
+            app._busy.add("contexts")
+
+            (ctx.path / ".git" / "agent-status").write_text("working\n")
+            await _wait_until(pilot, lambda: _agent_cells(app) == ["working"], timeout=10)
+
+    run_async(drive())
+
+
+def test_a_cancelled_action_clears_the_busy_marker(cfg: Config, origin: Path) -> None:
+    """A marker left set disables every action, so it must not outlive its work."""
+    repos.add_repo(cfg, str(origin))
+    ctx = contexts.create_context(cfg, "origin", "one")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            app._start_busy("contexts")
+            worker = app._archive_worker(ctx)
+            worker.cancel()
+            await pilot.pause()
+            await _wait_until(pilot, lambda: not app._busy, timeout=10)
+
+            assert app.check_action("new", ()) is True
+
+    run_async(drive())
+
+
 async def _wait_until(pilot: Any, condition: Callable[[], bool], timeout: float) -> None:
     deadline = time.perf_counter() + timeout
     while time.perf_counter() < deadline and not condition():
