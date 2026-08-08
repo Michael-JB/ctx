@@ -1,12 +1,27 @@
+import asyncio
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
+from ctx import contexts, repos
 from ctx.config import Config
 from ctx.git import git
 
 MakeOrigin = Callable[..., Path]
+
+
+# Sync conveniences over the async API, for test setup and assertions.
+def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -> contexts.Context:
+    return asyncio.run(contexts.create_context(cfg, repo, name, base))
+
+
+def add_repo(cfg: Config, url: str, name: str | None = None) -> str:
+    return asyncio.run(repos.add_repo(cfg, url, name))
+
+
+def update_repo(cfg: Config, name: str) -> None:
+    asyncio.run(repos.update_repo(cfg, name))
 
 
 @pytest.fixture(autouse=True)

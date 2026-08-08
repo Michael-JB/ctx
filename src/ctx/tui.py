@@ -623,30 +623,29 @@ class CtxTui(App[Request | None]):
         self._start_busy("contexts")
         self._create_worker(repo, name, base)
 
-    @work(thread=True)
-    def _create_worker(self, repo: str, name: str, base: str | None) -> None:
+    @work
+    async def _create_worker(self, repo: str, name: str, base: str | None) -> None:
         try:
-            with _silenced_stderr():
-                ctx = contexts.create_context(self._cfg, repo, name, base)
+            ctx = await contexts.create_context(self._cfg, repo, name, base)
         except (
             ValueError,
             FileExistsError,
             FileNotFoundError,
             subprocess.CalledProcessError,
         ) as exc:
-            self.call_from_thread(self._finish_busy)
-            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+            self._finish_busy()
+            self.push_screen(AlertScreen(str(exc)))
             return
-        self.call_from_thread(self._reload)
-        self.call_from_thread(self._finish_busy)
+        self._reload()
+        self._finish_busy()
         try:
             with _silenced_stderr():
                 self._mux.open(ctx)
         except (MultiplexerError, subprocess.CalledProcessError) as exc:
-            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+            self.push_screen(AlertScreen(str(exc)))
             return
         if self._exit_on_open:
-            self.call_from_thread(self.exit)
+            self.exit()
 
     def action_add_repo(self) -> None:
         def submitted(url: str | None) -> None:
@@ -656,15 +655,14 @@ class CtxTui(App[Request | None]):
 
         self.push_screen(PromptScreen("Add repo", "clone URL"), submitted)
 
-    @work(thread=True)
-    def _add_repo_worker(self, url: str) -> None:
+    @work
+    async def _add_repo_worker(self, url: str) -> None:
         try:
-            with _silenced_stderr():
-                repos.add_repo(self._cfg, url)
+            await repos.add_repo(self._cfg, url)
         except (FileExistsError, subprocess.CalledProcessError) as exc:
-            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
-        self.call_from_thread(self._reload)
-        self.call_from_thread(self._finish_busy)
+            self.push_screen(AlertScreen(str(exc)))
+        self._reload()
+        self._finish_busy()
 
     def action_unarchive(self) -> None:
         if self._active_table() is not self._archived_table:

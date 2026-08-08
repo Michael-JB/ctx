@@ -1,4 +1,7 @@
+import asyncio
+import contextlib
 import os
+import signal
 import subprocess
 from pathlib import Path
 
@@ -33,3 +36,34 @@ def git(*args: str, cwd: Path | None = None) -> str:
         env=_env(),
     )
     return result.stdout.strip()
+
+
+async def git_async(*args: str, cwd: Path | None = None) -> str:
+    """Like `git`, but awaitable, quiet, and safe to cancel mid-transfer.
+
+    stderr is captured into the exception rather than streamed: the callers
+    are UIs that must not be written over. Cancellation kills git's whole
+    process group — git alone would leave its ssh child holding the
+    connection — so a caller that stops waiting stops the transfer too.
+    """
+    argv = ["git", *_STALL_CONFIG, *args]
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        cwd=cwd,
+        env=_env(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = await proc.communicate()
+    except asyncio.CancelledError:
+        with contextlib.suppress(OSError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        await proc.wait()
+        raise
+    if proc.returncode:
+        raise subprocess.CalledProcessError(
+            proc.returncode, argv, stdout.decode(errors="replace"), stderr.decode(errors="replace")
+        )
+    return stdout.decode(errors="replace").strip()

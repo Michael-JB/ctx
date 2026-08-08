@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import add_repo, create_context
 from textual.widgets import Button
 
-from ctx import contexts, repos
+from ctx import contexts
 from ctx.config import Config, StatusColumn
 from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer
@@ -31,7 +32,7 @@ class StubMultiplexer(Multiplexer):
 
 @pytest.fixture
 def registered(cfg: Config, origin: Path) -> Path:
-    repos.add_repo(cfg, str(origin))
+    add_repo(cfg, str(origin))
     return origin
 
 
@@ -51,9 +52,9 @@ def _slow_status(cfg: Config) -> Config:
 def test_panels_are_populated_before_the_statuses_are(cfg: Config, origin: Path) -> None:
     """Rows must be there to act on straight away, slow providers or not."""
     cfg = _slow_status(cfg)
-    repos.add_repo(cfg, str(origin))
+    add_repo(cfg, str(origin))
     for name in ("one", "two"):
-        contexts.create_context(cfg, "origin", name)
+        create_context(cfg, "origin", name)
     app = CtxTui(cfg, StubMultiplexer())
 
     async def drive() -> None:
@@ -74,9 +75,9 @@ def test_panels_are_populated_before_the_statuses_are(cfg: Config, origin: Path)
 
 
 def test_arrow_keys_navigate_like_the_vim_keys(cfg: Config, origin: Path) -> None:
-    repos.add_repo(cfg, str(origin))
+    add_repo(cfg, str(origin))
     for name in ("one", "two"):
-        contexts.create_context(cfg, "origin", name)
+        create_context(cfg, "origin", name)
     app = CtxTui(cfg, StubMultiplexer())
 
     async def drive() -> None:
@@ -119,9 +120,36 @@ def _slow_cells(app: CtxTui) -> list[str]:
     return [str(table.get_cell(row.value, column)) for row in table.rows]
 
 
+def test_quit_does_not_wait_for_a_running_create(
+    cfg: Config, origin: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Quitting must cancel an in-flight create, not wait out its fetch."""
+    add_repo(cfg, str(origin))
+
+    async def stuck_create(*args: object, **kwargs: object) -> Context:
+        await asyncio.sleep(30)
+        raise AssertionError("cancelled create kept running")
+
+    monkeypatch.setattr(contexts, "create_context", stuck_create)
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.press("n")
+            await pilot.press("x")
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("q")
+
+    start = time.perf_counter()
+    run_async(drive())
+
+    assert time.perf_counter() - start < 5, "quit waited for the create"
+
+
 def test_alerts_show_bracketed_error_text_verbatim(cfg: Config, origin: Path) -> None:
     """Errors often quote a git command; its brackets must not parse as markup."""
-    repos.add_repo(cfg, str(origin))
+    add_repo(cfg, str(origin))
     app = CtxTui(cfg, StubMultiplexer())
     failure = subprocess.CalledProcessError(
         128, ["git", "-c", "http.lowSpeedLimit=1000", "fetch", "origin"]
@@ -141,9 +169,9 @@ def test_alerts_show_bracketed_error_text_verbatim(cfg: Config, origin: Path) ->
 def test_reload_keeps_the_ui_responsive(cfg: Config, origin: Path) -> None:
     """A slow status provider must not stall the event loop."""
     cfg = _slow_status(cfg)
-    repos.add_repo(cfg, str(origin))
+    add_repo(cfg, str(origin))
     for name in ("one", "two"):
-        contexts.create_context(cfg, "origin", name)
+        create_context(cfg, "origin", name)
     app = CtxTui(cfg, StubMultiplexer())
 
     async def drive() -> None:

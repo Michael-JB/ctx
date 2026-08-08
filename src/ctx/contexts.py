@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -5,7 +6,7 @@ from pathlib import Path
 
 from ctx import repos
 from ctx.config import Config
-from ctx.git import git
+from ctx.git import git, git_async
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,7 @@ def _check_name(name: str, branch: str) -> None:
         raise ValueError(f"context name '{name}' does not make a valid branch name ('{branch}')")
 
 
-def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -> Context:
+async def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -> Context:
     # Spaces are welcome in context names but not in branch names; dash them
     # out. Anything else unfit for a branch is rejected, not rewritten.
     branch = cfg.branch_prefix + name.replace(" ", "-")
@@ -104,26 +105,31 @@ def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -
     path = context_path(cfg, repo, name)
 
     if base is None:
-        repos.update_repo(cfg, repo)
-        base = repos.default_branch(cfg, repo)
+        await repos.update_repo(cfg, repo)
+        base = await repos.default_branch(cfg, repo)
         fetch_base = False
     else:
         # The mirror only carries the default branch; fetch the base into the context.
         fetch_base = True
     path.parent.mkdir(parents=True, exist_ok=True)
-    git("clone", str(mirror), str(path))
-    git("remote", "set-url", "origin", repos.repo_url(cfg, repo), cwd=path)
-    if fetch_base:
-        try:
-            git("fetch", "origin", base, cwd=path)
-        except subprocess.CalledProcessError as exc:
-            remove_context(Context(repo, name, path))
-            raise FileNotFoundError(f"branch '{base}' not found on origin of '{repo}'") from exc
-    if git("for-each-ref", f"refs/remotes/origin/{base}", cwd=path):
-        git("checkout", "--no-track", "-b", branch, f"origin/{base}", cwd=path)
-    else:
-        # An empty repo has no commit to branch from; start the work branch unborn.
-        git("checkout", "--no-track", "-b", branch, cwd=path)
+    try:
+        await git_async("clone", str(mirror), str(path))
+        await git_async("remote", "set-url", "origin", repos.repo_url(cfg, repo), cwd=path)
+        if fetch_base:
+            try:
+                await git_async("fetch", "origin", base, cwd=path)
+            except subprocess.CalledProcessError as exc:
+                remove_context(Context(repo, name, path))
+                raise FileNotFoundError(f"branch '{base}' not found on origin of '{repo}'") from exc
+        if await git_async("for-each-ref", f"refs/remotes/origin/{base}", cwd=path):
+            await git_async("checkout", "--no-track", "-b", branch, f"origin/{base}", cwd=path)
+        else:
+            # An empty repo has no commit to branch from; start the work branch unborn.
+            await git_async("checkout", "--no-track", "-b", branch, cwd=path)
+    except asyncio.CancelledError:
+        # A half-made checkout would squat on the name; leave nothing behind.
+        shutil.rmtree(path, ignore_errors=True)
+        raise
     return Context(repo, name, path)
 
 
