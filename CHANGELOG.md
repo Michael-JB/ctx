@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/Michael-JB/ctx/compare/v0.3.1...v0.4.0) (2026-08-08)
+
+
+### Features
+
+* compact the STATUS column to * and ↑n ([8c43c44](https://github.com/Michael-JB/ctx/commit/8c43c44216e7cb2f059c9fcbd14a2cf578fa2428))
+* show agent, PR, and CI state via configurable status columns ([bc1e0bd](https://github.com/Michael-JB/ctx/commit/bc1e0bd714e3675509006b1bb03494c04cedd0da))
+* **tui:** give the contexts table the full width ([0100b04](https://github.com/Michael-JB/ctx/commit/0100b04b436a193f94ddf58b4f8ce8ac82abe5a7))
+
+
+### Bug Fixes
+
+* **zellij:** drop the ZELLIJ_SOCKET_DIR override that broke switching ([d740e8e](https://github.com/Michael-JB/ctx/commit/d740e8ed484da4f3079759b10801c0dcd25098af))
+* **zellij:** shorten session names past the macOS socket path limit ([ed81ec3](https://github.com/Michael-JB/ctx/commit/ed81ec361e6faee17b1a7ef0975b72845a4b62c7))
+* **zellij:** surface switch failures in the TUI instead of dying silently ([cff6592](https://github.com/Michael-JB/ctx/commit/cff6592c97fe367b0bd52ede3b15ae241d2de220))
+
 ## [0.3.1](https://github.com/Michael-JB/ctx/compare/v0.3.0...v0.3.1) (2026-08-06)
 
 
