@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 import time
 from collections.abc import Coroutine
 from pathlib import Path
@@ -11,7 +12,7 @@ from ctx import contexts, repos
 from ctx.config import Config, StatusColumn
 from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer
-from ctx.tui import CtxTui
+from ctx.tui import AlertScreen, CtxTui
 
 
 class StubMultiplexer(Multiplexer):
@@ -116,6 +117,25 @@ def _slow_cells(app: CtxTui) -> list[str]:
     table = app._contexts_table
     column = app._status_columns[-1]
     return [str(table.get_cell(row.value, column)) for row in table.rows]
+
+
+def test_alerts_show_bracketed_error_text_verbatim(cfg: Config, origin: Path) -> None:
+    """Errors often quote a git command; its brackets must not parse as markup."""
+    repos.add_repo(cfg, str(origin))
+    app = CtxTui(cfg, StubMultiplexer())
+    failure = subprocess.CalledProcessError(
+        128, ["git", "-c", "http.lowSpeedLimit=1000", "fetch", "origin"]
+    )
+    message = str(failure)
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.push_screen(AlertScreen(message))
+            await pilot.pause()
+            assert isinstance(app.screen, AlertScreen)
+
+    run_async(drive())
 
 
 def test_reload_keeps_the_ui_responsive(cfg: Config, origin: Path) -> None:
