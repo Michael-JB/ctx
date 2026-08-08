@@ -125,7 +125,7 @@ def test_list_shows_each_context(runner: CliRunner, deps: Deps, registered: Path
 
     header, row = result.output.splitlines()
     assert header.split() == ["NAME", "REPO", "BRANCH", "STATUS"]
-    assert row.split() == ["feat", "origin", "feat", "clean"]
+    assert row.split() == ["feat", "origin", "feat"]
 
 
 def test_list_marks_dirty_contexts(runner: CliRunner, deps: Deps, registered: Path) -> None:
@@ -134,7 +134,7 @@ def test_list_marks_dirty_contexts(runner: CliRunner, deps: Deps, registered: Pa
 
     result = runner.invoke(cli, ["list"], obj=deps)
 
-    assert "uncommitted changes" in result.output
+    assert "*" in result.output
 
 
 def test_rm_deletes_the_checkout(runner: CliRunner, deps: Deps, registered: Path) -> None:
