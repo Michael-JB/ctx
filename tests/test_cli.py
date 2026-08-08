@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -6,7 +7,7 @@ from conftest import commit_file
 
 from ctx import contexts, repos
 from ctx.cli import Deps, cli
-from ctx.config import Config
+from ctx.config import Config, StatusColumn
 from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer
 
@@ -119,6 +120,20 @@ def test_list_shows_each_context(runner: CliRunner, deps: Deps, registered: Path
     header, row = result.output.splitlines()
     assert header.split() == ["NAME", "REPO", "BRANCH", "STATUS"]
     assert row.split() == ["feat", "origin", "feat"]
+
+
+def test_list_adds_a_column_per_status_column(
+    runner: CliRunner, deps: Deps, registered: Path
+) -> None:
+    columns = (StatusColumn("claude", command="echo working"),)
+    deps = Deps(replace(deps.cfg, status=columns), deps.mux)
+    contexts.create_context(deps.cfg, "origin", "feat")
+
+    result = runner.invoke(cli, ["list"], obj=deps)
+
+    header, row = result.output.splitlines()
+    assert header.split() == ["NAME", "REPO", "BRANCH", "STATUS", "CLAUDE"]
+    assert row.split() == ["feat", "origin", "feat", "working"]
 
 
 def test_list_marks_dirty_contexts(runner: CliRunner, deps: Deps, registered: Path) -> None:

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import click
 
-from ctx import contexts, repos
+from ctx import contexts, repos, status
 from ctx.config import Config, ConfigError, load_config
 from ctx.layout import LayoutError
 from ctx.multiplexer import Multiplexer, MultiplexerError, get_multiplexer
@@ -79,14 +79,15 @@ def list_(deps: Deps, archived: bool) -> None:
     if not all_contexts:
         click.echo("no archived contexts" if archived else "no contexts")
         return
-    rows = [("NAME", "REPO", "BRANCH", "STATUS")]
+    status_names = tuple(s.name.upper() for s in deps.cfg.status)
+    rows = [("NAME", "REPO", "BRANCH", "STATUS", *status_names)]
     for ctx in all_contexts:
         rows.append(
             (
                 ctx.name,
                 ctx.repo,
                 contexts.current_branch(ctx),
-                contexts.describe_status(ctx),
+                *status.status_cells(deps.cfg, ctx),
             )
         )
     widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
