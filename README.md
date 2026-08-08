@@ -4,7 +4,7 @@ The way I write code has changed. With agents, I context-switch more, and the
 time it takes to spin up or tear down a context became increasingly noticeable.
 I didn't enjoy the `git worktree` UX, so I ended up maintaining multiple
 long-lived clones of the same repository nestled in different tmux sessions to
-work concurrently. This worked well for me, but it wasn't exactly elegant. So
+work in parallel. This worked well for me, but it wasn't exactly elegant. So
 here we are.
 
 `ctx` lets you manage repo-scoped work contexts: each context is a fresh full
@@ -23,21 +23,15 @@ uv tool install ctx-tui
 ## Usage
 
 Run `ctx` to manage contexts and repos interactively in the TUI (`?` lists
-the keybindings). The same operations are available as subcommands:
+the keybindings). You can also use `ctx` as a CLI.
 
 ```sh
 ctx repo add https://github.com/Michael-JB/papaya-nvim.git   # once per repo
 ctx new papaya-nvim my-cool-feature   # fresh checkout + session, jump in
 # ...work, commit, push...
-ctx archive my-cool-feature           # or set it aside for later...
-ctx rm my-cool-feature                # ...or tear it all down again
+ctx archive my-cool-feature           # set it aside for later...
+ctx rm my-cool-feature                # ...or tear it down
 ```
-
-Not ready to tear a context down? Archive it instead (in the TUI, `d` offers
-Archive next to Delete): its session is killed and the checkout moves aside to
-`archive_dir`, freeing the name. The TUI's archived panel lets you unarchive
-(`u`, or enter to also open it), delete permanently (`d`), or empty the whole
-archive (`e`).
 
 More detail:
 
@@ -59,18 +53,15 @@ ctx repo rm papaya-nvim
 ctx archive my-cool-feature
 ctx unarchive my-cool-feature
 
-# List archived contexts, delete some permanently, or empty the whole archive:
+# List archived contexts, or empty the whole archive:
 ctx list --archived
-ctx rm --archived my-cool-feature
 ctx archive --empty
 ```
 
 ## Configuration
 
-Optional, at `$XDG_CONFIG_HOME/ctx/config.toml`. Directories default under
-`$XDG_DATA_HOME/ctx/`; the example shows the usual fallback paths. All fields
-shown with their defaults, except the layout: that defaults to a single shell
-pane, so a custom tree is shown instead.
+Configure `ctx` via `$XDG_CONFIG_HOME/ctx/config.toml`. All fields shown with
+their defaults.
 
 ```toml
 contexts_dir = "~/.local/share/ctx/contexts"  # where checkouts live
@@ -78,8 +69,14 @@ repos_dir = "~/.local/share/ctx/repos"        # internal storage for registered 
 archive_dir = "~/.local/share/ctx/archive"    # where archived contexts go
 branch_prefix = ""                            # work branch prefix, e.g. "jane/"
 multiplexer = "tmux"                          # or "zellij" (requires zellij >= 0.44)
-# [[status]] tables add extra columns; see "Status columns" (none by default)
+```
 
+### Multiplexer layout
+
+`ctx` supports `tmux` and `zellij` multiplexers. Customise the layout of a
+`ctx` session via the `layout` table in the config:
+
+```toml
 # The pane layout: a tree of panes and "row"/"column" splits ("row" = side
 # by side, "column" = stacked). A pane runs `command` (default: a shell) in
 # the checkout; at most one pane may set `focus`.
@@ -100,8 +97,15 @@ focus = true
 
 ### Status columns
 
-The STATUS column shows the git state: `*` for uncommitted changes, `↑n`
-for n unpushed commits. `[[status]]` tables add further columns:
+The STATUS column shows the git state: `*` for uncommitted changes, `↑n` for n
+unpushed commits.
+
+You can add further columns via `[[status]]`. `ctx` comes with some builtin
+status integrations.
+
+#### GitHub builtin
+
+These require an authenticated `gh` in the checkout.
 
 ```toml
 [[status]]
@@ -111,23 +115,19 @@ builtin = "github-pr"      # the branch's latest PR: open / draft / merged / clo
 [[status]]
 name = "ci"
 builtin = "github-checks"  # checks on the branch's open PR: success / failure / pending
+```
 
+#### Agent builtin
+
+```toml
 [[status]]
 name = "claude"
 builtin = "agent"          # .git/agent-status, hook-written by your agent (see below)
-
-[[status]]
-name = "anything"
-command = "my-status"      # first line of any command, run in the checkout
 ```
 
-An empty cell means "no status": no PR, a stale agent file, a silent or
-failing command. The GitHub built-ins need an authenticated `gh`. The TUI
-re-polls every few seconds and colours known states.
-
-For the `agent` column, make your agent write its state on its lifecycle hooks
-to `.git/agent-status`. For example, for Claude Code, add to
-`~/.claude/settings.json`:
+The agent builtin reads its status from `.git/agent-status`. Make your agent
+write its state there. For example, for Claude Code, you can add these
+lifecycle hooks to your `~/.claude/settings.json`:
 
 ```json
 {
@@ -140,6 +140,19 @@ to `.git/agent-status`. For example, for Claude Code, add to
   }
 }
 ```
+
+#### Custom
+
+You can also add your own status column via a command that runs in the
+checkout:
+
+```toml
+[[status]]
+name = "anything"
+command = "my-status"      # first line of any command, run in the checkout
+```
+
+The TUI re-polls every few seconds and colours known states.
 
 ### Environment variables
 
