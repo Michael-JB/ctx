@@ -144,6 +144,14 @@ def find_archived(cfg: Config, name: str) -> Context:
     return matches[0]
 
 
+def find_any(cfg: Config, name: str) -> Context:
+    """Resolve a context name among live and archived contexts alike."""
+    matches = [c for c in list_contexts(cfg) + list_archived(cfg) if c.name == name]
+    if not matches:
+        raise LookupError(f"no context '{name}'")
+    return matches[0]
+
+
 def archive_context(cfg: Config, ctx: Context) -> Context:
     """Move a context's checkout into the archive."""
     _check_name_free(cfg, ctx.name, exclude=ctx.path)
