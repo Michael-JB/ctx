@@ -81,18 +81,12 @@ def list_(deps: Deps, archived: bool) -> None:
         return
     rows = [("NAME", "REPO", "BRANCH", "STATUS")]
     for ctx in all_contexts:
-        status = []
-        if contexts.is_dirty(ctx):
-            status.append("uncommitted changes")
-        unpushed = contexts.unpushed_commits(ctx)
-        if unpushed:
-            status.append(f"{len(unpushed)} unpushed commit(s)")
         rows.append(
             (
                 ctx.name,
                 ctx.repo,
                 contexts.current_branch(ctx),
-                ", ".join(status) or "clean",
+                contexts.describe_status(ctx),
             )
         )
     widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]

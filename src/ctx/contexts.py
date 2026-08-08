@@ -148,6 +148,17 @@ def unpushed_commits(ctx: Context) -> list[str]:
     return out.splitlines() if out else []
 
 
+def describe_status(ctx: Context) -> str:
+    """Compact git state: `*` for uncommitted changes, `↑n` for unpushed commits."""
+    parts = []
+    if is_dirty(ctx):
+        parts.append("*")
+    unpushed = unpushed_commits(ctx)
+    if unpushed:
+        parts.append(f"↑{len(unpushed)}")
+    return " ".join(parts)
+
+
 def remove_context(ctx: Context) -> None:
     shutil.rmtree(ctx.path)
 

@@ -348,17 +348,11 @@ class CtxTui(App[Request | None]):
         ctx_table = self._contexts_table
         ctx_table.clear()
         for ctx in contexts.list_contexts(self._cfg):
-            status = []
-            if contexts.is_dirty(ctx):
-                status.append("uncommitted changes")
-            unpushed = contexts.unpushed_commits(ctx)
-            if unpushed:
-                status.append(f"{len(unpushed)} unpushed commit(s)")
             ctx_table.add_row(
                 ctx.name,
                 ctx.repo,
                 contexts.current_branch(ctx),
-                ", ".join(status) or "clean",
+                contexts.describe_status(ctx),
                 key=ctx.name,
             )
         repo_table = self._repos_table
