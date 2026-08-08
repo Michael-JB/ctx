@@ -1,3 +1,4 @@
+import asyncio
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -70,6 +71,11 @@ def open_(deps: Deps, name: str) -> None:
         raise click.ClickException(str(exc)) from exc
 
 
+async def _all_status_cells(cfg: Config, ctxs: list[contexts.Context]) -> list[list[str]]:
+    """Every context's status cells, fetched concurrently."""
+    return await asyncio.gather(*(status.status_cells(cfg, ctx) for ctx in ctxs))
+
+
 @cli.command("list")
 @click.option("--archived", is_flag=True, help="List archived contexts instead.")
 @click.pass_obj
@@ -84,15 +90,9 @@ def list_(deps: Deps, archived: bool) -> None:
         return
     status_names = tuple(s.name.upper() for s in deps.cfg.status)
     rows = [("NAME", "REPO", "BRANCH", "STATUS", *status_names)]
-    for ctx in all_contexts:
-        rows.append(
-            (
-                ctx.name,
-                ctx.repo,
-                contexts.current_branch(ctx),
-                *status.status_cells(deps.cfg, ctx),
-            )
-        )
+    cell_rows = asyncio.run(_all_status_cells(deps.cfg, all_contexts))
+    for ctx, ctx_cells in zip(all_contexts, cell_rows, strict=True):
+        rows.append((ctx.name, ctx.repo, contexts.current_branch(ctx), *ctx_cells))
     widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
     for row in rows:
         cells = zip(row, widths, strict=True)

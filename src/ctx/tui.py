@@ -1,8 +1,10 @@
+import asyncio
 import contextlib
 import os
 import subprocess
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import ClassVar
 
 from rich.text import Text
@@ -337,7 +339,7 @@ class CtxTui(App[Request | None]):
         self._exit_on_open = exit_on_open
         self._busy: set[str] = set()
         self._spinner_frame = 0
-        self._polling = False
+        self._fetching: set[int] = set()
 
     def compose(self) -> ComposeResult:
         # Contexts gets the full width: it grows status columns. Panels
@@ -366,7 +368,8 @@ class CtxTui(App[Request | None]):
         ctx_table.focus()
         self.set_interval(0.1, self._spin)
         if self._cfg.status:
-            self.set_interval(_STATUS_POLL_SECONDS, self._poll_statuses)
+            for index, interval in enumerate(self._poll_intervals()):
+                self.set_interval(interval, partial(self._poll_column, index))
 
     @property
     def _contexts_table(self) -> DataTable[str | Text]:
@@ -404,36 +407,50 @@ class CtxTui(App[Request | None]):
             archived_table.add_row(ctx.name, ctx.repo, contexts.current_branch(ctx), key=ctx.name)
         self._refresh_statuses()
 
-    def _poll_statuses(self) -> None:
-        """Keep the status columns live without a full (cursor-resetting) reload."""
-        if self._busy:
-            return
-        self._refresh_statuses()
+    def _poll_intervals(self) -> list[float]:
+        """Each status column's poll cadence: its provider's refresh interval.
+
+        The STATUS column and columns without an interval ride the base tick;
+        nothing polls faster than it.
+        """
+        return [_STATUS_POLL_SECONDS] + [
+            max(status.refresh_interval(col), _STATUS_POLL_SECONDS) for col in self._cfg.status
+        ]
+
+    def _poll_column(self, index: int) -> None:
+        """Keep one status column live without a full (cursor-resetting) reload."""
+        if not self._busy:
+            self._refresh_column(index)
 
     def _refresh_statuses(self) -> None:
-        if self._polling:
+        for index in range(1 + len(self._cfg.status)):
+            self._refresh_column(index)
+
+    def _refresh_column(self, index: int) -> None:
+        if index in self._fetching:
             return
-        self._polling = True
-        self._poll_statuses_worker()
+        self._fetching.add(index)
+        self._fetch_column_worker(index)
 
-    @work(thread=True)
-    def _poll_statuses_worker(self) -> None:
+    @work
+    async def _fetch_column_worker(self, index: int) -> None:
+        """Fetch one column's cells concurrently, painting each as it lands."""
         try:
-            statuses = [
-                (ctx.name, status.status_cells(self._cfg, ctx))
-                for ctx in contexts.list_contexts(self._cfg)
-            ]
-            self.call_from_thread(self._apply_statuses, statuses)
+            fetches = (self._fetch_cell(ctx, index) for ctx in contexts.list_contexts(self._cfg))
+            await asyncio.gather(*fetches)
         finally:
-            self._polling = False
+            self._fetching.discard(index)
 
-    def _apply_statuses(self, statuses: list[tuple[str, list[str]]]) -> None:
-        table = self._contexts_table
-        for name, cells in statuses:
-            for column, cell in zip(self._status_columns, cells, strict=True):
-                # A context may have been deleted or archived since the poll started.
-                with contextlib.suppress(CellDoesNotExist):
-                    table.update_cell(name, column, _styled(cell), update_width=True)
+    async def _fetch_cell(self, ctx: Context, index: int) -> None:
+        if index == 0:
+            cell = await status.git_state(ctx)
+        else:
+            cell = await status.column_status(ctx, self._cfg.status[index - 1]) or ""
+        # The context may have been deleted or archived since the fetch started.
+        with contextlib.suppress(CellDoesNotExist):
+            self._contexts_table.update_cell(
+                ctx.name, self._status_columns[index], _styled(cell), update_width=True
+            )
 
     def _spin(self) -> None:
         if self._busy:
