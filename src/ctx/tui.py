@@ -15,6 +15,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Input, Label
 from textual.widgets.button import ButtonVariant
 from textual.widgets.data_table import CellDoesNotExist
+from textual.worker import get_current_worker
 
 from ctx import contexts, repos, status
 from ctx.config import Config
@@ -418,11 +419,22 @@ class CtxTui(App[Request | None]):
 
     @work(thread=True)
     def _poll_statuses_worker(self) -> None:
+        """Sample every context's status, giving up the moment the app quits.
+
+        Quitting cancels the workers and then waits for their threads, which
+        cannot be interrupted: sampling on past a cancel would hold the whole
+        process open for a provider call per context. `call_from_thread` would
+        wait on a loop that has stopped, too, and never return.
+        """
+        worker = get_current_worker()
         try:
-            statuses = [
-                (ctx.name, status.status_cells(self._cfg, ctx))
-                for ctx in contexts.list_contexts(self._cfg)
-            ]
+            statuses = []
+            for ctx in contexts.list_contexts(self._cfg):
+                if worker.is_cancelled:
+                    return
+                statuses.append((ctx.name, status.status_cells(self._cfg, ctx)))
+            if worker.is_cancelled:
+                return
             self.call_from_thread(self._apply_statuses, statuses)
         finally:
             self._polling = False

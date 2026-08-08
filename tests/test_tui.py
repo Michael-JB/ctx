@@ -1,4 +1,6 @@
 import asyncio
+import subprocess
+import sys
 import time
 from collections.abc import Coroutine
 from pathlib import Path
@@ -36,6 +38,33 @@ def registered(cfg: Config, origin: Path) -> Path:
 
 def run_async(coro: Coroutine[Any, Any, None]) -> None:
     asyncio.run(coro)
+
+
+def test_quitting_does_not_wait_for_a_status_poll(cfg: Config, origin: Path) -> None:
+    """Quitting joins the worker threads, so a poll must abandon itself.
+
+    Run for real: `run_test` never reaches the executor shutdown that does
+    the joining, which is exactly where the app used to wedge.
+    """
+    repos.add_repo(cfg, str(origin))
+    for name in ("one", "two", "three", "four"):
+        contexts.create_context(cfg, "origin", name)
+    probe = Path(__file__).parent / "quit_probe.py"
+
+    started = time.perf_counter()
+    proc = subprocess.run(
+        [sys.executable, str(probe), str(cfg.contexts_dir.parent)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    took = time.perf_counter() - started
+
+    assert proc.returncode == 0, proc.stderr
+    assert "exited" in proc.stdout
+    # Sampling four contexts costs >= 8s (2s cap each); quitting must not
+    # sit through it.
+    assert took < 7, f"quit took {took:.1f}s"
 
 
 def _slow_status(cfg: Config) -> Config:
