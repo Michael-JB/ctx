@@ -243,6 +243,19 @@ def test_find_archived_resolves_by_name(cfg: Config, registered: Path) -> None:
     assert contexts.find_archived(cfg, "feat") == archived
 
 
+def test_find_any_resolves_live_and_archived_contexts(cfg: Config, registered: Path) -> None:
+    archived = contexts.archive_context(cfg, contexts.create_context(cfg, "origin", "cold"))
+    live = contexts.create_context(cfg, "origin", "hot")
+
+    assert contexts.find_any(cfg, "cold") == archived
+    assert contexts.find_any(cfg, "hot") == live
+
+
+def test_find_any_rejects_unknown_names(cfg: Config) -> None:
+    with pytest.raises(LookupError, match="no context 'feat'"):
+        contexts.find_any(cfg, "feat")
+
+
 def test_find_archived_rejects_unknown_names(cfg: Config) -> None:
     with pytest.raises(LookupError, match="no archived context 'feat'"):
         contexts.find_archived(cfg, "feat")

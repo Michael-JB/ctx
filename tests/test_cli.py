@@ -200,10 +200,22 @@ def test_rm_archived_deletes_the_archived_checkout(
     ctx = contexts.create_context(deps.cfg, "origin", "feat")
     archived = contexts.archive_context(deps.cfg, ctx)
 
-    result = runner.invoke(cli, ["rm", "--archived", "feat"], obj=deps)
+    result = runner.invoke(cli, ["rm", "feat"], obj=deps)
 
     assert result.exit_code == 0
     assert not archived.path.exists()
+
+
+def test_rm_archived_kills_a_lingering_session(
+    runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
+) -> None:
+    contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "feat"))
+    mux.running.add("origin/feat")
+
+    result = runner.invoke(cli, ["rm", "feat"], obj=deps)
+
+    assert result.exit_code == 0
+    assert mux.killed == ["origin/feat"]
 
 
 def test_rm_archived_refuses_unpushed_work(runner: CliRunner, deps: Deps, registered: Path) -> None:
@@ -211,7 +223,7 @@ def test_rm_archived_refuses_unpushed_work(runner: CliRunner, deps: Deps, regist
     commit_file(ctx.path, "work.txt")
     contexts.archive_context(deps.cfg, ctx)
 
-    result = runner.invoke(cli, ["rm", "--archived", "feat"], obj=deps)
+    result = runner.invoke(cli, ["rm", "feat"], obj=deps)
 
     assert result.exit_code == 1
     assert "unpushed commit" in result.stderr
