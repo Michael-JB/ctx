@@ -206,20 +206,6 @@ def test_rm_archived_deletes_the_archived_checkout(
     assert not archived.path.exists()
 
 
-def test_rm_archived_leaves_a_live_namesake_alone(
-    runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
-) -> None:
-    contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "feat"))
-    live = contexts.create_context(deps.cfg, "origin", "feat")
-    mux.running.add("origin/feat")
-
-    result = runner.invoke(cli, ["rm", "--archived", "feat"], obj=deps)
-
-    assert result.exit_code == 0
-    assert mux.killed == []
-    assert live.path.exists()
-
-
 def test_rm_archived_refuses_unpushed_work(runner: CliRunner, deps: Deps, registered: Path) -> None:
     ctx = contexts.create_context(deps.cfg, "origin", "feat")
     commit_file(ctx.path, "work.txt")

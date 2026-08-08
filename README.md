@@ -49,7 +49,8 @@ ctx open my-cool-feature
 ctx repo list
 ctx repo rm papaya-nvim
 
-# Set contexts aside without deleting them (kills their sessions), and bring one back:
+# Set contexts aside without deleting them (kills their sessions), and bring one back.
+# Archived contexts keep their names: names are unique across live and archived.
 ctx archive my-cool-feature
 ctx unarchive my-cool-feature
 
