@@ -42,7 +42,7 @@ ctx list
 # Contexts branch off the up-to-date default branch. To base one on another branch:
 ctx new papaya-nvim follow-up -b other-base
 
-# Re-attach to a context, recreating its session if needed:
+# Re-attach to a context, unarchiving it and recreating its session if needed:
 ctx open my-cool-feature
 
 # List registered repos, or remove some (their contexts are left alone):

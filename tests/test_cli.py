@@ -106,6 +106,20 @@ def test_open_opens_the_context_session(
     assert mux.opened == ["origin/feat"]
 
 
+def test_open_unarchives_an_archived_context(
+    runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
+) -> None:
+    contexts.archive_context(deps.cfg, contexts.create_context(deps.cfg, "origin", "feat"))
+
+    result = runner.invoke(cli, ["open", "feat"], obj=deps)
+
+    assert result.exit_code == 0
+    assert "unarchived origin/feat" in result.output
+    assert mux.opened == ["origin/feat"]
+    assert contexts.list_archived(deps.cfg) == []
+    assert contexts.find_context(deps.cfg, "feat").path.exists()
+
+
 def test_open_rejects_an_unknown_context(runner: CliRunner, deps: Deps) -> None:
     result = runner.invoke(cli, ["open", "feat"], obj=deps)
 
