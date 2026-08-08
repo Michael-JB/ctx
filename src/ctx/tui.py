@@ -3,6 +3,7 @@ import os
 import subprocess
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import ClassVar
 
 from rich.console import RenderableType
@@ -19,7 +20,7 @@ from textual.widgets.data_table import CellDoesNotExist
 from textual.worker import get_current_worker
 
 from ctx import contexts, git, repos, status
-from ctx.config import Config
+from ctx.config import Config, StatusColumn
 from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer, MultiplexerError
 
@@ -339,7 +340,6 @@ class CtxTui(App[Request | None]):
         self._exit_on_open = exit_on_open
         self._busy: set[str] = set()
         self._spinner_frame = 0
-        self._polling = False
 
     def compose(self) -> ComposeResult:
         # Contexts gets the full width: it grows status columns. Panels
@@ -404,23 +404,31 @@ class CtxTui(App[Request | None]):
         archived_table.clear()
         for ctx in contexts.list_archived(self._cfg):
             archived_table.add_row(ctx.name, ctx.repo, contexts.current_branch(ctx), key=ctx.name)
-        self._refresh_statuses()
+        self._sample_columns()
 
     def _poll_statuses(self) -> None:
         """Keep the status columns live without a full (cursor-resetting) reload."""
         if self._busy:
             return
-        self._refresh_statuses()
+        self._sample_columns()
 
-    def _refresh_statuses(self) -> None:
-        if self._polling:
-            return
-        self._polling = True
-        self._poll_statuses_worker()
+    def _sample_columns(self) -> None:
+        """Start a worker per column: one column's cost is its own to pay.
 
-    @work(thread=True)
-    def _poll_statuses_worker(self) -> None:
-        """Sample every context's status, giving up the moment the app quits.
+        Sampling every column together made the cheap ones wait for the
+        expensive ones — a status file read behind a round trip to GitHub —
+        and a sweep in flight swallowed the next tick for all of them.
+        """
+        for index, column in enumerate((None, *self._cfg.status)):
+            self.run_worker(
+                partial(self._sample_column, index, column),
+                thread=True,
+                exclusive=True,
+                group=f"status-{index}",
+            )
+
+    def _sample_column(self, index: int, column: StatusColumn | None) -> None:
+        """Sample one column across the contexts, giving up if the app quits.
 
         Quitting cancels the workers and then waits for their threads, which
         cannot be interrupted: sampling on past a cancel would hold the whole
@@ -428,25 +436,28 @@ class CtxTui(App[Request | None]):
         wait on a loop that has stopped, too, and never return.
         """
         worker = get_current_worker()
-        try:
-            statuses = []
-            for ctx in contexts.list_contexts(self._cfg):
-                if worker.is_cancelled:
-                    return
-                statuses.append((ctx.name, status.status_cells(self._cfg, ctx)))
+        values = []
+        for ctx in contexts.list_contexts(self._cfg):
             if worker.is_cancelled:
                 return
-            self.call_from_thread(self._apply_statuses, statuses)
-        finally:
-            self._polling = False
+            # The unnamed first column is the git state; the rest are configured.
+            value = (
+                contexts.describe_status(ctx)
+                if column is None
+                else status.column_status(ctx, column) or ""
+            )
+            values.append((ctx.name, value))
+        if worker.is_cancelled:
+            return
+        self.call_from_thread(self._apply_column, index, values)
 
-    def _apply_statuses(self, statuses: list[tuple[str, list[str]]]) -> None:
+    def _apply_column(self, index: int, values: list[tuple[str, str]]) -> None:
         table = self._contexts_table
-        for name, cells in statuses:
-            for column, cell in zip(self._status_columns, cells, strict=True):
-                # A context may have been deleted or archived since the poll started.
-                with contextlib.suppress(CellDoesNotExist):
-                    table.update_cell(name, column, _styled(cell), update_width=True)
+        column = self._status_columns[index]
+        for name, value in values:
+            # A context may have been deleted or archived since the poll started.
+            with contextlib.suppress(CellDoesNotExist):
+                table.update_cell(name, column, _styled(value), update_width=True)
 
     def _spin(self) -> None:
         if self._busy:

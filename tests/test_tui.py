@@ -2,7 +2,7 @@ import asyncio
 import subprocess
 import sys
 import time
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
@@ -90,6 +90,53 @@ def _run_quit_probe(cfg: Config, mode: str) -> tuple[float, subprocess.Completed
         timeout=60,
     )
     return time.perf_counter() - started, proc
+
+
+def test_a_cheap_column_updates_while_a_slow_one_samples(cfg: Config, origin: Path) -> None:
+    """Reading a file must not queue behind a provider that shells out."""
+    cfg = Config(
+        contexts_dir=cfg.contexts_dir,
+        repos_dir=cfg.repos_dir,
+        archive_dir=cfg.archive_dir,
+        status=(
+            StatusColumn("claude", builtin="agent"),
+            StatusColumn("slow", command="sleep 1.5; echo hi"),
+        ),
+    )
+    repos.add_repo(cfg, str(origin))
+    for name in ("one", "two", "three"):
+        ctx = contexts.create_context(cfg, "origin", name)
+        (ctx.path / ".git" / "agent-status").write_text("idle\n")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await _wait_until(pilot, lambda: _agent_cells(app) == ["idle"] * 3, timeout=30)
+
+            for ctx in contexts.list_contexts(cfg):
+                (ctx.path / ".git" / "agent-status").write_text("working\n")
+            started = time.perf_counter()
+            await _wait_until(pilot, lambda: _agent_cells(app) == ["working"] * 3, timeout=30)
+            took = time.perf_counter() - started
+
+            # Sampling the slow column costs 4.5s a sweep; the agent column
+            # must keep to its own cadence regardless.
+            assert took < 4, f"the agent column took {took:.1f}s to update"
+
+    run_async(drive())
+
+
+async def _wait_until(pilot: Any, condition: Callable[[], bool], timeout: float) -> None:
+    deadline = time.perf_counter() + timeout
+    while time.perf_counter() < deadline and not condition():
+        await pilot.pause(0.02)
+    assert condition(), "condition never held"
+
+
+def _agent_cells(app: CtxTui) -> list[str]:
+    table = app._contexts_table
+    column = app._status_columns[1]
+    return sorted(str(table.get_cell(row.value, column)) for row in table.rows)
 
 
 def _slow_status(cfg: Config) -> Config:
