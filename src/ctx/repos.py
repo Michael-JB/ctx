@@ -47,7 +47,32 @@ def remove_repo(cfg: Config, name: str) -> None:
     path = repo_path(cfg, name)
     if not path.exists():
         raise FileNotFoundError(f"repo '{name}' is not registered")
+    if default_repo(cfg) == name:
+        set_default_repo(cfg, None)
     shutil.rmtree(path)
+
+
+def _default_repo_file(cfg: Config) -> Path:
+    return cfg.repos_dir / "default-repo"
+
+
+def default_repo(cfg: Config) -> str | None:
+    """The repo new contexts are created in by default, if set and still registered."""
+    try:
+        name = _default_repo_file(cfg).read_text().strip()
+    except FileNotFoundError:
+        return None
+    return name if repo_path(cfg, name).exists() else None
+
+
+def set_default_repo(cfg: Config, name: str | None) -> None:
+    """Set the default repo, or clear it with None."""
+    if name is None:
+        _default_repo_file(cfg).unlink(missing_ok=True)
+        return
+    if not repo_path(cfg, name).exists():
+        raise FileNotFoundError(f"repo '{name}' is not registered")
+    _default_repo_file(cfg).write_text(f"{name}\n")
 
 
 async def update_repo(cfg: Config, name: str) -> None:

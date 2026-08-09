@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import add_repo, create_context
+from conftest import MakeOrigin, add_repo, create_context
 from textual.widgets import Button
 
-from ctx import contexts
+from ctx import contexts, repos
 from ctx.config import Config, StatusColumn
 from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer
@@ -226,6 +226,40 @@ def test_deleting_another_context_does_not_switch(cfg: Config, registered: Path)
     assert mux.calls == [("kill", "one")]
     with pytest.raises(LookupError):
         contexts.find_context(cfg, "one")
+
+
+def test_new_context_uses_the_default_repo_off_the_repos_panel(
+    cfg: Config, registered: Path, make_origin: MakeOrigin
+) -> None:
+    add_repo(cfg, str(make_origin("other")))
+    create_context(cfg, "origin", "one")
+    repos.set_default_repo(cfg, "other")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app._repo_for_new() == "other", "contexts panel must use the default"
+            app._repos_table.focus()
+            await pilot.pause()
+            assert app._repo_for_new() == "origin", "repos panel must use the hovered repo"
+
+    run_async(drive())
+
+
+def test_s_toggles_the_default_repo(cfg: Config, registered: Path) -> None:
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._repos_table.focus()
+            await pilot.press("s")
+            assert repos.default_repo(cfg) == "origin"
+            await pilot.press("s")
+            assert repos.default_repo(cfg) is None
+
+    run_async(drive())
 
 
 def test_archive_key_archives_without_a_prompt(cfg: Config, registered: Path) -> None:
