@@ -13,6 +13,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.coordinate import Coordinate
+from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Input, Label
 from textual.widgets.data_table import CellDoesNotExist
@@ -460,8 +461,9 @@ class CtxTui(App[Request | None]):
             cell = await status.git_state(ctx)
         else:
             cell = await status.column_status(ctx, self._cfg.status[index - 1]) or ""
-        # The context may have been deleted or archived since the fetch started.
-        with contextlib.suppress(CellDoesNotExist):
+        # The context may have been deleted or archived since the fetch
+        # started, and the table itself is gone when the app is closing.
+        with contextlib.suppress(CellDoesNotExist, NoMatches):
             self._contexts_table.update_cell(
                 ctx.name, self._status_columns[index], _styled(cell), update_width=True
             )
