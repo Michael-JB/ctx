@@ -308,6 +308,13 @@ class CtxTui(App[Request | None]):
         color: ansi_default;
         text-style: bold;
     }
+    /* A dark cursor row keeps the status colours (picked for the dark
+       background) readable on it. */
+    #contexts > .datatable--cursor, #repos > .datatable--cursor, #archived > .datatable--cursor {
+        background: ansi_bright_black;
+        color: ansi_default;
+        text-style: bold;
+    }
     #dialog {
         padding: 1 2;
         width: 60;
