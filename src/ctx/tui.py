@@ -270,6 +270,11 @@ class CtxTui(App[Request | None]):
         /* A row cursor offers no horizontal scrolling, so wide content
            just clips; a scrollbar would only take up a row. */
         overflow-x: hidden;
+        scrollbar-size-vertical: 1;
+        scrollbar-background: ansi_default;
+        scrollbar-color: ansi_bright_black;
+        scrollbar-color-hover: ansi_white;
+        scrollbar-color-active: ansi_white;
     }
     #contexts:focus, #repos:focus, #archived:focus {
         border: round $primary;
