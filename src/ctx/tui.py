@@ -180,7 +180,7 @@ _COMMON_KEYBINDINGS = (
     ("g / G", "jump to top / bottom"),
     ("h / l / ← / →", "switch panel"),
     ("1 / 2 / 3", "jump to panel"),
-    ("/", "fuzzy filter by name"),
+    ("/", "fuzzy filter by repo and name"),
     ("r", "refresh"),
     ("?", "this help"),
     ("q / ctrl+c", "quit"),
@@ -395,7 +395,7 @@ class CtxTui(App[Request | None]):
         self._spinner_frame = 0
         self._fetching: set[int] = set()
         self._filter_target: _AnyTable | None = None
-        self._filter_rows: list[tuple[str, list[Any]]] = []
+        self._filter_rows: list[tuple[str, str, list[Any]]] = []
 
     def get_css_variables(self) -> dict[str, str]:
         # Textual may call this during App setup, before __init__ assigns _cfg.
@@ -987,9 +987,14 @@ class CtxTui(App[Request | None]):
             return
         table = self._active_table()
         self._filter_target = table
-        self._filter_rows = [
-            (row.key.value or "", table.get_row(row.key)) for row in table.ordered_rows
-        ]
+        # Match on the qualified repo/name where the panel has a repo column.
+        with_repo = table is not self._repos_table
+        self._filter_rows = []
+        for row in table.ordered_rows:
+            key = row.key.value or ""
+            cells = table.get_row(row.key)
+            haystack = f"{cells[1]}/{key}" if with_repo else key
+            self._filter_rows.append((key, haystack, cells))
         filter_input = self.query_one("#filter", Input)
         filter_input.value = ""
         filter_input.display = True
@@ -1009,7 +1014,7 @@ class CtxTui(App[Request | None]):
         rows = self._filter_rows
         self._drop_filter()
         table.clear()
-        for key, cells in rows:
+        for key, _haystack, cells in rows:
             table.add_row(*cells, key=key)
         if selected is not None:
             table.move_cursor(row=table.get_row_index(selected))
@@ -1026,8 +1031,8 @@ class CtxTui(App[Request | None]):
         if table is None:
             return
         table.clear()
-        for key, cells in self._filter_rows:
-            if _fuzzy_match(event.value, key):
+        for key, haystack, cells in self._filter_rows:
+            if _fuzzy_match(event.value, haystack):
                 table.add_row(*cells, key=key)
 
     @on(Input.Submitted, "#filter")

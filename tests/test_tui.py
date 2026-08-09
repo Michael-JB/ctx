@@ -459,6 +459,25 @@ def test_enter_with_no_matches_keeps_filtering(cfg: Config, registered: Path) ->
     run_async(drive())
 
 
+def test_filter_matches_the_repo_too(
+    cfg: Config, registered: Path, make_origin: MakeOrigin
+) -> None:
+    add_repo(cfg, str(make_origin("other")))
+    create_context(cfg, "origin", "alpha")
+    create_context(cfg, "other", "beta")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("slash", "o", "t", "h")
+            table = app._contexts_table
+            assert table.row_count == 1
+            assert app._selected_key(table) == "beta"
+
+    run_async(drive())
+
+
 def test_filter_is_panel_scoped(cfg: Config, registered: Path, make_origin: MakeOrigin) -> None:
     add_repo(cfg, str(make_origin("other")))
     create_context(cfg, "origin", "alpha")
