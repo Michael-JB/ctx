@@ -397,10 +397,20 @@ class CtxTui(App[Request | None]):
         blanks = [""] * (1 + len(self._cfg.status))
         ctx_table = self._contexts_table
         ctx_table.clear()
-        for ctx in contexts.list_contexts(self._cfg):
-            ctx_table.add_row(
-                ctx.name, ctx.repo, contexts.current_branch(ctx), *blanks, key=ctx.name
-            )
+        ctxs = contexts.list_contexts(self._cfg)
+        # Pin the attached context on top: recency is keyed on git activity,
+        # so a busy background session often outranks the one being viewed.
+        current = next((c for c in ctxs if self._mux.is_current(c)), None)
+        if current is not None:
+            ctxs.remove(current)
+            ctxs.insert(0, current)
+        for ctx in ctxs:
+            name = Text(ctx.name, style="green") if ctx is current else ctx.name
+            ctx_table.add_row(name, ctx.repo, contexts.current_branch(ctx), *blanks, key=ctx.name)
+        # Land the cursor on the most recent other context: the common reason
+        # to open the TUI is switching away, not reopening the same session.
+        if current is not None and ctx_table.row_count > 1:
+            ctx_table.move_cursor(row=1)
         repo_table = self._repos_table
         repo_table.clear()
         default = repos.default_repo(self._cfg)
