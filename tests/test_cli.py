@@ -26,6 +26,9 @@ class SpyMultiplexer(Multiplexer):
     def exists(self, ctx: Context) -> bool:
         return ctx.qualified in self.running
 
+    def is_current(self, ctx: Context) -> bool:
+        return False
+
     def open(self, ctx: Context) -> None:
         self.opened.append(ctx.qualified)
 

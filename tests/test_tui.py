@@ -1,7 +1,7 @@
 import asyncio
 import subprocess
 import time
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
@@ -23,11 +23,34 @@ class StubMultiplexer(Multiplexer):
     def exists(self, ctx: Context) -> bool:
         return False
 
+    def is_current(self, ctx: Context) -> bool:
+        return False
+
     def open(self, ctx: Context) -> None:
         pass
 
     def kill(self, ctx: Context) -> None:
         pass
+
+
+class RecordingMultiplexer(StubMultiplexer):
+    def __init__(self, current: str | None = None) -> None:
+        self._current = current
+        self.calls: list[tuple[str, str]] = []
+        self.path_present_at_kill: bool | None = None
+
+    def exists(self, ctx: Context) -> bool:
+        return True
+
+    def is_current(self, ctx: Context) -> bool:
+        return ctx.name == self._current
+
+    def open(self, ctx: Context) -> None:
+        self.calls.append(("open", ctx.name))
+
+    def kill(self, ctx: Context) -> None:
+        self.path_present_at_kill = ctx.path.exists()
+        self.calls.append(("kill", ctx.name))
 
 
 @pytest.fixture
@@ -164,6 +187,61 @@ def test_alerts_show_bracketed_error_text_verbatim(cfg: Config, origin: Path) ->
             assert isinstance(app.screen, AlertScreen)
 
     run_async(drive())
+
+
+def _run_worker(app: CtxTui, start: Callable[[], None]) -> None:
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            start()
+            await app.workers.wait_for_complete()
+
+    run_async(drive())
+
+
+def test_deleting_the_current_context_switches_away_and_kills_last(
+    cfg: Config, registered: Path
+) -> None:
+    for name in ("one", "two"):
+        create_context(cfg, "origin", name)
+    ctx = contexts.find_context(cfg, "one")
+    mux = RecordingMultiplexer(current="one")
+    app = CtxTui(cfg, mux)
+
+    _run_worker(app, lambda: app._delete_context_worker(ctx))
+
+    assert mux.calls == [("open", "two"), ("kill", "one")]
+    assert mux.path_present_at_kill is False, "removal must finish before the kill"
+
+
+def test_deleting_another_context_does_not_switch(cfg: Config, registered: Path) -> None:
+    for name in ("one", "two"):
+        create_context(cfg, "origin", name)
+    ctx = contexts.find_context(cfg, "one")
+    mux = RecordingMultiplexer(current="two")
+    app = CtxTui(cfg, mux)
+
+    _run_worker(app, lambda: app._delete_context_worker(ctx))
+
+    assert mux.calls == [("kill", "one")]
+    with pytest.raises(LookupError):
+        contexts.find_context(cfg, "one")
+
+
+def test_archiving_the_current_context_switches_away_and_kills_last(
+    cfg: Config, registered: Path
+) -> None:
+    for name in ("one", "two"):
+        create_context(cfg, "origin", name)
+    ctx = contexts.find_context(cfg, "one")
+    mux = RecordingMultiplexer(current="one")
+    app = CtxTui(cfg, mux)
+
+    _run_worker(app, lambda: app._archive_worker(ctx))
+
+    assert mux.calls == [("open", "two"), ("kill", "one")]
+    assert mux.path_present_at_kill is False, "the move must finish before the kill"
+    assert contexts.find_archived(cfg, "one")
 
 
 def test_reload_keeps_the_ui_responsive(cfg: Config, origin: Path) -> None:
