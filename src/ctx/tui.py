@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import os
 import subprocess
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import partial
 from typing import ClassVar
@@ -798,25 +798,38 @@ class CtxTui(App[Request | None]):
 
     @work(thread=True)
     def _archive_worker(self, ctx: Context) -> None:
+        self._teardown(ctx, lambda: contexts.archive_context(self._cfg, ctx))
+
+    @work(thread=True)
+    def _delete_context_worker(self, ctx: Context) -> None:
+        self._teardown(ctx, lambda: contexts.remove_context(ctx))
+
+    def _teardown(self, ctx: Context, remove: Callable[[], object]) -> None:
         try:
+            if self._mux.exists(ctx) and self._mux.is_current(ctx):
+                # Killing our own session takes the TUI (and the client) down
+                # with it, so land the client elsewhere and kill last.
+                self._switch_away(ctx)
+                remove()
+                self._mux.kill(ctx)
+                return
             if self._mux.exists(ctx):
                 self._mux.kill(ctx)
-            contexts.archive_context(self._cfg, ctx)
+            remove()
         except (OSError, subprocess.CalledProcessError) as exc:
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
         self.call_from_thread(self._reload)
         self.call_from_thread(self._finish_busy)
 
-    @work(thread=True)
-    def _delete_context_worker(self, ctx: Context) -> None:
-        try:
-            if self._mux.exists(ctx):
-                self._mux.kill(ctx)
-            contexts.remove_context(ctx)
-        except (OSError, subprocess.CalledProcessError) as exc:
-            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
-        self.call_from_thread(self._reload)
-        self.call_from_thread(self._finish_busy)
+    def _switch_away(self, ctx: Context) -> None:
+        """Re-point the client at the most recent other running session."""
+        for other in contexts.list_contexts(self._cfg):
+            if other.name == ctx.name or not self._mux.exists(other):
+                continue
+            with contextlib.suppress(MultiplexerError, subprocess.CalledProcessError):
+                with _silenced_stderr():
+                    self._mux.open(other)
+                return
 
     def _delete_repo(self) -> None:
         name = self._selected_key(self._repos_table)

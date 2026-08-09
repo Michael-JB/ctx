@@ -62,6 +62,11 @@ class TmuxMultiplexer(Multiplexer):
         )
         return result.returncode == 0
 
+    def is_current(self, ctx: Context) -> bool:
+        if not os.environ.get("TMUX"):
+            return False
+        return _tmux("display-message", "-p", "#S") == _session_name(ctx)
+
     def open(self, ctx: Context) -> None:
         session = _session_name(ctx)
         if not self.exists(ctx):

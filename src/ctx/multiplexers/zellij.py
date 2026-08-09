@@ -100,6 +100,9 @@ class ZellijMultiplexer(Multiplexer):
             return False
         return _session_name(ctx) in result.stdout.splitlines()
 
+    def is_current(self, ctx: Context) -> bool:
+        return os.environ.get("ZELLIJ_SESSION_NAME") == _session_name(ctx)
+
     def open(self, ctx: Context) -> None:
         session = _session_name(ctx)
         exists = self.exists(ctx)

@@ -42,6 +42,33 @@ def test_zellij_shortened_session_names_stay_unique(monkeypatch) -> None:
     assert zellij._session_name(first) != zellij._session_name(second)
 
 
+def test_zellij_is_current_matches_the_session_env(monkeypatch) -> None:
+    ctx = Context(repo="repo", name="a", path=Path("/w"))
+    mux = zellij.ZellijMultiplexer(Pane())
+
+    monkeypatch.setenv("ZELLIJ_SESSION_NAME", zellij._session_name(ctx))
+    assert mux.is_current(ctx)
+
+    monkeypatch.setenv("ZELLIJ_SESSION_NAME", "elsewhere")
+    assert not mux.is_current(ctx)
+
+
+def test_tmux_is_current_is_false_outside_tmux(monkeypatch) -> None:
+    monkeypatch.delenv("TMUX", raising=False)
+    ctx = Context(repo="repo", name="a", path=Path("/w"))
+
+    assert not tmux.TmuxMultiplexer(Pane()).is_current(ctx)
+
+
+def test_tmux_is_current_compares_the_attached_session(monkeypatch) -> None:
+    monkeypatch.setenv("TMUX", "/tmp/tmux-1/default,1,0")
+    monkeypatch.setattr(tmux, "_tmux", lambda *args: "repo--a")
+    mux = tmux.TmuxMultiplexer(Pane())
+
+    assert mux.is_current(Context(repo="repo", name="a", path=Path("/w")))
+    assert not mux.is_current(Context(repo="repo", name="b", path=Path("/w")))
+
+
 def test_zellij_layout_puts_pane_in_cwd() -> None:
     out = zellij._render_layout(Pane(), Path("/w"))
 
