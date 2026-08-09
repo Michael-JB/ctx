@@ -137,8 +137,9 @@ any `[[status]]` replaces the default.
 | `pending` | CI still running | `◌` yellow |
 | `ready` | open, mergeable, CI green or absent | `✔` green |
 
-Icons are per-column configurable (e.g. for nerd fonts); colour keys on the
-state, not the icon:
+Icons and colours are per-column configurable (e.g. for nerd fonts and
+truecolor themes). Both key on a cell's leading word, so timed cells like
+`working 12m` are covered too:
 
 ```toml
 [[status]]
@@ -146,6 +147,8 @@ name = "pr"
 builtin = "github"
 [status.icons]
 merged = "M"
+[status.styles]
+merged = "bold #c099ff"
 ```
 
 The narrower `github-pr` (open / draft / merged / closed) and `github-checks`

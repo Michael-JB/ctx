@@ -88,6 +88,20 @@ def test_command_cells_show_their_word_unless_icons_are_configured() -> None:
     assert status.cell_icon(StatusColumn("claude", command="echo working"), "working") == "working"
 
 
+def test_cell_icons_keep_the_detail_after_the_word() -> None:
+    column = StatusColumn("claude", builtin="agent", icons={"working": "▶"})
+
+    assert status.cell_icon(column, "working 12m") == "▶ 12m"
+
+
+def test_cell_style_prefers_the_column_override() -> None:
+    column = StatusColumn("claude", builtin="agent", styles={"working": "bold #ff966c"})
+
+    assert status.cell_style(column, "working 12m") == "bold #ff966c"
+    assert status.cell_style(column, "idle") == "bold bright_yellow"
+    assert status.cell_style(column, "anything-else") is None
+
+
 def test_command_status_returns_the_first_output_line(ctx: contexts.Context) -> None:
     assert run(status.command_status(ctx, "printf 'working\\nextra'")) == "working"
 
@@ -129,6 +143,7 @@ def test_agent_status_shows_how_long_active_states_have_run(ctx: contexts.Contex
 
 def test_elapsed_formats_by_magnitude() -> None:
     assert status._elapsed(42) == "42s"
+    assert status._elapsed(99) == "1m"
     assert status._elapsed(300) == "5m"
     assert status._elapsed(3900) == "1h5m"
 

@@ -131,12 +131,14 @@ async def agent_status(ctx: Context) -> str | None:
 
 
 def _elapsed(seconds: float) -> str:
-    minutes = int(seconds) // 60
-    if minutes < 1:
-        return f"{int(seconds)}s"
-    if minutes < 60:
-        return f"{minutes}m"
-    return f"{minutes // 60}h{minutes % 60}m"
+    """Seconds only under the first minute: a table full of ticking
+    second-counters reads as nervous."""
+    whole = int(seconds)
+    if whole < 60:
+        return f"{whole}s"
+    if whole < 3600:
+        return f"{whole // 60}m"
+    return f"{whole // 3600}h{whole % 3600 // 60}m"
 
 
 def github_repo(url: str) -> tuple[str, str]:
@@ -252,9 +254,22 @@ _DEFAULT_ICONS: dict[str, dict[str, str]] = {
 
 
 def cell_icon(column: StatusColumn, cell: str) -> str:
-    """A cell's display form: the column's icon for it, else the cell itself."""
+    """A cell's display form: its leading word mapped through the column's icons.
+
+    Any detail after the word (e.g. the elapsed time in "working 1m30s")
+    is kept as is.
+    """
     icons = {**_DEFAULT_ICONS.get(column.builtin or "", {}), **column.icons}
-    return icons.get(cell, cell)
+    word, _, rest = cell.partition(" ")
+    display = icons.get(word, word)
+    return f"{display} {rest}" if rest else display
+
+
+def cell_style(column: StatusColumn, cell: str) -> str | None:
+    """A cell's colour: the column's override for its leading word, else the
+    shared vocabulary."""
+    word = cell.partition(" ")[0]
+    return {**STATUS_STYLES, **column.styles}.get(word)
 
 
 # Colours for well-known status words, keyed by value so that command

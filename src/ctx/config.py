@@ -38,6 +38,7 @@ class StatusColumn:
     builtin: str | None = None
     interval: float | None = None
     icons: Mapping[str, str] = field(default_factory=dict)
+    styles: Mapping[str, str] = field(default_factory=dict)
 
 
 # Configuring [[status]] replaces the default entirely.
@@ -113,6 +114,14 @@ def _parse_theme(data: object) -> Theme:
     return Theme(**data)
 
 
+def _parse_string_table(data: object, what: str) -> dict[str, str]:
+    if not isinstance(data, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in data.items()
+    ):
+        raise ConfigError(f"status {what} must be a table of strings")
+    return data
+
+
 def _parse_status(data: object) -> tuple[StatusColumn, ...]:
     if not isinstance(data, list):
         raise ConfigError("status must be an array of tables ([[status]])")
@@ -130,11 +139,8 @@ def _parse_status(data: object) -> tuple[StatusColumn, ...]:
             isinstance(interval, bool) or not isinstance(interval, int | float) or interval < 0
         ):
             raise ConfigError("status interval must be a non-negative number of seconds")
-        icons = entry.get("icons", {})
-        if not isinstance(icons, dict) or not all(
-            isinstance(key, str) and isinstance(value, str) for key, value in icons.items()
-        ):
-            raise ConfigError("status icons must be a table of strings")
+        icons = _parse_string_table(entry.get("icons", {}), "icons")
+        styles = _parse_string_table(entry.get("styles", {}), "styles")
         columns.append(
             StatusColumn(
                 str(entry["name"]),
@@ -142,6 +148,7 @@ def _parse_status(data: object) -> tuple[StatusColumn, ...]:
                 builtin=str(entry["builtin"]) if "builtin" in entry else None,
                 interval=float(interval) if interval is not None else None,
                 icons=icons,
+                styles=styles,
             )
         )
     names = [c.name for c in columns]

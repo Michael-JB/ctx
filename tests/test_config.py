@@ -112,6 +112,39 @@ def test_status_rejects_non_string_icons(tmp_path: Path) -> None:
         load_config(path)
 
 
+def test_status_styles_override(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path,
+        """
+        [[status]]
+        name = "claude"
+        builtin = "agent"
+        [status.styles]
+        working = "bold #ff966c"
+        """,
+    )
+
+    cfg = load_config(path)
+
+    assert cfg.status[0].styles == {"working": "bold #ff966c"}
+
+
+def test_status_rejects_non_string_styles(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path,
+        """
+        [[status]]
+        name = "claude"
+        builtin = "agent"
+        [status.styles]
+        working = 3
+        """,
+    )
+
+    with pytest.raises(ConfigError, match="styles"):
+        load_config(path)
+
+
 def test_status_requires_a_name(tmp_path: Path) -> None:
     path = write_config(tmp_path, '[[status]]\ncommand = "true"')
 
