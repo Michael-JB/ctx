@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from collections.abc import Coroutine
 from dataclasses import replace
 from pathlib import Path
@@ -107,9 +108,29 @@ def test_command_status_swallows_failures_and_silence(ctx: contexts.Context) -> 
 
 
 def test_agent_status_reads_the_status_file(ctx: contexts.Context) -> None:
-    (ctx.path / ".git" / "agent-status").write_text("working\n")
+    (ctx.path / ".git" / "agent-status").write_text("blocked\n")
 
-    assert run(status.agent_status(ctx)) == "working"
+    assert run(status.agent_status(ctx)) == "blocked"
+
+
+def test_agent_status_shows_how_long_active_states_have_run(ctx: contexts.Context) -> None:
+    """The hooks rewrite the file only on change, so mtime is the state's start."""
+    path = ctx.path / ".git" / "agent-status"
+    path.write_text("working\n")
+    started = time.time() - 300
+    os.utime(path, (started, started))
+
+    assert run(status.agent_status(ctx)) == "working 5m"
+
+    path.write_text("monitoring\n")
+    os.utime(path, (started, started))
+    assert run(status.agent_status(ctx)) == "monitoring 5m"
+
+
+def test_elapsed_formats_by_magnitude() -> None:
+    assert status._elapsed(42) == "42s"
+    assert status._elapsed(300) == "5m"
+    assert status._elapsed(3900) == "1h5m"
 
 
 def test_agent_status_without_a_file_is_empty(ctx: contexts.Context) -> None:
@@ -194,7 +215,7 @@ def test_status_cells_hold_git_state_and_column_output(cfg: Config, ctx: context
     (ctx.path / ".git" / "agent-status").write_text("working\n")
     (ctx.path / "scratch.txt").write_text("x\n")
 
-    assert run(status.status_cells(cfg, ctx)) == ["*", "working", ""]
+    assert run(status.status_cells(cfg, ctx)) == ["*", "working 0s", ""]
 
 
 def test_status_cells_without_columns_report_git_state(cfg: Config, ctx: contexts.Context) -> None:
