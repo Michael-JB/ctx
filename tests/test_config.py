@@ -73,10 +73,13 @@ def test_status_columns_override(tmp_path: Path) -> None:
     )
 
 
-def test_github_status_column_is_on_by_default(tmp_path: Path) -> None:
+def test_agent_and_github_status_columns_are_on_by_default(tmp_path: Path) -> None:
     cfg = load_config(tmp_path / "missing.toml")
 
-    assert cfg.status == (StatusColumn("pr", builtin="github"),)
+    assert cfg.status == (
+        StatusColumn("agent", builtin="agent"),
+        StatusColumn("pr", builtin="github"),
+    )
 
 
 def test_status_icons_override(tmp_path: Path) -> None:

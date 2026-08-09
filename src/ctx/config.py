@@ -41,8 +41,9 @@ class StatusColumn:
     styles: Mapping[str, str] = field(default_factory=dict)
 
 
-# Configuring [[status]] replaces the default entirely.
-DEFAULT_STATUS = (StatusColumn("pr", builtin="github"),)
+# Configuring [[status]] replaces the default entirely. Both defaults stay
+# quiet until their data source exists (agent hooks, authenticated gh).
+DEFAULT_STATUS = (StatusColumn("agent", builtin="agent"), StatusColumn("pr", builtin="github"))
 
 
 @dataclass(frozen=True)
