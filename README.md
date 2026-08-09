@@ -22,9 +22,9 @@ uv tool install ctx-tui
 
 ## Setup
 
-Fastest path: ask your agent to set `ctx` up ("set up ctx following its
-README"). This section is everything it, or you, needs to do. `ctx` works
-with zero config; these three steps unlock the rest.
+`ctx` runs fine with zero config; the three steps below are the full setup.
+The fastest way through them is to not do them yourself: tell your agent
+"set up ctx following its README" and let it work through this section.
 
 **1. Config**, at `~/.config/ctx/config.toml` (respects `$XDG_CONFIG_HOME`):
 pick your multiplexer and the panes every context session opens with.
@@ -46,9 +46,9 @@ focus = true
 **2. Agent status hooks.** The AGENT column (on by default) reads
 `.git/agent-status` from each checkout. For Claude Code, merge these hooks
 into the `hooks` table of `~/.claude/settings.json`, keeping any existing
-entries. States are working / monitoring / blocked / idle; the file is
-rewritten only when the state changes, so its mtime dates the state and
-active states show their age (`working 12m`).
+entries. States are working / monitoring / blocked / idle. The hooks rewrite
+the file only when the state changes, which is what lets active states show
+how long they've been at it (`working 12m`).
 
 ```json
 {
@@ -63,8 +63,8 @@ active states show their age (`working 12m`).
 ```
 
 **3. Instant picker.** Bind a key that opens the TUI as an overlay in
-whatever session you're in; picking a context re-points the client, so no
-dedicated picker session is needed. zellij (`config.kdl`):
+whatever session you're in. Picking a context re-points the client, so you
+never need a dedicated picker session. zellij (`config.kdl`):
 
 ```kdl
 bind "Alt c" {
