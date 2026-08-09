@@ -28,6 +28,10 @@ class Multiplexer(ABC):
         """Whether a session for this context is running."""
 
     @abstractmethod
+    def is_current(self, ctx: Context) -> bool:
+        """Whether this process runs inside the context's session."""
+
+    @abstractmethod
     def open(self, ctx: Context) -> None:
         """Create the context's session if needed, then attach to it."""
 
