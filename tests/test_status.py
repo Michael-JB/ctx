@@ -41,6 +41,62 @@ def test_builtins_match_the_config_allowlist() -> None:
     assert set(status.BUILTINS) == set(config.BUILTIN_STATUS)
 
 
+@pytest.mark.parametrize(
+    ("raw", "state"),
+    [
+        ("merged false mergeable none", "merged"),
+        ("closed false conflicting failure", "closed"),
+        ("open false conflicting success", "conflicts"),
+        ("open true mergeable failure", "failing"),
+        ("open false mergeable error", "failing"),
+        ("open true mergeable success", "draft"),
+        ("open false mergeable pending", "pending"),
+        ("open false unknown success", "ready"),
+        ("open false mergeable none", "ready"),
+        ("garbage", None),
+    ],
+)
+def test_github_state_collapses_to_the_most_urgent_fact(raw: str, state: str | None) -> None:
+    assert status._github_state(raw) == state
+
+
+def test_github_status_combines_the_query_fields(
+    ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_gh(tmp_path, monkeypatch, "echo 'OPEN false MERGEABLE FAILURE'")
+
+    assert run(status.github_status(ctx)) == "failing"
+
+
+def test_github_status_without_a_pr_is_empty(
+    ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_gh(tmp_path, monkeypatch, "exit 0")
+
+    assert run(status.github_status(ctx)) is None
+
+
+def test_github_cells_render_as_icons() -> None:
+    column = StatusColumn("pr", builtin="github")
+
+    assert status.cell_icon(column, "merged") == "◆"
+    assert status.cell_icon(column, "ready") == "✔"
+
+
+def test_configured_icons_override_the_defaults() -> None:
+    column = StatusColumn("pr", builtin="github", icons={"merged": "M"})
+
+    assert status.cell_icon(column, "merged") == "M"
+    assert status.cell_icon(column, "ready") == "✔"
+
+
+def test_command_cells_show_their_word_unless_icons_are_configured() -> None:
+    column = StatusColumn("claude", command="echo working", icons={"working": "▶"})
+
+    assert status.cell_icon(column, "working") == "▶"
+    assert status.cell_icon(StatusColumn("claude", command="echo working"), "working") == "working"
+
+
 def test_command_status_returns_the_first_output_line(ctx: contexts.Context) -> None:
     assert run(status.command_status(ctx, "printf 'working\\nextra'")) == "working"
 

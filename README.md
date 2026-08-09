@@ -106,7 +106,36 @@ status integrations.
 
 #### GitHub builtin
 
-These require an authenticated `gh` in the checkout.
+These require an authenticated `gh` in the checkout (without one the cells
+stay blank).
+
+The `github` builtin collapses the branch's latest PR into one cell, showing
+its most urgent fact. It is on by default as a column named PR; configuring
+any `[[status]]` replaces the default.
+
+| state | meaning | shown as |
+|---|---|---|
+| `merged` | PR merged | `◆` magenta |
+| `closed` | PR closed unmerged | `⊘` red |
+| `conflicts` | merge conflicts | `⚠` yellow |
+| `failing` | CI failure on the head commit | `✖` red |
+| `draft` | draft PR | `✎` dim |
+| `pending` | CI still running | `◌` yellow |
+| `ready` | open, mergeable, CI green or absent | `✔` green |
+
+Icons are per-column configurable (e.g. for nerd fonts); colour keys on the
+state, not the icon:
+
+```toml
+[[status]]
+name = "pr"
+builtin = "github"
+[status.icons]
+merged = "M"
+```
+
+The narrower `github-pr` (open / draft / merged / closed) and `github-checks`
+(success / failure / pending) builtins remain for a two-column split:
 
 ```toml
 [[status]]

@@ -1,6 +1,7 @@
 import os
 import tomllib
-from dataclasses import dataclass, replace
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ctx.layout import DEFAULT_LAYOUT, Node, parse_layout
@@ -20,7 +21,7 @@ class ConfigError(Exception):
     pass
 
 
-BUILTIN_STATUS = ("agent", "github-checks", "github-pr")
+BUILTIN_STATUS = ("agent", "github", "github-checks", "github-pr")
 
 
 @dataclass(frozen=True)
@@ -28,13 +29,18 @@ class StatusColumn:
     """A named status column in listings, filled by a command or a built-in.
 
     `interval` is the column's sampling period in seconds; None picks the
-    provider's default.
+    provider's default. `icons` maps status words to display forms.
     """
 
     name: str
     command: str | None = None
     builtin: str | None = None
     interval: float | None = None
+    icons: Mapping[str, str] = field(default_factory=dict)
+
+
+# Configuring [[status]] replaces the default entirely.
+DEFAULT_STATUS = (StatusColumn("pr", builtin="github"),)
 
 
 @dataclass(frozen=True)
@@ -45,7 +51,7 @@ class Config:
     branch_prefix: str = ""
     multiplexer: MultiplexerKind = MultiplexerKind.TMUX
     layout: Node = DEFAULT_LAYOUT
-    status: tuple[StatusColumn, ...] = ()
+    status: tuple[StatusColumn, ...] = DEFAULT_STATUS
 
 
 def load_config(path: Path = CONFIG_PATH) -> Config:
@@ -93,12 +99,18 @@ def _parse_status(data: object) -> tuple[StatusColumn, ...]:
             isinstance(interval, bool) or not isinstance(interval, int | float) or interval < 0
         ):
             raise ConfigError("status interval must be a non-negative number of seconds")
+        icons = entry.get("icons", {})
+        if not isinstance(icons, dict) or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in icons.items()
+        ):
+            raise ConfigError("status icons must be a table of strings")
         columns.append(
             StatusColumn(
                 str(entry["name"]),
                 command=str(entry["command"]) if "command" in entry else None,
                 builtin=str(entry["builtin"]) if "builtin" in entry else None,
                 interval=float(interval) if interval is not None else None,
+                icons=icons,
             )
         )
     names = [c.name for c in columns]

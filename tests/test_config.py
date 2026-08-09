@@ -73,6 +73,45 @@ def test_status_columns_override(tmp_path: Path) -> None:
     )
 
 
+def test_github_status_column_is_on_by_default(tmp_path: Path) -> None:
+    cfg = load_config(tmp_path / "missing.toml")
+
+    assert cfg.status == (StatusColumn("pr", builtin="github"),)
+
+
+def test_status_icons_override(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path,
+        """
+        [[status]]
+        name = "pr"
+        builtin = "github"
+        [status.icons]
+        merged = "M"
+        """,
+    )
+
+    cfg = load_config(path)
+
+    assert cfg.status[0].icons == {"merged": "M"}
+
+
+def test_status_rejects_non_string_icons(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path,
+        """
+        [[status]]
+        name = "pr"
+        builtin = "github"
+        [status.icons]
+        merged = 3
+        """,
+    )
+
+    with pytest.raises(ConfigError, match="icons"):
+        load_config(path)
+
+
 def test_status_requires_a_name(tmp_path: Path) -> None:
     path = write_config(tmp_path, '[[status]]\ncommand = "true"')
 
