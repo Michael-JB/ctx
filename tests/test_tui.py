@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from conftest import MakeOrigin, add_repo, create_context
+from textual.coordinate import Coordinate
 from textual.widgets import Button
 
 from ctx import contexts, repos
@@ -211,6 +212,37 @@ def test_archiving_another_context_does_not_switch(cfg: Config, registered: Path
     assert mux.calls == [("kill", "one")]
     with pytest.raises(LookupError):
         contexts.find_context(cfg, "one")
+
+
+def test_current_context_is_pinned_and_cursor_starts_below_it(
+    cfg: Config, registered: Path
+) -> None:
+    for name in ("one", "two"):
+        create_context(cfg, "origin", name)
+    app = CtxTui(cfg, RecordingMultiplexer(current="one"))
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            table = app._contexts_table
+            first = table.coordinate_to_cell_key(Coordinate(0, 0)).row_key.value
+            assert first == "one", "the attached context must be the top row"
+            assert table.cursor_row == 1, "the cursor must start on the next context"
+
+    run_async(drive())
+
+
+def test_cursor_starts_on_top_without_a_current_context(cfg: Config, registered: Path) -> None:
+    for name in ("one", "two"):
+        create_context(cfg, "origin", name)
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app._contexts_table.cursor_row == 0
+
+    run_async(drive())
 
 
 def test_new_context_uses_the_default_repo_off_the_repos_panel(
