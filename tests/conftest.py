@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -64,6 +65,16 @@ def make_origin(tmp_path: Path) -> MakeOrigin:
 @pytest.fixture
 def origin(make_origin: MakeOrigin) -> Path:
     return make_origin()
+
+
+def fake_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script: str) -> None:
+    """Shadow gh on PATH with a stub script."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    gh = bin_dir / "gh"
+    gh.write_text(f"#!/bin/sh\n{script}\n")
+    gh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
 
 
 def commit_file(repo: Path, name: str, content: str = "x\n") -> None:

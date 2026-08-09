@@ -149,7 +149,8 @@ class AlertScreen(ModalScreen[None]):
 
 _PANEL_KEYBINDINGS: dict[str, tuple[tuple[str, str], ...]] = {
     "contexts": (
-        ("enter / space / o", "open context"),
+        ("enter / space", "open context"),
+        ("o", "open the PR on GitHub"),
         ("n", "new context"),
         ("N", "new context from a base branch"),
         ("a", "archive context"),
@@ -242,8 +243,8 @@ class ContextsTable(DataTable[str | Text]):
     """Contexts panel; its bindings surface in the footer while focused."""
 
     BINDINGS: ClassVar = [
-        ("o", "app.open", "Open"),
-        Binding("space", "app.open", show=False),
+        Binding("space", "app.open", "Open", key_display="space"),
+        ("o", "app.open_pr", "Open PR"),
         ("a", "app.archive", "Archive"),
         ("d", "app.delete", "Delete"),
         *_PANEL_NAV_BINDINGS,
@@ -807,6 +808,27 @@ class CtxTui(App[Request | None]):
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
         self.call_from_thread(self._reload)
         self.call_from_thread(self._finish_busy)
+
+    def action_open_pr(self) -> None:
+        if self._active_table() is not self._contexts_table:
+            return
+        ctx = self._selected_context()
+        if ctx is None:
+            return
+        self._open_pr_worker(ctx)
+
+    @work(thread=True)
+    def _open_pr_worker(self, ctx: Context) -> None:
+        try:
+            result = subprocess.run(
+                ["gh", "pr", "view", "--web"], cwd=ctx.path, capture_output=True, text=True
+            )
+        except OSError as exc:
+            self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
+            return
+        if result.returncode != 0:
+            message = result.stderr.strip() or "could not open the PR"
+            self.call_from_thread(self.push_screen, AlertScreen(message))
 
     def action_archive(self) -> None:
         """Archive the selected context straight away; it is cheap to undo."""
