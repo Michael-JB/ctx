@@ -20,6 +20,68 @@ Disclaimer: this is fully vibe-coded.
 uv tool install ctx-tui
 ```
 
+## Setup
+
+Fastest path: ask your agent to set `ctx` up ("set up ctx following its
+README"). This section is everything it, or you, needs to do. `ctx` works
+with zero config; these three steps unlock the rest.
+
+**1. Config**, at `~/.config/ctx/config.toml` (respects `$XDG_CONFIG_HOME`):
+pick your multiplexer and the panes every context session opens with.
+
+```toml
+multiplexer = "zellij"   # or "tmux" (the default); zellij needs >= 0.44
+
+[layout]
+split = "row"
+
+[[layout.panes]]
+command = "lazygit"
+
+[[layout.panes]]
+command = "claude"
+focus = true
+```
+
+**2. Agent status hooks.** The AGENT column (on by default) reads
+`.git/agent-status` from each checkout. For Claude Code, merge these hooks
+into the `hooks` table of `~/.claude/settings.json`, keeping any existing
+entries. States are working / monitoring / blocked / idle; the file is
+rewritten only when the state changes, so its mtime dates the state and
+active states show their age (`working 12m`).
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "[ -d .git ] || exit 0; [ \"$(cat .git/agent-status 2>/dev/null)\" = working ] || echo working > .git/agent-status"}]}],
+    "PreToolUse": [{"hooks": [{"type": "command", "command": "[ -d .git ] || exit 0; state=$(jq -r 'if .tool_name == \"Monitor\" or .tool_name == \"ScheduleWakeup\" then \"monitoring\" else \"working\" end' 2>/dev/null); [ -n \"$state\" ] || state=working; [ \"$(cat .git/agent-status 2>/dev/null)\" = \"$state\" ] || echo \"$state\" > .git/agent-status"}]}],
+    "Notification": [{"matcher": "permission_prompt|elicitation_dialog|agent_needs_input", "hooks": [{"type": "command", "command": "[ -d .git ] && echo blocked > .git/agent-status || true"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "[ -d .git ] && echo idle > .git/agent-status || true"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "rm -f .git/agent-status"}]}]
+  }
+}
+```
+
+**3. Instant picker.** Bind a key that opens the TUI as an overlay in
+whatever session you're in; picking a context re-points the client, so no
+dedicated picker session is needed. zellij (`config.kdl`):
+
+```kdl
+bind "Alt c" {
+    Run "ctx" "tui" "--exit" {
+        floating true
+        close_on_exit true
+    }
+}
+```
+
+tmux: `bind -n M-c display-popup -E "ctx tui --exit"`.
+
+**Verify:** `ctx list` shows NAME / REPO / BRANCH / STATUS / AGENT / PR
+columns. With a repo added and a Claude session running in a context, AGENT
+shows e.g. `working 3m` after a prompt; PR fills in once the branch has a PR
+(needs an authenticated `gh`).
+
 ## Usage
 
 Run `ctx` to manage contexts and repos interactively in the TUI (`?` lists
@@ -33,7 +95,20 @@ ctx archive my-cool-feature           # set it aside for later...
 ctx rm my-cool-feature                # ...or tear it down
 ```
 
-More detail:
+Out of the box, in the TUI:
+
+- Keys are lazygit-style and panel-scoped; `?` shows the current panel's.
+- The attached context is pinned on top with the cursor on the row below, so
+  enter right after opening switches to your previous session.
+- `a` archives instantly (cheap to undo with `u`); `d` deletes with a
+  confirmation that warns about uncommitted or unpushed work.
+- Deleting or archiving the session you're in switches you to the next one.
+- `o` opens the context's PR in the browser.
+- `s` on a repo makes it the default for new contexts, wherever `n` is
+  pressed; the repos panel itself creates in the hovered repo.
+- `/` fuzzy-filters the focused panel by name.
+
+More CLI:
 
 ```sh
 # List contexts with their repo, branch, and status:
@@ -44,6 +119,11 @@ ctx new papaya-nvim follow-up -b other-base
 
 # Re-attach to a context, unarchiving it and recreating its session if needed:
 ctx open my-cool-feature
+
+# Show, set, or clear the default repo for new contexts:
+ctx repo default
+ctx repo default papaya-nvim
+ctx repo default --clear
 
 # List registered repos, or remove some (their contexts are left alone):
 ctx repo list
@@ -74,13 +154,11 @@ multiplexer = "tmux"                          # or "zellij" (requires zellij >= 
 
 ### Multiplexer layout
 
-`ctx` supports `tmux` and `zellij` multiplexers. Customise the layout of a
-`ctx` session via the `layout` table in the config:
+The `layout` table is a tree of panes and "row"/"column" splits ("row" = side
+by side, "column" = stacked). A pane runs `command` (default: a shell) in the
+checkout; at most one pane may set `focus`. A nested example:
 
 ```toml
-# The pane layout: a tree of panes and "row"/"column" splits ("row" = side
-# by side, "column" = stacked). A pane runs `command` (default: a shell) in
-# the checkout; at most one pane may set `focus`.
 [layout]
 split = "row"
 
@@ -113,19 +191,17 @@ border_inactive = "#589ed7"
 ### Status columns
 
 The STATUS column shows the git state: `*` for uncommitted changes, `↑n` for n
-unpushed commits.
+unpushed commits. Two more columns are on by default: AGENT (the `agent`
+builtin, fed by the hooks in Setup) and PR (the `github` builtin).
 
-You can add further columns via `[[status]]`. `ctx` comes with some builtin
-status integrations.
+Configuring any `[[status]]` replaces the defaults entirely, so re-declare
+the columns you want to keep.
 
 #### GitHub builtin
 
-These require an authenticated `gh` in the checkout (without one the cells
-stay blank).
-
-The `github` builtin collapses the branch's latest PR into one cell, showing
-its most urgent fact. It is on by default as a column named PR; configuring
-any `[[status]]` replaces the default.
+Requires an authenticated `gh` in the checkout (without one the cells stay
+blank). The `github` builtin collapses the branch's latest PR into one cell,
+showing its most urgent fact:
 
 | state | meaning | shown as |
 |---|---|---|
@@ -137,7 +213,12 @@ any `[[status]]` replaces the default.
 | `pending` | CI still running | `◌` yellow |
 | `ready` | open, mergeable, CI green or absent | `✔` green |
 
-Icons and colours are per-column configurable (e.g. for nerd fonts and
+The narrower `github-pr` (open / draft / merged / closed) and `github-checks`
+(success / failure / pending) builtins remain for a two-column split.
+
+#### Icons and colours
+
+Any column's icons and colours are configurable (e.g. for nerd fonts and
 truecolor themes). Both key on a cell's leading word, so timed cells like
 `working 12m` are covered too:
 
@@ -151,52 +232,11 @@ merged = "M"
 merged = "bold #c099ff"
 ```
 
-The narrower `github-pr` (open / draft / merged / closed) and `github-checks`
-(success / failure / pending) builtins remain for a two-column split:
-
-```toml
-[[status]]
-name = "pr"
-builtin = "github-pr"      # the branch's latest PR: open / draft / merged / closed
-
-[[status]]
-name = "ci"
-builtin = "github-checks"  # checks on the branch's open PR: success / failure / pending
-```
-
-#### Agent builtin
-
-```toml
-[[status]]
-name = "claude"
-builtin = "agent"          # .git/agent-status, hook-written by your agent (see below)
-```
-
-The agent builtin reads its status from `.git/agent-status`. Make your agent
-write its state there, rewriting the file only when the state changes: the
-file's mtime then marks when the state began, and active states (working,
-monitoring) display their age, e.g. `working 12m`.
-
-For Claude Code, you can add these lifecycle hooks to your
-`~/.claude/settings.json`; tool calls that wait rather than work (Monitor,
-ScheduleWakeup) read as monitoring:
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "[ -d .git ] || exit 0; [ \"$(cat .git/agent-status 2>/dev/null)\" = working ] || echo working > .git/agent-status"}]}],
-    "PreToolUse": [{"hooks": [{"type": "command", "command": "[ -d .git ] || exit 0; state=$(jq -r 'if .tool_name == \"Monitor\" or .tool_name == \"ScheduleWakeup\" then \"monitoring\" else \"working\" end' 2>/dev/null); [ -n \"$state\" ] || state=working; [ \"$(cat .git/agent-status 2>/dev/null)\" = \"$state\" ] || echo \"$state\" > .git/agent-status"}]}],
-    "Notification": [{"matcher": "permission_prompt|elicitation_dialog|agent_needs_input", "hooks": [{"type": "command", "command": "[ -d .git ] && echo blocked > .git/agent-status || true"}]}],
-    "Stop": [{"hooks": [{"type": "command", "command": "[ -d .git ] && echo idle > .git/agent-status || true"}]}],
-    "SessionEnd": [{"hooks": [{"type": "command", "command": "rm -f .git/agent-status"}]}]
-  }
-}
-```
-
 #### Custom
 
 You can also add your own status column via a command that runs in the
-checkout:
+checkout. Agents other than Claude Code can feed the `agent` builtin by
+writing their state word to `.git/agent-status` as described in Setup.
 
 ```toml
 [[status]]
