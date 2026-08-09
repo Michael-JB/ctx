@@ -170,14 +170,19 @@ builtin = "agent"          # .git/agent-status, hook-written by your agent (see 
 ```
 
 The agent builtin reads its status from `.git/agent-status`. Make your agent
-write its state there. For example, for Claude Code, you can add these
-lifecycle hooks to your `~/.claude/settings.json`:
+write its state there, rewriting the file only when the state changes: the
+file's mtime then marks when the state began, and active states (working,
+monitoring) display their age, e.g. `working 12m`.
+
+For Claude Code, you can add these lifecycle hooks to your
+`~/.claude/settings.json`; tool calls that wait rather than work (Monitor,
+ScheduleWakeup) read as monitoring:
 
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "[ -d .git ] && echo working > .git/agent-status || true"}]}],
-    "PreToolUse": [{"hooks": [{"type": "command", "command": "[ -d .git ] && echo working > .git/agent-status || true"}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "[ -d .git ] || exit 0; [ \"$(cat .git/agent-status 2>/dev/null)\" = working ] || echo working > .git/agent-status"}]}],
+    "PreToolUse": [{"hooks": [{"type": "command", "command": "[ -d .git ] || exit 0; state=$(jq -r 'if .tool_name == \"Monitor\" or .tool_name == \"ScheduleWakeup\" then \"monitoring\" else \"working\" end' 2>/dev/null); [ -n \"$state\" ] || state=working; [ \"$(cat .git/agent-status 2>/dev/null)\" = \"$state\" ] || echo \"$state\" > .git/agent-status"}]}],
     "Notification": [{"matcher": "permission_prompt|elicitation_dialog|agent_needs_input", "hooks": [{"type": "command", "command": "[ -d .git ] && echo blocked > .git/agent-status || true"}]}],
     "Stop": [{"hooks": [{"type": "command", "command": "[ -d .git ] && echo idle > .git/agent-status || true"}]}],
     "SessionEnd": [{"hooks": [{"type": "command", "command": "rm -f .git/agent-status"}]}]

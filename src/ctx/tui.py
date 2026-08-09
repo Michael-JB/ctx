@@ -53,7 +53,9 @@ def _styled(cell: str, display: str | None = None) -> Text | str:
     keys on the status word itself.
     """
     text = cell if display is None else display
-    style = status.STATUS_STYLES.get(cell)
+    # A cell may carry a detail after the word (e.g. "working 12m").
+    word = cell.split(" ", 1)[0] if cell else cell
+    style = status.STATUS_STYLES.get(word)
     return Text(text, style=style) if style else text
 
 

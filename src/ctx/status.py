@@ -109,17 +109,34 @@ async def agent_status(ctx: Context) -> str | None:
     """The `agent` built-in: the checkout's agent-status file.
 
     Agent harness hooks write a word (e.g. working/blocked/idle) to
-    `.git/agent-status`. A file untouched for an hour is stale — the agent
-    likely died without its hooks firing — and reads as no status.
+    `.git/agent-status`, rewriting it only when the state changes, so the
+    file's mtime is the state's start; active states show their age from it.
+    A file untouched for an hour is stale — the agent likely died without
+    its hooks firing — and reads as no status.
     """
     path = ctx.path / ".git" / "agent-status"
     try:
-        if time.time() - path.stat().st_mtime > _AGENT_STALE_SECONDS:
+        mtime = path.stat().st_mtime
+        if time.time() - mtime > _AGENT_STALE_SECONDS:
             return None
         lines = path.read_text().strip().splitlines()
     except OSError:
         return None
-    return lines[0].strip() if lines else None
+    if not lines:
+        return None
+    word = lines[0].strip()
+    if word in ("working", "monitoring"):
+        return f"{word} {_elapsed(time.time() - mtime)}"
+    return word
+
+
+def _elapsed(seconds: float) -> str:
+    minutes = int(seconds) // 60
+    if minutes < 1:
+        return f"{int(seconds)}s"
+    if minutes < 60:
+        return f"{minutes}m"
+    return f"{minutes // 60}h{minutes % 60}m"
 
 
 def github_repo(url: str) -> tuple[str, str]:
@@ -246,6 +263,7 @@ def cell_icon(column: StatusColumn, cell: str) -> str:
 # needs you now, yellow wants new instructions, green is progressing).
 STATUS_STYLES = {
     "working": "bold bright_green",
+    "monitoring": "bold bright_cyan",
     "open": "bold bright_green",
     "success": "bold bright_green",
     "idle": "bold bright_yellow",
