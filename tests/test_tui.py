@@ -13,7 +13,7 @@ from ctx import contexts
 from ctx.config import Config, StatusColumn
 from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer
-from ctx.tui import AlertScreen, CtxTui
+from ctx.tui import AlertScreen, ConfirmScreen, CtxTui, PromptScreen
 
 
 class StubMultiplexer(Multiplexer):
@@ -226,6 +226,54 @@ def test_deleting_another_context_does_not_switch(cfg: Config, registered: Path)
     assert mux.calls == [("kill", "one")]
     with pytest.raises(LookupError):
         contexts.find_context(cfg, "one")
+
+
+def test_archive_key_archives_without_a_prompt(cfg: Config, registered: Path) -> None:
+    create_context(cfg, "origin", "one")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("a")
+            await app.workers.wait_for_complete()
+
+    run_async(drive())
+
+    assert contexts.find_archived(cfg, "one")
+
+
+def test_delete_key_asks_for_confirmation(cfg: Config, registered: Path) -> None:
+    create_context(cfg, "origin", "one")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("d")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmScreen)
+            await pilot.press("escape")
+            await app.workers.wait_for_complete()
+
+    run_async(drive())
+
+    assert contexts.find_context(cfg, "one")
+
+
+def test_add_repo_key_is_local_to_the_repos_panel(cfg: Config, registered: Path) -> None:
+    """On the contexts panel `a` archives; it must not open the add-repo prompt."""
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._repos_table.focus()
+            await pilot.press("a")
+            await pilot.pause()
+            assert isinstance(app.screen, PromptScreen)
+
+    run_async(drive())
 
 
 def test_archiving_the_current_context_switches_away_and_kills_last(

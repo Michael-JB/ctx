@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import os
 import subprocess
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import partial
 from typing import ClassVar
@@ -15,7 +15,6 @@ from textual.containers import Horizontal, Vertical
 from textual.coordinate import Coordinate
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Input, Label
-from textual.widgets.button import ButtonVariant
 from textual.widgets.data_table import CellDoesNotExist
 
 from ctx import contexts, repos, status
@@ -53,7 +52,7 @@ def _styled(cell: str) -> Text | str:
 
 
 _MUTATING_ACTIONS = frozenset(
-    {"open", "new", "new_from_base", "add_repo", "delete", "unarchive", "empty_archive"}
+    {"open", "new", "new_from_base", "add_repo", "archive", "delete", "unarchive", "empty_archive"}
 )
 
 
@@ -137,11 +136,13 @@ _PANEL_KEYBINDINGS: dict[str, tuple[tuple[str, str], ...]] = {
         ("enter / space / o", "open context"),
         ("n", "new context"),
         ("N", "new context from a base branch"),
-        ("d", "archive or delete context"),
+        ("a", "archive context"),
+        ("d", "delete context"),
     ),
     "repos": (
         ("enter / n", "new context"),
         ("N", "new context from a base branch"),
+        ("a", "add repo"),
         ("d", "remove repo"),
     ),
     "archived": (
@@ -159,7 +160,6 @@ _COMMON_KEYBINDINGS = (
     ("g / G", "jump to top / bottom"),
     ("h / l / ← / →", "switch panel"),
     ("1 / 2 / 3", "jump to panel"),
-    ("a", "add repo"),
     ("r", "refresh"),
     ("?", "this help"),
     ("q / ctrl+c", "quit"),
@@ -221,42 +221,14 @@ class ConfirmScreen(ModalScreen[bool]):
         self.dismiss(False)
 
 
-class ChoiceScreen(ModalScreen[str | None]):
-    """Message with one button per choice; escape cancels."""
-
-    BINDINGS: ClassVar = [
-        Binding("escape", "cancel", show=False),
-        *_BUTTON_NAV_BINDINGS,
-    ]
-
-    def __init__(self, message: str, choices: Sequence[tuple[str, str, ButtonVariant]]) -> None:
-        """Choices are (result, button label, button variant) triples."""
-        super().__init__()
-        self._message = message
-        self._choices = choices
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="dialog"):
-            yield Label(self._message, markup=False)
-            with Horizontal(id="buttons"):
-                for result, label, variant in self._choices:
-                    yield Button(label, variant=variant, id=result)
-
-    @on(Button.Pressed)
-    def _chosen(self, event: Button.Pressed) -> None:
-        self.dismiss(event.button.id)
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
-
-
 class ContextsTable(DataTable[str | Text]):
     """Contexts panel; its bindings surface in the footer while focused."""
 
     BINDINGS: ClassVar = [
         ("o", "app.open", "Open"),
         Binding("space", "app.open", show=False),
-        ("d", "app.delete", "Archive/delete"),
+        ("a", "app.archive", "Archive"),
+        ("d", "app.delete", "Delete"),
         *_PANEL_NAV_BINDINGS,
     ]
 
@@ -264,7 +236,11 @@ class ContextsTable(DataTable[str | Text]):
 class ReposTable(DataTable[str]):
     """Repos panel; its bindings surface in the footer while focused."""
 
-    BINDINGS: ClassVar = [("d", "app.delete", "Remove repo"), *_PANEL_NAV_BINDINGS]
+    BINDINGS: ClassVar = [
+        ("a", "app.add_repo", "Add repo"),
+        ("d", "app.delete", "Remove repo"),
+        *_PANEL_NAV_BINDINGS,
+    ]
 
 
 class ArchivedTable(DataTable[str]):
@@ -319,7 +295,7 @@ class CtxTui(App[Request | None]):
     #dialog Label { margin-bottom: 1; width: 100%; }
     #buttons { height: auto; align-horizontal: right; }
     #buttons Button { margin-left: 2; }
-    PromptScreen, ConfirmScreen, ChoiceScreen, AlertScreen, HelpScreen { align: center middle; }
+    PromptScreen, ConfirmScreen, AlertScreen, HelpScreen { align: center middle; }
     """
 
     BINDINGS: ClassVar = [
@@ -328,7 +304,6 @@ class CtxTui(App[Request | None]):
         Binding("3", "focus_archived", show=False),
         ("n", "new", "New context"),
         Binding("N", "new_from_base", show=False),
-        ("a", "add_repo", "Add repo"),
         ("r", "refresh", "Refresh"),
         ("q", "quit", "Quit"),
         Binding("question_mark", "help", "Help", key_display="?"),
@@ -775,6 +750,16 @@ class CtxTui(App[Request | None]):
         self.call_from_thread(self._reload)
         self.call_from_thread(self._finish_busy)
 
+    def action_archive(self) -> None:
+        """Archive the selected context straight away; it is cheap to undo."""
+        if self._active_table() is not self._contexts_table:
+            return
+        ctx = self._selected_context()
+        if ctx is None:
+            return
+        self._start_busy("contexts")
+        self._archive_worker(ctx)
+
     def _delete_context(self) -> None:
         ctx = self._selected_context()
         if ctx is None:
@@ -785,26 +770,18 @@ class CtxTui(App[Request | None]):
         if contexts.unpushed_commits(ctx):
             problems.append("unpushed commits")
         if problems:
-            message = f"{ctx.qualified} has {' and '.join(problems)}. Archive or delete?"
-            delete_label = "Force delete"
+            message = f"{ctx.qualified} has {' and '.join(problems)}. Delete anyway?"
+            label = "Force delete"
         else:
-            message = f"Archive or delete {ctx.qualified}?"
-            delete_label = "Delete"
+            message = f"Delete {ctx.qualified}?"
+            label = "Delete"
 
-        def chosen(choice: str | None) -> None:
-            if choice == "archive":
-                self._start_busy("contexts")
-                self._archive_worker(ctx)
-            elif choice == "delete":
+        def confirmed(delete: bool | None) -> None:
+            if delete:
                 self._start_busy("contexts")
                 self._delete_context_worker(ctx)
 
-        choices: list[tuple[str, str, ButtonVariant]] = [
-            ("archive", "Archive", "primary"),
-            ("delete", delete_label, "error"),
-            ("cancel", "Cancel", "default"),
-        ]
-        self.push_screen(ChoiceScreen(message, choices), chosen)
+        self.push_screen(ConfirmScreen(message, label), confirmed)
 
     @work(thread=True)
     def _archive_worker(self, ctx: Context) -> None:

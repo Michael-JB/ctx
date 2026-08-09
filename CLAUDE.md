@@ -14,6 +14,6 @@ CI runs it too.
 # TUI
 
 - Prompts: assume the user knows what an action does. Never explain it.
-- Key semantics should be consistent across panels. Never reuse a key for a different
-  action elsewhere.
+- Keys are panel-scoped, lazygit-style. A key reused across panels must keep the
+  same spirit (d removes the panel's kind of thing, n creates one).
 - Keys that do the same thing are written `a / b` in help text.
