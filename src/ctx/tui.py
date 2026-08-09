@@ -298,6 +298,13 @@ class CtxTui(App[Request | None]):
     #contexts.busy, #repos.busy, #archived.busy {
         text-style: dim;
     }
+    /* Textual's ansi default is white-on-bright-blue, unreadable in many
+       terminal palettes; stick to the terminal's own colours. */
+    #contexts > .datatable--header, #repos > .datatable--header, #archived > .datatable--header {
+        background: ansi_default;
+        color: ansi_default;
+        text-style: bold;
+    }
     #dialog {
         padding: 1 2;
         width: 60;
