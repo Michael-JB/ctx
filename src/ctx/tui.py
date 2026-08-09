@@ -404,7 +404,7 @@ class CtxTui(App[Request | None]):
         repo_table = self._repos_table
         repo_table.clear()
         default = repos.default_repo(self._cfg)
-        for name in repos.repo_names(self._cfg):
+        for name in sorted(repos.repo_names(self._cfg), key=lambda name: (name != default, name)):
             label = f"{name} *" if name == default else name
             repo_table.add_row(label, repos.repo_url(self._cfg, name), key=name)
         archived_table = self._archived_table

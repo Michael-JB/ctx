@@ -242,7 +242,21 @@ def test_new_context_uses_the_default_repo_off_the_repos_panel(
             assert app._repo_for_new() == "other", "contexts panel must use the default"
             app._repos_table.focus()
             await pilot.pause()
+            await pilot.press("j")
             assert app._repo_for_new() == "origin", "repos panel must use the hovered repo"
+
+    run_async(drive())
+
+
+def test_default_repo_sorts_first(cfg: Config, registered: Path, make_origin: MakeOrigin) -> None:
+    add_repo(cfg, str(make_origin("aaa")))
+    repos.set_default_repo(cfg, "origin")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app._selected_key(app._repos_table) == "origin", "default must be the top row"
 
     run_async(drive())
 
