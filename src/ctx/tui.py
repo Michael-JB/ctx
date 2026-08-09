@@ -291,6 +291,9 @@ class CtxTui(App[Request | None]):
     #archived { width: 1fr; height: 100%; }
     #contexts, #repos, #archived {
         border: round $foreground;
+        /* A row cursor offers no horizontal scrolling, so wide content
+           just clips; a scrollbar would only take up a row. */
+        overflow-x: hidden;
     }
     #contexts:focus, #repos:focus, #archived:focus {
         border: round $primary;
