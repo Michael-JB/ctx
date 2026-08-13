@@ -69,6 +69,18 @@ def test_version(runner: CliRunner) -> None:
     assert result.exit_code == 0
 
 
+def test_claude_hook_feeds_the_status_file_from_stdin(
+    runner: CliRunner, deps: Deps, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".git").mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(cli, ["claude-hook"], obj=deps, input='{"hook_event_name": "Stop"}')
+
+    assert result.exit_code == 0
+    assert (tmp_path / ".git" / "agent-status").read_text() == "idle\n"
+
+
 def test_new_reports_the_created_context(runner: CliRunner, deps: Deps, registered: Path) -> None:
     result = runner.invoke(cli, ["new", "origin", "feat"], obj=deps)
 
