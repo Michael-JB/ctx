@@ -70,6 +70,7 @@ repos_dir = "~/.local/share/ctx/repos"        # internal storage for registered 
 archive_dir = "~/.local/share/ctx/archive"    # where archived contexts go
 branch_prefix = ""                            # work branch prefix, e.g. "jane/"
 multiplexer = "tmux"                          # or "zellij" (requires zellij >= 0.44)
+nerd_font = true                              # false swaps builtin glyphs for plain unicode
 ```
 
 ### Multiplexer layout
@@ -119,32 +120,12 @@ status integrations.
 
 #### GitHub builtin
 
-These require an authenticated `gh` in the checkout (without one the cells
-stay blank).
-
+Requires an authenticated `gh` in the checkout (without one the cells stay
+blank), and a [nerd font](https://www.nerdfonts.com): the states render as
+nerd-font glyphs (set `nerd_font = false` to fall back to plain Unicode).
 The `github` builtin collapses the branch's latest PR into one cell, showing
-its most urgent fact:
-
-| state | meaning | shown as |
-|---|---|---|
-| `merged` | PR merged | `◆` magenta |
-| `closed` | PR closed unmerged | `⊘` red |
-| `conflicts` | merge conflicts | `⚠` yellow |
-| `failing` | CI failure on the head commit | `✖` red |
-| `draft` | draft PR | `✎` dim |
-| `pending` | CI still running | `◌` yellow |
-| `ready` | open, mergeable, CI green or absent | `✔` green |
-
-Icons are per-column configurable (e.g. for nerd fonts); colour keys on the
-state, not the icon:
-
-```toml
-[[status]]
-name = "pr"
-builtin = "github"
-[status.icons]
-merged = "M"
-```
+its most urgent fact: merged / closed / conflicts / failing / draft /
+pending / ready.
 
 #### Agent builtin
 

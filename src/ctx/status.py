@@ -103,12 +103,14 @@ async def agent_status(ctx: Context) -> str | None:
 
 
 def _elapsed(seconds: float) -> str:
-    minutes = int(seconds) // 60
-    if minutes < 1:
-        return f"{int(seconds)}s"
-    if minutes < 60:
-        return f"{minutes}m"
-    return f"{minutes // 60}h{minutes % 60}m"
+    """Seconds only under the first minute: a table full of ticking
+    second-counters reads as nervous."""
+    whole = int(seconds)
+    if whole < 60:
+        return f"{whole}s"
+    if whole < 3600:
+        return f"{whole // 60}m"
+    return f"{whole // 3600}h{whole % 3600 // 60}m"
 
 
 def github_repo(url: str) -> tuple[str, str]:
@@ -190,7 +192,19 @@ BUILTINS = {
 }
 
 # Compact display forms per built-in; colour still keys on the status word.
-_DEFAULT_ICONS: dict[str, dict[str, str]] = {
+# Nerd-font glyphs by default, plain Unicode with nerd_font = false.
+_BUILTIN_ICONS: dict[str, dict[str, str]] = {
+    "github": {
+        "merged": "",  # nf-oct-git_merge
+        "closed": "",  # nf-fa-ban
+        "conflicts": "",  # nf-fa-warning
+        "failing": "",  # nf-fa-times
+        "draft": "",  # nf-fa-pencil
+        "pending": "",  # nf-fa-clock_o
+        "ready": "",  # nf-fa-check
+    },
+}
+_FALLBACK_ICONS: dict[str, dict[str, str]] = {
     "github": {
         "merged": "◆",
         "closed": "⊘",
@@ -203,10 +217,21 @@ _DEFAULT_ICONS: dict[str, dict[str, str]] = {
 }
 
 
-def cell_icon(column: StatusColumn, cell: str) -> str:
-    """A cell's display form: the column's icon for it, else the cell itself."""
-    icons = {**_DEFAULT_ICONS.get(column.builtin or "", {}), **column.icons}
-    return icons.get(cell, cell)
+def cell_icon(column: StatusColumn, cell: str, nerd_font: bool = True) -> str:
+    """A cell's display form: its leading word mapped through the built-in's icons.
+
+    Any detail after the word (e.g. the elapsed time in "working 1m30s")
+    is kept as is.
+    """
+    icons = (_BUILTIN_ICONS if nerd_font else _FALLBACK_ICONS).get(column.builtin or "", {})
+    word, _, rest = cell.partition(" ")
+    display = icons.get(word, word)
+    return f"{display} {rest}" if rest else display
+
+
+def cell_style(cell: str) -> str | None:
+    """A cell's colour: the shared vocabulary's style for its leading word."""
+    return STATUS_STYLES.get(cell.partition(" ")[0])
 
 
 # Colours for well-known status words, keyed by value so that command
@@ -266,5 +291,6 @@ async def status_cells(cfg: Config, ctx: Context) -> list[str]:
         git_state(ctx), *(column_status(ctx, col) for col in cfg.status)
     )
     return [state or ""] + [
-        cell_icon(col, cell) if cell else "" for col, cell in zip(cfg.status, cells, strict=True)
+        cell_icon(col, cell, cfg.nerd_font) if cell else ""
+        for col, cell in zip(cfg.status, cells, strict=True)
     ]

@@ -19,7 +19,7 @@ from textual.widgets import Button, DataTable, Footer, Input, Label
 from textual.widgets.data_table import CellDoesNotExist
 
 from ctx import contexts, forge, repos, status
-from ctx.config import Config, Theme
+from ctx.config import Config, StatusColumn, Theme
 from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer, MultiplexerError
 
@@ -46,17 +46,17 @@ _STATUS_POLL_SECONDS = 2.0
 _AnyTable = DataTable[str] | DataTable[str | Text]
 
 
-def _styled(cell: str, display: str | None = None) -> Text | str:
-    """Colour a status cell if its value is a well-known status word.
+def _styled(cell: str) -> Text | str:
+    """Colour a status cell if its value is a well-known status word."""
+    style = status.STATUS_STYLES.get(cell)
+    return Text(cell, style=style) if style else cell
 
-    `display` substitutes the shown text (e.g. an icon); the colour still
-    keys on the status word itself.
-    """
-    text = cell if display is None else display
-    # A cell may carry a detail after the word (e.g. "working 12m").
-    word = cell.split(" ", 1)[0] if cell else cell
-    style = status.STATUS_STYLES.get(word)
-    return Text(text, style=style) if style else text
+
+def _render_cell(column: StatusColumn, cell: str, nerd_font: bool) -> Text | str:
+    """A column cell with its icon substituted and its colour applied."""
+    display = status.cell_icon(column, cell, nerd_font)
+    style = status.cell_style(cell)
+    return Text(display, style=style) if style else display
 
 
 _MUTATING_ACTIONS = frozenset(
@@ -493,17 +493,16 @@ class CtxTui(App[Request | None]):
 
     async def _fetch_cell(self, ctx: Context, index: int) -> None:
         if index == 0:
-            cell = await status.git_state(ctx)
-            display = None
+            rendered: Text | str = _styled(await status.git_state(ctx))
         else:
             column = self._cfg.status[index - 1]
             cell = await status.column_status(ctx, column) or ""
-            display = status.cell_icon(column, cell) if cell else ""
+            rendered = _render_cell(column, cell, self._cfg.nerd_font) if cell else ""
         # The context may have been deleted or archived since the fetch
         # started, and the table itself is gone when the app is closing.
         with contextlib.suppress(CellDoesNotExist, NoMatches):
             self._contexts_table.update_cell(
-                ctx.name, self._status_columns[index], _styled(cell, display), update_width=True
+                ctx.name, self._status_columns[index], rendered, update_width=True
             )
 
     def _spin(self) -> None:

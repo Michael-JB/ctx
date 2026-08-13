@@ -79,39 +79,6 @@ def test_no_status_columns_by_default(tmp_path: Path) -> None:
     assert cfg.status == ()
 
 
-def test_status_icons_override(tmp_path: Path) -> None:
-    path = write_config(
-        tmp_path,
-        """
-        [[status]]
-        name = "pr"
-        builtin = "github"
-        [status.icons]
-        merged = "M"
-        """,
-    )
-
-    cfg = load_config(path)
-
-    assert cfg.status[0].icons == {"merged": "M"}
-
-
-def test_status_rejects_non_string_icons(tmp_path: Path) -> None:
-    path = write_config(
-        tmp_path,
-        """
-        [[status]]
-        name = "pr"
-        builtin = "github"
-        [status.icons]
-        merged = 3
-        """,
-    )
-
-    with pytest.raises(ConfigError, match="icons"):
-        load_config(path)
-
-
 def test_status_requires_a_name(tmp_path: Path) -> None:
     path = write_config(tmp_path, '[[status]]\ncommand = "true"')
 
@@ -246,4 +213,16 @@ def test_unknown_multiplexer_rejected(tmp_path: Path) -> None:
     path = write_config(tmp_path, 'multiplexer = "screen"')
 
     with pytest.raises(ConfigError, match="unknown multiplexer"):
+        load_config(path)
+
+
+def test_nerd_font_is_on_by_default_and_can_be_disabled(tmp_path: Path) -> None:
+    assert load_config(tmp_path / "missing.toml").nerd_font is True
+    assert load_config(write_config(tmp_path, "nerd_font = false")).nerd_font is False
+
+
+def test_nerd_font_rejects_non_booleans(tmp_path: Path) -> None:
+    path = write_config(tmp_path, 'nerd_font = "yes"')
+
+    with pytest.raises(ConfigError, match="nerd_font"):
         load_config(path)

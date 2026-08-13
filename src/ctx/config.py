@@ -1,8 +1,7 @@
 import os
 import re
 import tomllib
-from collections.abc import Mapping
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
 
 from ctx.layout import DEFAULT_LAYOUT, Node, parse_layout
@@ -30,14 +29,13 @@ class StatusColumn:
     """A named status column in listings, filled by a command or a built-in.
 
     `interval` is the column's sampling period in seconds; None picks the
-    provider's default. `icons` maps status words to display forms.
+    provider's default.
     """
 
     name: str
     command: str | None = None
     builtin: str | None = None
     interval: float | None = None
-    icons: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -57,6 +55,7 @@ class Config:
     archive_dir: Path = _DATA_DIR / "archive"
     branch_prefix: str = ""
     multiplexer: MultiplexerKind = MultiplexerKind.TMUX
+    nerd_font: bool = True
     layout: Node = DEFAULT_LAYOUT
     status: tuple[StatusColumn, ...] = ()
     theme: Theme = Theme()
@@ -83,6 +82,10 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
             valid = ", ".join(k.value for k in MultiplexerKind)
             raise ConfigError(f"unknown multiplexer '{raw}' (supported: {valid})") from exc
         cfg = replace(cfg, multiplexer=kind)
+    if "nerd_font" in data:
+        if not isinstance(data["nerd_font"], bool):
+            raise ConfigError("nerd_font must be a boolean")
+        cfg = replace(cfg, nerd_font=data["nerd_font"])
     if "layout" in data:
         cfg = replace(cfg, layout=parse_layout(data["layout"]))
     if "status" in data:
@@ -126,18 +129,12 @@ def _parse_status(data: object) -> tuple[StatusColumn, ...]:
             isinstance(interval, bool) or not isinstance(interval, int | float) or interval < 0
         ):
             raise ConfigError("status interval must be a non-negative number of seconds")
-        icons = entry.get("icons", {})
-        if not isinstance(icons, dict) or not all(
-            isinstance(key, str) and isinstance(value, str) for key, value in icons.items()
-        ):
-            raise ConfigError("status icons must be a table of strings")
         columns.append(
             StatusColumn(
                 str(entry["name"]),
                 command=str(entry["command"]) if "command" in entry else None,
                 builtin=str(entry["builtin"]) if "builtin" in entry else None,
                 interval=float(interval) if interval is not None else None,
-                icons=icons,
             )
         )
     names = [c.name for c in columns]

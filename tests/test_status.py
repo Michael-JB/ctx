@@ -67,25 +67,36 @@ def test_github_status_without_a_pr_is_empty(
     assert run(status.github_status(ctx)) is None
 
 
-def test_github_cells_render_as_icons() -> None:
+def test_github_cells_render_as_nerd_font_icons() -> None:
     column = StatusColumn("pr", builtin="github")
 
-    assert status.cell_icon(column, "merged") == "◆"
-    assert status.cell_icon(column, "ready") == "✔"
+    assert status.cell_icon(column, "merged") == ""
+    assert status.cell_icon(column, "ready") == ""
 
 
-def test_configured_icons_override_the_defaults() -> None:
-    column = StatusColumn("pr", builtin="github", icons={"merged": "M"})
+def test_nerd_font_off_falls_back_to_plain_unicode() -> None:
+    column = StatusColumn("pr", builtin="github")
 
-    assert status.cell_icon(column, "merged") == "M"
-    assert status.cell_icon(column, "ready") == "✔"
+    assert status.cell_icon(column, "merged", nerd_font=False) == "◆"
+    assert status.cell_icon(column, "ready", nerd_font=False) == "✔"
 
 
-def test_command_cells_show_their_word_unless_icons_are_configured() -> None:
-    column = StatusColumn("claude", command="echo working", icons={"working": "▶"})
+def test_command_cells_show_their_word() -> None:
+    column = StatusColumn("claude", command="echo working")
 
-    assert status.cell_icon(column, "working") == "▶"
-    assert status.cell_icon(StatusColumn("claude", command="echo working"), "working") == "working"
+    assert status.cell_icon(column, "working") == "working"
+
+
+def test_cell_icons_keep_the_detail_after_the_word() -> None:
+    column = StatusColumn("claude", builtin="agent")
+
+    assert status.cell_icon(column, "working 12m") == "working 12m"
+
+
+def test_cell_style_keys_on_the_leading_word() -> None:
+    assert status.cell_style("working 12m") == "bold bright_green"
+    assert status.cell_style("idle") == "bold bright_yellow"
+    assert status.cell_style("anything-else") is None
 
 
 def test_command_status_returns_the_first_output_line(ctx: contexts.Context) -> None:
@@ -129,6 +140,7 @@ def test_agent_status_shows_how_long_active_states_have_run(ctx: contexts.Contex
 
 def test_elapsed_formats_by_magnitude() -> None:
     assert status._elapsed(42) == "42s"
+    assert status._elapsed(99) == "1m"
     assert status._elapsed(300) == "5m"
     assert status._elapsed(3900) == "1h5m"
 
