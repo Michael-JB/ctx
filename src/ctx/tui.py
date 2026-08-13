@@ -431,7 +431,9 @@ class CtxTui(App[Request | None]):
         repo_table.add_columns("NAME", "URL")
         self._archived_table.add_columns("NAME", "REPO", "BRANCH")
         self._update_titles()
-        self._reload()
+        # Let the empty panels paint before the (subprocess-heavy) first
+        # load; the alternative is a blank screen until the data is in.
+        self.call_after_refresh(self._reload)
         ctx_table.focus()
         self.set_interval(0.1, self._spin)
         if self._cfg.status:
