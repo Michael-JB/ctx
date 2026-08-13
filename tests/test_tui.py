@@ -417,6 +417,97 @@ def test_archiving_the_current_context_switches_away_and_kills_last(
     assert contexts.find_archived(cfg, "one")
 
 
+def test_slash_filters_and_enter_opens_the_match(cfg: Config, registered: Path) -> None:
+    for name in ("alpha", "beta"):
+        create_context(cfg, "origin", name)
+    mux = RecordingMultiplexer()
+    app = CtxTui(cfg, mux)
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("slash", "b", "t")
+            assert app._contexts_table.row_count == 1, "only the fuzzy match may remain"
+            await pilot.press("enter")
+            await pilot.pause()
+            assert ("open", "beta") in mux.calls
+            assert app._contexts_table.row_count == 2, "the filter must clear after opening"
+
+    run_async(drive())
+
+
+def test_escape_clears_the_filter(cfg: Config, registered: Path) -> None:
+    for name in ("alpha", "beta"):
+        create_context(cfg, "origin", name)
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("slash", "b")
+            assert app._contexts_table.row_count == 1
+            await pilot.press("escape")
+            assert app._contexts_table.row_count == 2
+            assert app.focused is app._contexts_table
+
+    run_async(drive())
+
+
+def test_enter_with_no_matches_keeps_filtering(cfg: Config, registered: Path) -> None:
+    create_context(cfg, "origin", "alpha")
+    mux = RecordingMultiplexer()
+    app = CtxTui(cfg, mux)
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("slash", "z")
+            assert app._contexts_table.row_count == 0
+            await pilot.press("enter")
+            assert mux.calls == []
+            assert app._contexts_table.row_count == 0, "the filter must stay active"
+
+    run_async(drive())
+
+
+def test_filter_matches_the_repo_too(
+    cfg: Config, registered: Path, make_origin: MakeOrigin
+) -> None:
+    add_repo(cfg, str(make_origin("other")))
+    create_context(cfg, "origin", "alpha")
+    create_context(cfg, "other", "beta")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("slash", "o", "t", "h")
+            table = app._contexts_table
+            assert table.row_count == 1
+            assert app._selected_key(table) == "beta"
+
+    run_async(drive())
+
+
+def test_filter_is_panel_scoped(cfg: Config, registered: Path, make_origin: MakeOrigin) -> None:
+    add_repo(cfg, str(make_origin("other")))
+    create_context(cfg, "origin", "alpha")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._repos_table.focus()
+            await pilot.press("slash", "x")
+            assert app._repos_table.row_count == 0
+            assert app._contexts_table.row_count == 1, "other panels must keep their rows"
+            await pilot.press("escape")
+            assert app._repos_table.row_count == 2
+            assert app.focused is app._repos_table
+
+    run_async(drive())
+
+
 def test_reload_keeps_the_ui_responsive(cfg: Config, origin: Path) -> None:
     """A slow status provider must not stall the event loop."""
     cfg = _slow_status(cfg)
