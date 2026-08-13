@@ -183,7 +183,14 @@ def unarchive_context(cfg: Config, ctx: Context) -> Context:
 
 
 def current_branch(ctx: Context) -> str:
-    return git("branch", "--show-current", cwd=ctx.path)
+    """The checkout's branch, read from `.git/HEAD` to spare a subprocess.
+
+    Anything but a symbolic ref to a branch (e.g. a detached HEAD's raw
+    hash) reads as no branch, like `git branch --show-current`.
+    """
+    head = (ctx.path / ".git" / "HEAD").read_text().strip()
+    prefix = "ref: refs/heads/"
+    return head.removeprefix(prefix) if head.startswith(prefix) else ""
 
 
 def is_dirty(ctx: Context) -> bool:
