@@ -13,7 +13,7 @@ from ctx import contexts
 from ctx.config import Config, StatusColumn
 from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer
-from ctx.tui import AlertScreen, CtxTui
+from ctx.tui import AlertScreen, ConfirmScreen, CtxTui, PromptScreen
 
 
 class StubMultiplexer(Multiplexer):
@@ -119,7 +119,7 @@ def test_arrow_keys_navigate_like_the_vim_keys(cfg: Config, origin: Path) -> Non
             await pilot.press("left")
             assert app.focused is app._repos_table
 
-            app._contexts_table.focus()
+            app._repos_table.focus()
             await pilot.press("d")
             await pilot.pause()
             first = _focused_button_index(app)
@@ -199,33 +199,68 @@ def _run_worker(app: CtxTui, start: Callable[[], None]) -> None:
     run_async(drive())
 
 
-def test_deleting_the_current_context_switches_away_and_kills_last(
-    cfg: Config, registered: Path
-) -> None:
-    for name in ("one", "two"):
-        create_context(cfg, "origin", name)
-    ctx = contexts.find_context(cfg, "one")
-    mux = RecordingMultiplexer(current="one")
-    app = CtxTui(cfg, mux)
-
-    _run_worker(app, lambda: app._delete_context_worker(ctx))
-
-    assert mux.calls == [("open", "two"), ("kill", "one")]
-    assert mux.path_present_at_kill is False, "removal must finish before the kill"
-
-
-def test_deleting_another_context_does_not_switch(cfg: Config, registered: Path) -> None:
+def test_archiving_another_context_does_not_switch(cfg: Config, registered: Path) -> None:
     for name in ("one", "two"):
         create_context(cfg, "origin", name)
     ctx = contexts.find_context(cfg, "one")
     mux = RecordingMultiplexer(current="two")
     app = CtxTui(cfg, mux)
 
-    _run_worker(app, lambda: app._delete_context_worker(ctx))
+    _run_worker(app, lambda: app._archive_worker(ctx))
 
     assert mux.calls == [("kill", "one")]
     with pytest.raises(LookupError):
         contexts.find_context(cfg, "one")
+
+
+def test_archive_key_archives_without_a_prompt(cfg: Config, registered: Path) -> None:
+    create_context(cfg, "origin", "one")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("d")
+            await app.workers.wait_for_complete()
+
+    run_async(drive())
+
+    assert contexts.find_archived(cfg, "one")
+
+
+def test_delete_key_asks_for_confirmation(cfg: Config, registered: Path) -> None:
+    ctx = create_context(cfg, "origin", "one")
+    contexts.archive_context(cfg, ctx)
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._archived_table.focus()
+            await pilot.press("d")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmScreen)
+            await pilot.press("escape")
+            await app.workers.wait_for_complete()
+
+    run_async(drive())
+
+    assert contexts.find_archived(cfg, "one")
+
+
+def test_add_repo_key_is_local_to_the_repos_panel(cfg: Config, registered: Path) -> None:
+    """`a` opens the add-repo prompt only while the repos panel is focused."""
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._repos_table.focus()
+            await pilot.press("a")
+            await pilot.pause()
+            assert isinstance(app.screen, PromptScreen)
+
+    run_async(drive())
 
 
 def test_archiving_the_current_context_switches_away_and_kills_last(
