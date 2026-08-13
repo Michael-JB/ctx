@@ -238,6 +238,29 @@ def repo_list(deps: Deps) -> None:
         click.echo(f"{name}\t{repos.repo_url(deps.cfg, name)}")
 
 
+@repo.command("default")
+@click.argument("name", required=False)
+@click.option("--clear", is_flag=True, help="Clear the default repo.")
+@click.pass_obj
+def repo_default(deps: Deps, name: str | None, clear: bool) -> None:
+    """Show or set the repo new contexts are created in by default."""
+    if clear:
+        if name:
+            raise click.UsageError("--clear takes no repo name")
+        repos.set_default_repo(deps.cfg, None)
+        click.echo("cleared default repo")
+        return
+    if name is None:
+        current = repos.default_repo(deps.cfg)
+        click.echo(current if current else "no default repo")
+        return
+    try:
+        repos.set_default_repo(deps.cfg, name)
+    except FileNotFoundError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"default repo is '{name}'")
+
+
 @repo.command("rm")
 @click.argument("names", nargs=-1, required=True)
 @click.pass_obj
