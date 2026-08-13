@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/Michael-JB/ctx/compare/v0.6.0...v0.6.1) (2026-08-13)
+
+
+### Performance Improvements
+
+* paint the empty panels before the first data load ([6b5ad4f](https://github.com/Michael-JB/ctx/commit/6b5ad4fa1f4763915c6ccad8e7d7e10dd8c73688))
+* read the current branch from .git/HEAD instead of spawning git ([4bf23d0](https://github.com/Michael-JB/ctx/commit/4bf23d00b5e43602f752385f267c1df43efc4169))
+
 ## [0.6.0](https://github.com/Michael-JB/ctx/compare/v0.5.0...v0.6.0) (2026-08-13)
 
 
