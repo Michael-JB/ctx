@@ -1,3 +1,11 @@
+# Architecture
+
+- Stay abstract over integration points: the forge (GitHub, GitLab, ...), the
+terminal multiplexer (tmux, zellij), and the agent system (Claude, Codex,
+OpenCode, ...) feeding statuses. Provider specifics live only behind their
+interface (the forge derived from a repo's remote, the config-selected
+`multiplexer` backend, and the `.git/agent-status` file contract.
+
 # Commits
 
 - Commits are self-contained, with a single purpose.
