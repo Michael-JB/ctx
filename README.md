@@ -20,10 +20,35 @@ Disclaimer: this is fully vibe-coded.
 uv tool install ctx-tui
 ```
 
+## Setup
+
+`ctx` runs fine with zero config; setup is optional but will likely improve
+your experience. The fastest way through it is to not do it yourself: tell your
+agent "set up ctx following its README" and let it work through this section.
+
+Instructions for the agent: ask the user each question, then apply their
+answer using the concrete snippets under Configuration.
+
+1. Which multiplexer do you use, tmux or zellij? Set `multiplexer` in
+   the config file.
+2. Which panes should every context session open with (agent, editor,
+   lazygit, ...), and which gets focus? Write the `layout` table.
+3. Which additional status columns do you want? For the `github` builtin, check
+   `gh auth status` and whether the terminal uses a nerd font; for the `agent`
+   builtin, install the hooks from the Agent builtin section.
+4. Which key should summon the picker? Bind it in the multiplexer's config
+   as shown under Instant picker.
+5. Verify: register a repo (`ctx repo add`), create a context (`ctx new`),
+   and check that `ctx list` shows the configured columns.
+
 ## Usage
 
-Run `ctx` to manage contexts and repos interactively in the TUI (`?` lists
-the keybindings). You can also use `ctx` as a CLI.
+Run `ctx` to manage contexts and repos interactively in the TUI (`?` lists the
+keybindings). The TUI is meant to be summoned from inside a multiplexer
+session: hit the picker key (see Instant picker) and it opens as a floating
+pane over the session you're in.
+
+You can also use `ctx` as a CLI:
 
 ```sh
 ctx repo add https://github.com/Michael-JB/papaya-nvim.git   # once per repo
@@ -44,6 +69,11 @@ ctx new papaya-nvim follow-up -b other-base
 
 # Re-attach to a context, unarchiving it and recreating its session if needed:
 ctx open my-cool-feature
+
+# Show, set, or clear the default repo for new contexts:
+ctx repo default
+ctx repo default papaya-nvim
+ctx repo default --clear
 
 # List registered repos, or remove some (their contexts are left alone):
 ctx repo list
@@ -97,6 +127,22 @@ command = "claude"
 focus = true
 ```
 
+#### Instant picker
+
+In your multiplexer's config, bind a key that opens the TUI as a floating
+overlay in whatever session you're in. zellij (`config.kdl`):
+
+```kdl
+bind "Alt c" {
+    Run "ctx" "tui" "--exit" {
+        floating true
+        close_on_exit true
+    }
+}
+```
+
+tmux: `bind -n M-c display-popup -E "ctx tui --exit"`.
+
 ### Theme
 
 The TUI renders with your terminal's ANSI palette. A `[theme]` table overrides
@@ -116,32 +162,31 @@ The STATUS column shows the git state: `*` for uncommitted changes, `↑n` for n
 unpushed commits.
 
 You can add further columns via `[[status]]`. `ctx` comes with some builtin
-status integrations.
+status integrations. The TUI re-polls every few seconds and colours known
+states.
 
 #### GitHub builtin
+
+```toml
+[[status]]
+name = "pr"
+builtin = "github"         # the branch's latest PR, collapsed into one cell
+```
 
 Requires an authenticated `gh` in the checkout (without one the cells stay
 blank), and a [nerd font](https://www.nerdfonts.com): the states render as
 nerd-font glyphs (set `nerd_font = false` to fall back to plain Unicode).
-The `github` builtin collapses the branch's latest PR into one cell, showing
-its most urgent fact: merged / closed / conflicts / failing / draft /
-pending / ready.
 
 #### Agent builtin
 
 ```toml
 [[status]]
-name = "claude"
-builtin = "agent"          # .git/agent-status, hook-written by your agent (see below)
+name = "agent"
+builtin = "agent"          # .git/agent-status, hook-written by your agent
 ```
 
-The agent builtin reads its status from `.git/agent-status`. Make your agent
-write its state there, rewriting the file only when the state changes: the
-file's mtime then marks when the state began, and active states (working,
-monitoring) display their age, e.g. `working 12m`.
-
-For Claude Code, `ctx claude-hook` does exactly that: merge these hooks into
-the `hooks` table of `~/.claude/settings.json`, keeping any existing entries.
+You'll also need to configure your agent to write its status, e.g., for Claude
+Code, add the following to `~/.claude/settings.json`:
 
 ```json
 {
@@ -165,8 +210,6 @@ checkout:
 name = "anything"
 command = "my-status"      # first line of any command, run in the checkout
 ```
-
-The TUI re-polls every few seconds and colours known states.
 
 ### Environment variables
 
