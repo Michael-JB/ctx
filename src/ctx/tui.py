@@ -5,7 +5,7 @@ import subprocess
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import partial
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from rich.text import Text
 from textual import on, work
@@ -179,6 +179,7 @@ _COMMON_KEYBINDINGS = (
     ("g / G", "jump to top / bottom"),
     ("h / l / ← / →", "switch panel"),
     ("1 / 2 / 3", "jump to panel"),
+    ("/", "fuzzy filter by repo and name"),
     ("r", "refresh"),
     ("?", "this help"),
     ("q / ctrl+c", "quit"),
@@ -238,6 +239,22 @@ class ConfirmScreen(ModalScreen[bool]):
 
     def action_cancel(self) -> None:
         self.dismiss(False)
+
+
+def _fuzzy_match(query: str, name: str) -> bool:
+    """True when the query's characters appear in order within the name."""
+    chars = iter(name.lower())
+    return all(ch in chars for ch in query.lower())
+
+
+class FilterInput(Input):
+    """Inline fuzzy-filter prompt; the target panel narrows as the query is typed."""
+
+    BINDINGS: ClassVar = [
+        Binding("escape", "app.dismiss_filter", show=False),
+        Binding("down", "app.filter_cursor(1)", show=False),
+        Binding("up", "app.filter_cursor(-1)", show=False),
+    ]
 
 
 class ContextsTable(DataTable[str | Text]):
@@ -323,6 +340,14 @@ class CtxTui(App[Request | None]):
         color: $ctx-foreground;
         text-style: bold;
     }
+    #filter {
+        display: none;
+        height: 1;
+        border: none;
+        padding: 0 1;
+        background: ansi_default;
+        color: $ctx-foreground;
+    }
     #dialog {
         padding: 1 2;
         width: 60;
@@ -343,6 +368,7 @@ class CtxTui(App[Request | None]):
         Binding("3", "focus_archived", show=False),
         ("n", "new", "New context"),
         Binding("N", "new_from_base", show=False),
+        Binding("slash", "filter", "Filter", key_display="/"),
         ("r", "refresh", "Refresh"),
         ("q", "quit", "Quit"),
         Binding("question_mark", "help", "Help", key_display="?"),
@@ -366,6 +392,8 @@ class CtxTui(App[Request | None]):
         self._busy: set[str] = set()
         self._spinner_frame = 0
         self._fetching: set[int] = set()
+        self._filter_target: _AnyTable | None = None
+        self._filter_rows: list[tuple[str, str, list[Any]]] = []
 
     def get_css_variables(self) -> dict[str, str]:
         # Textual may call this during App setup, before __init__ assigns _cfg.
@@ -391,6 +419,7 @@ class CtxTui(App[Request | None]):
             with Horizontal(id="bottom"):
                 yield ReposTable(id="repos", cursor_type="row")
                 yield ArchivedTable(id="archived", cursor_type="row")
+            yield FilterInput(id="filter", placeholder="filter")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -428,6 +457,11 @@ class CtxTui(App[Request | None]):
         shell out to `gh`), which is more than the panels can wait for and far
         more than the interface can stop responding for.
         """
+        if self._filter_target is not None:
+            # A reload repopulates every panel, so the snapshot is stale.
+            filtered = self._filter_target
+            self._drop_filter()
+            filtered.focus()
         blanks = [""] * (1 + len(self._cfg.status))
         ctx_table = self._contexts_table
         ctx_table.clear()
@@ -932,6 +966,72 @@ class CtxTui(App[Request | None]):
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
         self.call_from_thread(self._reload)
         self.call_from_thread(self._finish_busy)
+
+    def action_filter(self) -> None:
+        if self._filter_target is not None:
+            return
+        table = self._active_table()
+        self._filter_target = table
+        # Match on the qualified repo/name where the panel has a repo column.
+        with_repo = table is not self._repos_table
+        self._filter_rows = []
+        for row in table.ordered_rows:
+            key = row.key.value or ""
+            cells = table.get_row(row.key)
+            haystack = f"{cells[1]}/{key}" if with_repo else key
+            self._filter_rows.append((key, haystack, cells))
+        filter_input = self.query_one("#filter", Input)
+        filter_input.value = ""
+        filter_input.display = True
+        filter_input.focus()
+
+    def _drop_filter(self) -> None:
+        self._filter_target = None
+        self._filter_rows = []
+        self.query_one("#filter", Input).display = False
+
+    def action_dismiss_filter(self) -> None:
+        """Restore the full panel, keeping the cursor on the filtered selection."""
+        table = self._filter_target
+        if table is None:
+            return
+        selected = self._selected_key(table)
+        rows = self._filter_rows
+        self._drop_filter()
+        table.clear()
+        for key, _haystack, cells in rows:
+            table.add_row(*cells, key=key)
+        if selected is not None:
+            table.move_cursor(row=table.get_row_index(selected))
+        table.focus()
+
+    def action_filter_cursor(self, step: int) -> None:
+        table = self._filter_target
+        if table is not None:
+            table.move_cursor(row=table.cursor_row + step)
+
+    @on(Input.Changed, "#filter")
+    def _filter_changed(self, event: Input.Changed) -> None:
+        table = self._filter_target
+        if table is None:
+            return
+        table.clear()
+        for key, haystack, cells in self._filter_rows:
+            if _fuzzy_match(event.value, haystack):
+                table.add_row(*cells, key=key)
+
+    @on(Input.Submitted, "#filter")
+    def _filter_submitted(self) -> None:
+        table = self._filter_target
+        if table is None or self._selected_key(table) is None:
+            return
+        self.action_dismiss_filter()
+        if table is self._repos_table:
+            self._repo_selected()
+        elif table is self._archived_table:
+            self._archived_selected()
+        else:
+            self._context_selected()
 
     def action_refresh(self) -> None:
         self._reload()
