@@ -73,6 +73,45 @@ def test_status_columns_override(tmp_path: Path) -> None:
     )
 
 
+def test_no_status_columns_by_default(tmp_path: Path) -> None:
+    cfg = load_config(tmp_path / "missing.toml")
+
+    assert cfg.status == ()
+
+
+def test_status_icons_override(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path,
+        """
+        [[status]]
+        name = "pr"
+        builtin = "github"
+        [status.icons]
+        merged = "M"
+        """,
+    )
+
+    cfg = load_config(path)
+
+    assert cfg.status[0].icons == {"merged": "M"}
+
+
+def test_status_rejects_non_string_icons(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path,
+        """
+        [[status]]
+        name = "pr"
+        builtin = "github"
+        [status.icons]
+        merged = 3
+        """,
+    )
+
+    with pytest.raises(ConfigError, match="icons"):
+        load_config(path)
+
+
 def test_status_requires_a_name(tmp_path: Path) -> None:
     path = write_config(tmp_path, '[[status]]\ncommand = "true"')
 
@@ -95,13 +134,11 @@ def test_status_rejects_a_command_combined_with_a_builtin(tmp_path: Path) -> Non
 
 
 def test_status_interval_override(tmp_path: Path) -> None:
-    path = write_config(
-        tmp_path, '[[status]]\nname = "ci"\nbuiltin = "github-checks"\ninterval = 60'
-    )
+    path = write_config(tmp_path, '[[status]]\nname = "ci"\nbuiltin = "github"\ninterval = 60')
 
     cfg = load_config(path)
 
-    assert cfg.status == (StatusColumn("ci", builtin="github-checks", interval=60.0),)
+    assert cfg.status == (StatusColumn("ci", builtin="github", interval=60.0),)
 
 
 def test_status_rejects_negative_intervals(tmp_path: Path) -> None:
@@ -135,7 +172,7 @@ def test_status_rejects_duplicate_names(tmp_path: Path) -> None:
 
         [[status]]
         name = "ci"
-        builtin = "github-checks"
+        builtin = "github"
         """,
     )
 

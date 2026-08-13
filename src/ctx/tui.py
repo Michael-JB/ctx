@@ -46,10 +46,15 @@ _STATUS_POLL_SECONDS = 2.0
 _AnyTable = DataTable[str] | DataTable[str | Text]
 
 
-def _styled(cell: str) -> Text | str:
-    """Colour a status cell if its value is a well-known status word."""
+def _styled(cell: str, display: str | None = None) -> Text | str:
+    """Colour a status cell if its value is a well-known status word.
+
+    `display` substitutes the shown text (e.g. an icon); the colour still
+    keys on the status word itself.
+    """
+    text = cell if display is None else display
     style = status.STATUS_STYLES.get(cell)
-    return Text(cell, style=style) if style else cell
+    return Text(text, style=style) if style else text
 
 
 _MUTATING_ACTIONS = frozenset(
@@ -459,13 +464,16 @@ class CtxTui(App[Request | None]):
     async def _fetch_cell(self, ctx: Context, index: int) -> None:
         if index == 0:
             cell = await status.git_state(ctx)
+            display = None
         else:
-            cell = await status.column_status(ctx, self._cfg.status[index - 1]) or ""
+            column = self._cfg.status[index - 1]
+            cell = await status.column_status(ctx, column) or ""
+            display = status.cell_icon(column, cell) if cell else ""
         # The context may have been deleted or archived since the fetch
         # started, and the table itself is gone when the app is closing.
         with contextlib.suppress(CellDoesNotExist, NoMatches):
             self._contexts_table.update_cell(
-                ctx.name, self._status_columns[index], _styled(cell), update_width=True
+                ctx.name, self._status_columns[index], _styled(cell, display), update_width=True
             )
 
     def _spin(self) -> None:

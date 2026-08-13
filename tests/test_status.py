@@ -41,6 +41,62 @@ def test_builtins_match_the_config_allowlist() -> None:
     assert set(status.BUILTINS) == set(config.BUILTIN_STATUS)
 
 
+@pytest.mark.parametrize(
+    ("raw", "state"),
+    [
+        ("merged false mergeable none", "merged"),
+        ("closed false conflicting failure", "closed"),
+        ("open false conflicting success", "conflicts"),
+        ("open true mergeable failure", "failing"),
+        ("open false mergeable error", "failing"),
+        ("open true mergeable success", "draft"),
+        ("open false mergeable pending", "pending"),
+        ("open false unknown success", "ready"),
+        ("open false mergeable none", "ready"),
+        ("garbage", None),
+    ],
+)
+def test_github_state_collapses_to_the_most_urgent_fact(raw: str, state: str | None) -> None:
+    assert status._github_state(raw) == state
+
+
+def test_github_status_combines_the_query_fields(
+    ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_gh(tmp_path, monkeypatch, "echo 'OPEN false MERGEABLE FAILURE'")
+
+    assert run(status.github_status(ctx)) == "failing"
+
+
+def test_github_status_without_a_pr_is_empty(
+    ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_gh(tmp_path, monkeypatch, "exit 0")
+
+    assert run(status.github_status(ctx)) is None
+
+
+def test_github_cells_render_as_icons() -> None:
+    column = StatusColumn("pr", builtin="github")
+
+    assert status.cell_icon(column, "merged") == "◆"
+    assert status.cell_icon(column, "ready") == "✔"
+
+
+def test_configured_icons_override_the_defaults() -> None:
+    column = StatusColumn("pr", builtin="github", icons={"merged": "M"})
+
+    assert status.cell_icon(column, "merged") == "M"
+    assert status.cell_icon(column, "ready") == "✔"
+
+
+def test_command_cells_show_their_word_unless_icons_are_configured() -> None:
+    column = StatusColumn("claude", command="echo working", icons={"working": "▶"})
+
+    assert status.cell_icon(column, "working") == "▶"
+    assert status.cell_icon(StatusColumn("claude", command="echo working"), "working") == "working"
+
+
 def test_command_status_returns_the_first_output_line(ctx: contexts.Context) -> None:
     assert run(status.command_status(ctx, "printf 'working\\nextra'")) == "working"
 
@@ -96,25 +152,8 @@ def test_github_repo_rejects_unparseable_urls() -> None:
         status.github_repo("nonsense")
 
 
-def test_github_checks_lowercases_the_rollup_state(
-    ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake_gh(tmp_path, monkeypatch, "echo SUCCESS")
-
-    assert run(status.github_checks_status(ctx)) == "success"
-
-
-def test_github_pr_lowercases_the_pr_state(
-    ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake_gh(tmp_path, monkeypatch, "echo MERGED")
-
-    assert run(status.github_pr_status(ctx)) == "merged"
-
-
-def test_github_builtins_default_to_a_coarse_interval() -> None:
-    assert status.refresh_interval(StatusColumn("ci", builtin="github-checks")) == 30.0
-    assert status.refresh_interval(StatusColumn("pr", builtin="github-pr")) == 30.0
+def test_github_builtin_defaults_to_a_coarse_interval() -> None:
+    assert status.refresh_interval(StatusColumn("pr", builtin="github")) == 30.0
 
 
 def test_other_columns_default_to_every_ask() -> None:
@@ -123,44 +162,27 @@ def test_other_columns_default_to_every_ask() -> None:
 
 
 def test_a_user_interval_overrides_the_default() -> None:
-    assert status.refresh_interval(StatusColumn("ci", builtin="github-checks", interval=5)) == 5.0
+    assert status.refresh_interval(StatusColumn("pr", builtin="github", interval=5)) == 5.0
     assert status.refresh_interval(StatusColumn("c", command="echo hi", interval=60)) == 60.0
 
 
-def test_github_pr_without_a_pr_is_empty(
-    ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake_gh(tmp_path, monkeypatch, "exit 0")
-
-    assert run(status.github_pr_status(ctx)) is None
-
-
-def test_github_checks_swallows_gh_failures(
+def test_github_swallows_gh_failures(
     ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_gh(tmp_path, monkeypatch, "exit 1")
 
-    assert run(status.github_checks_status(ctx)) is None
-
-
-def test_github_checks_without_a_pr_is_empty(
-    ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # gh prints nothing when the branch has no open PR (jq's `// empty`).
-    fake_gh(tmp_path, monkeypatch, "exit 0")
-
-    assert run(status.github_checks_status(ctx)) is None
+    assert run(status.github_status(ctx)) is None
 
 
 def test_column_status_dispatches_on_the_column_kind(
     ctx: contexts.Context, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fake_gh(tmp_path, monkeypatch, "echo FAILURE")
+    fake_gh(tmp_path, monkeypatch, "echo 'OPEN false MERGEABLE FAILURE'")
     (ctx.path / ".git" / "agent-status").write_text("idle\n")
 
     assert run(status.column_status(ctx, StatusColumn("c", command="echo hi"))) == "hi"
     assert run(status.column_status(ctx, StatusColumn("a", builtin="agent"))) == "idle"
-    assert run(status.column_status(ctx, StatusColumn("g", builtin="github-checks"))) == "failure"
+    assert run(status.column_status(ctx, StatusColumn("g", builtin="github"))) == "failing"
 
 
 def test_git_state_is_empty_for_a_clean_checkout(ctx: contexts.Context) -> None:
