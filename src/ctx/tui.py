@@ -306,6 +306,20 @@ class CtxTui(App[Request | None]):
         color: ansi_default;
         text-style: bold;
     }
+    /* lazygit-style selection: only the focused panel shows its cursor,
+       on blue; bright-bold status colours keep their contrast on it. */
+    #contexts > .datatable--cursor, #repos > .datatable--cursor, #archived > .datatable--cursor {
+        background: ansi_default;
+        color: ansi_default;
+        text-style: none;
+    }
+    #contexts:focus > .datatable--cursor,
+    #repos:focus > .datatable--cursor,
+    #archived:focus > .datatable--cursor {
+        background: ansi_blue;
+        color: ansi_default;
+        text-style: bold;
+    }
     #dialog {
         padding: 1 2;
         width: 60;
@@ -410,7 +424,7 @@ class CtxTui(App[Request | None]):
             ctxs.remove(current)
             ctxs.insert(0, current)
         for ctx in ctxs:
-            name = Text(ctx.name, style="green") if ctx is current else ctx.name
+            name = Text(ctx.name, style="bold bright_green") if ctx is current else ctx.name
             ctx_table.add_row(name, ctx.repo, contexts.current_branch(ctx), *blanks, key=ctx.name)
         # Land the cursor on the most recent other context: the common reason
         # to open the TUI is switching away, not reopening the same session.
