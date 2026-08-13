@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import add_repo, commit_file, create_context
+from conftest import add_repo, commit_file, create_context, fake_gh
 
 from ctx import config, contexts, status
 from ctx.config import Config, StatusColumn
@@ -25,16 +25,6 @@ def registered(cfg: Config, origin: Path) -> Path:
 @pytest.fixture
 def ctx(cfg: Config, registered: Path) -> contexts.Context:
     return create_context(cfg, "origin", "feat")
-
-
-def fake_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script: str) -> None:
-    """Shadow gh on PATH with a stub script."""
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir(exist_ok=True)
-    gh = bin_dir / "gh"
-    gh.write_text(f"#!/bin/sh\n{script}\n")
-    gh.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
 
 
 def test_builtins_match_the_config_allowlist() -> None:

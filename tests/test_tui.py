@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import MakeOrigin, add_repo, create_context
+from conftest import MakeOrigin, add_repo, create_context, fake_cli, fake_gh
 from textual.coordinate import Coordinate
 from textual.widgets import Button
 
@@ -291,6 +291,50 @@ def test_s_toggles_the_default_repo(cfg: Config, registered: Path) -> None:
             assert repos.default_repo(cfg) is None
 
     run_async(drive())
+
+
+def test_o_opens_the_pr_in_the_browser(
+    cfg: Config, registered: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = create_context(cfg, "origin", "one")
+    log = tmp_path / "gh-args"
+    fake_gh(tmp_path, monkeypatch, f'echo "$@" > {log}')
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("o")
+            await app.workers.wait_for_complete()
+
+    run_async(drive())
+
+    assert log.read_text().strip() == "pr view --web"
+    assert contexts.find_context(cfg, "one").path == ctx.path
+
+
+def test_o_uses_the_forge_from_the_remote(
+    cfg: Config, registered: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = create_context(cfg, "origin", "one")
+    subprocess.run(
+        ["git", "remote", "set-url", "origin", "git@gitlab.com:jane/tool.git"],
+        cwd=ctx.path,
+        check=True,
+    )
+    log = tmp_path / "glab-args"
+    fake_cli(tmp_path, monkeypatch, "glab", f'echo "$@" > {log}')
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("o")
+            await app.workers.wait_for_complete()
+
+    run_async(drive())
+
+    assert log.read_text().strip() == "mr view --web"
 
 
 def test_archive_key_archives_without_a_prompt(cfg: Config, registered: Path) -> None:
