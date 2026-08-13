@@ -197,19 +197,19 @@ def cell_icon(column: StatusColumn, cell: str) -> str:
 # for PR and check states; attention-based colours for agent states (red
 # needs you now, yellow wants new instructions, green is progressing).
 STATUS_STYLES = {
-    "working": "green",
-    "open": "green",
-    "success": "green",
-    "idle": "yellow",
-    "pending": "yellow",
-    "blocked": "red",
-    "closed": "red",
-    "failure": "red",
-    "error": "red",
-    "failing": "red",
-    "conflicts": "yellow",
-    "ready": "green",
-    "merged": "magenta",
+    "working": "bold bright_green",
+    "open": "bold bright_green",
+    "success": "bold bright_green",
+    "idle": "bold bright_yellow",
+    "pending": "bold bright_yellow",
+    "blocked": "bold bright_red",
+    "closed": "bold bright_red",
+    "failure": "bold bright_red",
+    "error": "bold bright_red",
+    "failing": "bold bright_red",
+    "conflicts": "bold bright_yellow",
+    "ready": "bold bright_green",
+    "merged": "bold bright_magenta",
     "draft": "bright_black",
 }
 
