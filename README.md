@@ -96,6 +96,19 @@ command = "claude"
 focus = true
 ```
 
+### Theme
+
+The TUI renders with your terminal's ANSI palette. A `[theme]` table overrides
+individual colours with hex values, e.g. to match a truecolor lazygit theme:
+
+```toml
+[theme]
+foreground = "#c8d3f5"
+selection = "#2d3f76"       # the focused panel's cursor row
+border_active = "#ff966c"
+border_inactive = "#589ed7"
+```
+
 ### Status columns
 
 The STATUS column shows the git state: `*` for uncommitted changes, `↑n` for n

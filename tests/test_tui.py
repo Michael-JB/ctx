@@ -214,6 +214,20 @@ def test_archiving_another_context_does_not_switch(cfg: Config, registered: Path
         contexts.find_context(cfg, "one")
 
 
+def test_theme_colours_reach_the_stylesheet_variables(cfg: Config) -> None:
+    from dataclasses import replace
+
+    from ctx.config import Theme
+
+    themed = replace(cfg, theme=Theme(selection="#2d3f76"))
+    app = CtxTui(themed, StubMultiplexer())
+
+    variables = app.get_css_variables()
+
+    assert variables["ctx-selection"] == "#2d3f76"
+    assert variables["ctx-foreground"] == "ansi_default"
+
+
 def test_current_context_is_pinned_and_cursor_starts_below_it(
     cfg: Config, registered: Path
 ) -> None:

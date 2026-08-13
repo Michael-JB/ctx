@@ -19,7 +19,7 @@ from textual.widgets import Button, DataTable, Footer, Input, Label
 from textual.widgets.data_table import CellDoesNotExist
 
 from ctx import contexts, forge, repos, status
-from ctx.config import Config
+from ctx.config import Config, Theme
 from ctx.contexts import Context
 from ctx.multiplexer import Multiplexer, MultiplexerError
 
@@ -283,7 +283,8 @@ class CtxTui(App[Request | None]):
     #repos { width: 1fr; height: 100%; }
     #archived { width: 1fr; height: 100%; }
     #contexts, #repos, #archived {
-        border: round $foreground;
+        border: round $ctx-border-inactive;
+        color: $ctx-foreground;
         /* A row cursor offers no horizontal scrolling, so wide content
            just clips; a scrollbar would only take up a row. */
         overflow-x: hidden;
@@ -294,7 +295,7 @@ class CtxTui(App[Request | None]):
         scrollbar-color-active: ansi_white;
     }
     #contexts:focus, #repos:focus, #archived:focus {
-        border: round $primary;
+        border: round $ctx-border-active;
     }
     #contexts.busy, #repos.busy, #archived.busy {
         text-style: dim;
@@ -303,21 +304,21 @@ class CtxTui(App[Request | None]):
        terminal palettes; stick to the terminal's own colours. */
     #contexts > .datatable--header, #repos > .datatable--header, #archived > .datatable--header {
         background: ansi_default;
-        color: ansi_default;
+        color: $ctx-foreground;
         text-style: bold;
     }
-    /* lazygit-style selection: only the focused panel shows its cursor,
-       on blue; bright-bold status colours keep their contrast on it. */
+    /* lazygit-style selection: only the focused panel shows its cursor;
+       bright-bold status colours keep their contrast on it. */
     #contexts > .datatable--cursor, #repos > .datatable--cursor, #archived > .datatable--cursor {
         background: ansi_default;
-        color: ansi_default;
+        color: $ctx-foreground;
         text-style: none;
     }
     #contexts:focus > .datatable--cursor,
     #repos:focus > .datatable--cursor,
     #archived:focus > .datatable--cursor {
-        background: ansi_blue;
-        color: ansi_default;
+        background: $ctx-selection;
+        color: $ctx-foreground;
         text-style: bold;
     }
     #dialog {
@@ -363,6 +364,18 @@ class CtxTui(App[Request | None]):
         self._busy: set[str] = set()
         self._spinner_frame = 0
         self._fetching: set[int] = set()
+
+    def get_css_variables(self) -> dict[str, str]:
+        # Textual may call this during App setup, before __init__ assigns _cfg.
+        cfg: Config | None = getattr(self, "_cfg", None)
+        theme = cfg.theme if cfg is not None else Theme()
+        return {
+            **super().get_css_variables(),
+            "ctx-foreground": theme.foreground,
+            "ctx-selection": theme.selection,
+            "ctx-border-active": theme.border_active,
+            "ctx-border-inactive": theme.border_inactive,
+        }
 
     def compose(self) -> ComposeResult:
         # Contexts gets the full width: it grows status columns. Panels
