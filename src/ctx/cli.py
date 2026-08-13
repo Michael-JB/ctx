@@ -2,10 +2,11 @@ import asyncio
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import click
 
-from ctx import contexts, repos, status
+from ctx import claude_hook, contexts, repos, status
 from ctx.config import Config, ConfigError, load_config
 from ctx.layout import LayoutError
 from ctx.multiplexer import Multiplexer, MultiplexerError, get_multiplexer
@@ -209,6 +210,12 @@ def tui(deps: Deps, exit_on_open: bool) -> None:
             _create_and_open(deps, repo_name, name, base)
         case None:
             pass
+
+
+@cli.command("claude-hook")
+def claude_hook_() -> None:
+    """Feed the agent status column from a Claude Code hook event on stdin."""
+    claude_hook.handle(sys.stdin.read(), Path.cwd())
 
 
 @cli.group()
