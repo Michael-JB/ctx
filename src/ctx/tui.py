@@ -52,7 +52,17 @@ def _styled(cell: str) -> Text | str:
 
 
 _MUTATING_ACTIONS = frozenset(
-    {"open", "new", "new_from_base", "add_repo", "archive", "delete", "unarchive", "empty_archive"}
+    {
+        "open",
+        "new",
+        "new_from_base",
+        "add_repo",
+        "set_default_repo",
+        "archive",
+        "delete",
+        "unarchive",
+        "empty_archive",
+    }
 )
 
 
@@ -142,6 +152,7 @@ _PANEL_KEYBINDINGS: dict[str, tuple[tuple[str, str], ...]] = {
         ("enter / n", "new context"),
         ("N", "new context from a base branch"),
         ("a", "add repo"),
+        ("s", "set / clear default repo"),
         ("d", "remove repo"),
     ),
     "archived": (
@@ -236,6 +247,7 @@ class ReposTable(DataTable[str]):
 
     BINDINGS: ClassVar = [
         ("a", "app.add_repo", "Add repo"),
+        ("s", "app.set_default_repo", "Set default"),
         ("d", "app.delete", "Remove repo"),
         *_PANEL_NAV_BINDINGS,
     ]
@@ -389,8 +401,10 @@ class CtxTui(App[Request | None]):
             )
         repo_table = self._repos_table
         repo_table.clear()
-        for name in repos.repo_names(self._cfg):
-            repo_table.add_row(name, repos.repo_url(self._cfg, name), key=name)
+        default = repos.default_repo(self._cfg)
+        for name in sorted(repos.repo_names(self._cfg), key=lambda name: (name != default, name)):
+            label = f"{name} *" if name == default else name
+            repo_table.add_row(label, repos.repo_url(self._cfg, name), key=name)
         archived_table = self._archived_table
         archived_table.clear()
         for ctx in contexts.list_archived(self._cfg):
@@ -561,13 +575,21 @@ class CtxTui(App[Request | None]):
             self.exit()
 
     def _repo_for_new(self) -> str | None:
-        """The repo the selection points at: a selected repo, or a context's repo."""
+        """The target repo: the hovered repo on the repos panel, else the default.
+
+        With no default set, fall back to the hovered row's repo.
+        """
         active = self._active_table()
+        if active is self._repos_table:
+            return self._selected_key(self._repos_table)
+        default = repos.default_repo(self._cfg)
+        if default is not None:
+            return default
         if active is self._contexts_table:
             ctx = self._selected_context()
             if ctx is not None:
                 return ctx.repo
-        elif active is self._archived_table:
+        else:
             ctx = self._selected_archived()
             if ctx is not None:
                 return ctx.repo
@@ -634,6 +656,17 @@ class CtxTui(App[Request | None]):
             return
         if self._exit_on_open:
             self.exit()
+
+    def action_set_default_repo(self) -> None:
+        """Toggle the selected repo as the default for new contexts."""
+        if self._active_table() is not self._repos_table:
+            return
+        name = self._selected_key(self._repos_table)
+        if name is None:
+            return
+        current = repos.default_repo(self._cfg)
+        repos.set_default_repo(self._cfg, None if name == current else name)
+        self._reload()
 
     def action_add_repo(self) -> None:
         def submitted(url: str | None) -> None:

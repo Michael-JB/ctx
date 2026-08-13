@@ -359,3 +359,26 @@ def test_repo_rm_rejects_unregistered(runner: CliRunner, deps: Deps) -> None:
 
     assert result.exit_code == 1
     assert "not registered" in result.stderr
+
+
+def test_repo_default_sets_and_shows(runner: CliRunner, deps: Deps, registered: Path) -> None:
+    result = runner.invoke(cli, ["repo", "default", "origin"], obj=deps)
+
+    assert result.exit_code == 0
+    assert runner.invoke(cli, ["repo", "default"], obj=deps).output == "origin\n"
+
+
+def test_repo_default_clear(runner: CliRunner, deps: Deps, registered: Path) -> None:
+    runner.invoke(cli, ["repo", "default", "origin"], obj=deps)
+
+    result = runner.invoke(cli, ["repo", "default", "--clear"], obj=deps)
+
+    assert result.exit_code == 0
+    assert runner.invoke(cli, ["repo", "default"], obj=deps).output == "no default repo\n"
+
+
+def test_repo_default_rejects_unregistered(runner: CliRunner, deps: Deps) -> None:
+    result = runner.invoke(cli, ["repo", "default", "nope"], obj=deps)
+
+    assert result.exit_code == 1
+    assert "not registered" in result.stderr

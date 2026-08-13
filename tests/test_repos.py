@@ -102,3 +102,33 @@ def test_remove_repo_unregisters(cfg: Config, origin: Path) -> None:
 def test_remove_repo_rejects_unregistered(cfg: Config) -> None:
     with pytest.raises(FileNotFoundError, match="not registered"):
         repos.remove_repo(cfg, "nope")
+
+
+def test_default_repo_is_unset_initially(cfg: Config) -> None:
+    assert repos.default_repo(cfg) is None
+
+
+def test_default_repo_round_trips(cfg: Config, origin: Path) -> None:
+    add_repo(cfg, str(origin))
+
+    repos.set_default_repo(cfg, "origin")
+    assert repos.default_repo(cfg) == "origin"
+
+    repos.set_default_repo(cfg, None)
+    assert repos.default_repo(cfg) is None
+
+
+def test_set_default_repo_rejects_unregistered(cfg: Config) -> None:
+    with pytest.raises(FileNotFoundError, match="not registered"):
+        repos.set_default_repo(cfg, "nope")
+
+
+def test_remove_repo_clears_the_default(cfg: Config, origin: Path) -> None:
+    add_repo(cfg, str(origin))
+    repos.set_default_repo(cfg, "origin")
+
+    repos.remove_repo(cfg, "origin")
+
+    assert repos.default_repo(cfg) is None
+    add_repo(cfg, str(origin))
+    assert repos.default_repo(cfg) is None, "a re-added repo must not resurrect the default"
