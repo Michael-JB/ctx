@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.6.0](https://github.com/Michael-JB/ctx/compare/v0.5.0...v0.6.0) (2026-08-13)
+
+
+### Features
+
+* agent column shows how long active states have run ([40d9c80](https://github.com/Michael-JB/ctx/commit/40d9c8073067d44bff56da482150bf4ec7c6ab07))
+* builtin status cells render as coloured nerd-font glyphs ([f8767cf](https://github.com/Michael-JB/ctx/commit/f8767cf5e1f75e0150e10944c318479efba10dd7))
+* ctx claude-hook drives the agent status column ([1f12d17](https://github.com/Michael-JB/ctx/commit/1f12d175c4a0d278afe41207e7b968157bec222a))
+* d archives a context instantly; delete confirms in the archived panel ([2a7d518](https://github.com/Michael-JB/ctx/commit/2a7d5189bba5a3b8096349c861d6bf8169e084f0))
+* default repo for new contexts ([4ad08fe](https://github.com/Michael-JB/ctx/commit/4ad08fe646cc69196264f91d477c86ab80994ef7))
+* fuzzy filter the focused panel by name with / ([50557b2](https://github.com/Michael-JB/ctx/commit/50557b263ebcbba13fa6ae184afce41f1a798d77))
+* github column collapses the branch's PR into one cell ([361b1fc](https://github.com/Michael-JB/ctx/commit/361b1fcd476804e9d320f7aff6ab01185609dbe4))
+* o opens the context's PR in the browser ([a42711d](https://github.com/Michael-JB/ctx/commit/a42711d0ed1aee40f478a46ef6fb52e81b1b0f06))
+* pin the attached context on top and start the cursor below it ([02c6e4b](https://github.com/Michael-JB/ctx/commit/02c6e4b48edf5d7c9b15c0326feaf7f30adbaaba))
+* theme colours configurable via a [theme] table ([81f75ca](https://github.com/Michael-JB/ctx/commit/81f75caf6b588ee592d69710a403f8f1a877cdef))
+
+
+### Bug Fixes
+
+* late status results no longer crash the closing TUI ([33b9e02](https://github.com/Michael-JB/ctx/commit/33b9e023a22b2735f67b5f1de864ea4eae188f00))
+* lazygit-style dark cursor row keeps status colours readable ([4f25e04](https://github.com/Michael-JB/ctx/commit/4f25e045dc3ac27b6caa606f33afee54f71025a5))
+* removing the current context no longer kills your client ([e26d3ec](https://github.com/Michael-JB/ctx/commit/e26d3ec724572347da478454faf059e278ff828b))
+* slim gray scrollbars instead of the wide blue default ([e62d564](https://github.com/Michael-JB/ctx/commit/e62d56413c1068bdacc2a72464517cea8ae35631))
+* unreadable blue table headers under ansi rendering ([1b631df](https://github.com/Michael-JB/ctx/commit/1b631df0bbdfad24a8d2519fb5f165a35b5409a6))
+
+
+### Documentation
+
+* agent-guided setup checklist and refreshed usage guide ([883a869](https://github.com/Michael-JB/ctx/commit/883a86984c9d933bdd796f1d69fd1253f19d4247))
+
 ## [0.5.0](https://github.com/Michael-JB/ctx/compare/v0.4.0...v0.5.0) (2026-08-08)
 
 
