@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ctx.config import Config, ConfigError, StatusColumn, load_config
+from ctx.config import Config, ConfigError, StatusColumn, Theme, load_config
 from ctx.layout import Pane
 from ctx.multiplexer import MultiplexerKind
 
@@ -177,6 +177,52 @@ def test_status_rejects_duplicate_names(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ConfigError, match="unique"):
+        load_config(path)
+
+
+def test_theme_defaults_to_the_ansi_palette(tmp_path: Path) -> None:
+    cfg = load_config(tmp_path / "missing.toml")
+
+    assert cfg.theme == Theme()
+    assert cfg.theme.selection == "ansi_blue"
+
+
+def test_theme_override(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path,
+        """
+        [theme]
+        selection = "#2d3f76"
+        border_active = "#ff966c"
+        """,
+    )
+
+    cfg = load_config(path)
+
+    assert cfg.theme.selection == "#2d3f76"
+    assert cfg.theme.border_active == "#ff966c"
+    assert cfg.theme.foreground == "ansi_default"
+
+
+def test_theme_rejects_unknown_keys(tmp_path: Path) -> None:
+    path = write_config(tmp_path, '[theme]\nselektion = "#2d3f76"')
+
+    with pytest.raises(ConfigError, match="unknown theme key"):
+        load_config(path)
+
+
+def test_theme_rejects_malformed_colours(tmp_path: Path) -> None:
+    path = write_config(tmp_path, '[theme]\nselection = "#12"')
+
+    with pytest.raises(ConfigError, match="colour"):
+        load_config(path)
+
+
+def test_theme_rejects_colour_names(tmp_path: Path) -> None:
+    """Toolkit colour names are an implementation detail, not config surface."""
+    path = write_config(tmp_path, '[theme]\nselection = "ansi_blue"')
+
+    with pytest.raises(ConfigError, match="hex colour"):
         load_config(path)
 
 

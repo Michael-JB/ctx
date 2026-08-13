@@ -1,7 +1,8 @@
 import os
+import re
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
 from ctx.layout import DEFAULT_LAYOUT, Node, parse_layout
@@ -40,6 +41,16 @@ class StatusColumn:
 
 
 @dataclass(frozen=True)
+class Theme:
+    """TUI colours; the defaults stick to the terminal's ANSI palette."""
+
+    foreground: str = "ansi_default"
+    selection: str = "ansi_blue"
+    border_active: str = "ansi_blue"
+    border_inactive: str = "ansi_default"
+
+
+@dataclass(frozen=True)
 class Config:
     contexts_dir: Path = _DATA_DIR / "contexts"
     repos_dir: Path = _DATA_DIR / "repos"
@@ -48,6 +59,7 @@ class Config:
     multiplexer: MultiplexerKind = MultiplexerKind.TMUX
     layout: Node = DEFAULT_LAYOUT
     status: tuple[StatusColumn, ...] = ()
+    theme: Theme = Theme()
 
 
 def load_config(path: Path = CONFIG_PATH) -> Config:
@@ -75,7 +87,26 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         cfg = replace(cfg, layout=parse_layout(data["layout"]))
     if "status" in data:
         cfg = replace(cfg, status=_parse_status(data["status"]))
+    if "theme" in data:
+        cfg = replace(cfg, theme=_parse_theme(data["theme"]))
     return cfg
+
+
+# Hex only: the TUI toolkit's colour names are an implementation detail.
+_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _parse_theme(data: object) -> Theme:
+    if not isinstance(data, dict):
+        raise ConfigError("theme must be a table")
+    known = {f.name for f in fields(Theme)}
+    unknown = data.keys() - known
+    if unknown:
+        raise ConfigError(f"unknown theme key(s): {', '.join(sorted(unknown))}")
+    for key, value in data.items():
+        if not isinstance(value, str) or not _COLOR_RE.match(value):
+            raise ConfigError(f"theme {key} must be a hex colour like '#2d3f76'")
+    return Theme(**data)
 
 
 def _parse_status(data: object) -> tuple[StatusColumn, ...]:
