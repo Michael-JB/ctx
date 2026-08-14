@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/Michael-JB/ctx/compare/v0.6.2...v0.7.0) (2026-08-14)
+
+
+### Features
+
+* shift+D permanently deletes a context from the contexts panel ([6eb2a44](https://github.com/Michael-JB/ctx/commit/6eb2a4418427a173d4578856e1e382cfb1171b0a))
+
 ## [0.6.2](https://github.com/Michael-JB/ctx/compare/v0.6.1...v0.6.2) (2026-08-14)
 
 
