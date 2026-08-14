@@ -386,6 +386,35 @@ def test_delete_key_asks_for_confirmation(cfg: Config, registered: Path) -> None
     assert contexts.find_archived(cfg, "one")
 
 
+def test_shift_delete_key_on_contexts_asks_for_confirmation(cfg: Config, registered: Path) -> None:
+    create_context(cfg, "origin", "one")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("D")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmScreen)
+            await pilot.press("escape")
+            await app.workers.wait_for_complete()
+
+    run_async(drive())
+
+    assert contexts.find_context(cfg, "one")
+
+
+def test_delete_context_worker_removes_the_checkout(cfg: Config, registered: Path) -> None:
+    ctx = create_context(cfg, "origin", "one")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    _run_worker(app, lambda: app._delete_context_worker(ctx))
+
+    assert not ctx.path.exists()
+    with pytest.raises(LookupError):
+        contexts.find_context(cfg, "one")
+
+
 def test_add_repo_key_is_local_to_the_repos_panel(cfg: Config, registered: Path) -> None:
     """`a` opens the add-repo prompt only while the repos panel is focused."""
     app = CtxTui(cfg, StubMultiplexer())

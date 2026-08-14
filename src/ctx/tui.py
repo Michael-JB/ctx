@@ -156,6 +156,7 @@ _PANEL_KEYBINDINGS: dict[str, tuple[tuple[str, str], ...]] = {
         ("n", "new context"),
         ("N", "new context from a base branch"),
         ("d", "archive context"),
+        ("D", "permanently delete context"),
     ),
     "repos": (
         ("enter / n", "new context"),
@@ -169,7 +170,7 @@ _PANEL_KEYBINDINGS: dict[str, tuple[tuple[str, str], ...]] = {
         ("u", "unarchive context"),
         ("n", "new context"),
         ("N", "new context from a base branch"),
-        ("d", "permanently delete context"),
+        ("d / D", "permanently delete context"),
         ("e", "empty the archive"),
     ),
 }
@@ -264,6 +265,7 @@ class ContextsTable(DataTable[str | Text]):
         Binding("space", "app.open", "Open", key_display="space"),
         ("o", "app.open_pr", "Open PR"),
         ("d", "app.archive", "Archive"),
+        ("D", "app.delete", "Delete"),
         *_PANEL_NAV_BINDINGS,
     ]
 
@@ -285,6 +287,7 @@ class ArchivedTable(DataTable[str]):
     BINDINGS: ClassVar = [
         ("u", "app.unarchive", "Unarchive"),
         ("d", "app.delete", "Delete"),
+        Binding("D", "app.delete", show=False),
         ("e", "app.empty_archive", "Empty"),
         *_PANEL_NAV_BINDINGS,
     ]
@@ -845,12 +848,17 @@ class CtxTui(App[Request | None]):
         if active is self._repos_table:
             self._delete_repo()
         elif active is self._archived_table:
-            self._delete_archived()
+            ctx = self._selected_archived()
+            if ctx is not None:
+                self._confirm_delete(ctx, "archived", self._delete_archived_worker)
+        elif active is self._contexts_table:
+            ctx = self._selected_context()
+            if ctx is not None:
+                self._confirm_delete(ctx, "contexts", self._delete_context_worker)
 
-    def _delete_archived(self) -> None:
-        ctx = self._selected_archived()
-        if ctx is None:
-            return
+    def _confirm_delete(
+        self, ctx: Context, panel: str, worker: Callable[[Context], object]
+    ) -> None:
         problems = []
         if contexts.is_dirty(ctx):
             problems.append("uncommitted changes")
@@ -865,8 +873,8 @@ class CtxTui(App[Request | None]):
 
         def confirmed(delete: bool | None) -> None:
             if delete:
-                self._start_busy("archived")
-                self._delete_archived_worker(ctx)
+                self._start_busy(panel)
+                worker(ctx)
 
         self.push_screen(ConfirmScreen(message, label), confirmed)
 
@@ -878,6 +886,10 @@ class CtxTui(App[Request | None]):
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
         self.call_from_thread(self._reload)
         self.call_from_thread(self._finish_busy)
+
+    @work(thread=True)
+    def _delete_context_worker(self, ctx: Context) -> None:
+        self._teardown(ctx, lambda: contexts.remove_context(ctx))
 
     def action_open_pr(self) -> None:
         if self._active_table() is not self._contexts_table:
