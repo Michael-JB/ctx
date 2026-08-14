@@ -112,6 +112,8 @@ async def create_context(cfg: Config, repo: str, name: str, base: str | None = N
         # The mirror only carries the default branch; fetch the base into the context.
         fetch_base = True
     path.parent.mkdir(parents=True, exist_ok=True)
+    # A directory that predates the clone is not ours to delete on failure.
+    preexisting = path.exists()
     try:
         await git_async("clone", str(mirror), str(path))
         await git_async("remote", "set-url", "origin", repos.repo_url(cfg, repo), cwd=path)
@@ -126,9 +128,10 @@ async def create_context(cfg: Config, repo: str, name: str, base: str | None = N
         else:
             # An empty repo has no commit to branch from; start the work branch unborn.
             await git_async("checkout", "--no-track", "-b", branch, cwd=path)
-    except asyncio.CancelledError:
+    except (asyncio.CancelledError, subprocess.CalledProcessError):
         # A half-made checkout would squat on the name; leave nothing behind.
-        shutil.rmtree(path, ignore_errors=True)
+        if not preexisting:
+            shutil.rmtree(path, ignore_errors=True)
         raise
     return Context(repo, name, path)
 

@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from conftest import (
     requires_lfs,
 )
 
-from ctx import contexts
+from ctx import contexts, repos
 from ctx.config import Config
 from ctx.git import git
 
@@ -62,6 +63,31 @@ def test_create_smudges_lfs_files_from_the_mirror(cfg: Config, origin: Path) -> 
     ctx = create_context(cfg, "origin", "feat")
 
     assert (ctx.path / "data.bin").read_text() == "payload\n"
+
+
+@requires_lfs
+def test_failed_clone_leaves_nothing_behind(cfg: Config, origin: Path) -> None:
+    commit_lfs_file(origin, "data.bin")
+    add_repo(cfg, str(origin))
+    # A mirror missing LFS objects fails the clone's checkout; the explicit
+    # base skips the mirror update that would repopulate the store.
+    shutil.rmtree(repos.repo_path(cfg, "origin") / "lfs")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        create_context(cfg, "origin", "feat", base="main")
+
+    assert not (cfg.contexts_dir / "origin" / "feat").exists()
+
+
+def test_failed_clone_spares_a_preexisting_directory(cfg: Config, registered: Path) -> None:
+    path = cfg.contexts_dir / "origin" / "feat"
+    path.mkdir(parents=True)
+    (path / "keep.txt").write_text("x\n")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        create_context(cfg, "origin", "feat")
+
+    assert (path / "keep.txt").exists()
 
 
 @pytest.mark.parametrize("name", ["", "   "])
