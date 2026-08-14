@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.2](https://github.com/Michael-JB/ctx/compare/v0.6.1...v0.6.2) (2026-08-14)
+
+
+### Bug Fixes
+
+* fetch LFS objects into repo mirrors so clones can smudge locally ([1de48a1](https://github.com/Michael-JB/ctx/commit/1de48a1994426e79f70e85f89d59d5c4b215daf8))
+* remove the partial checkout left behind by a failed clone ([9d45c37](https://github.com/Michael-JB/ctx/commit/9d45c37a947e8d4021ca2669aa6e32e5bcd027a3))
+* surface git stderr in error messages instead of just the exit status ([be74f50](https://github.com/Michael-JB/ctx/commit/be74f506c37eeed6b86e1e25f61aa683720bd039))
+* unstick the TUI after archiving the context it is running in ([49dceeb](https://github.com/Michael-JB/ctx/commit/49dceeb0c76b595b2e06c67232b7c654eba8e23f))
+
 ## [0.6.1](https://github.com/Michael-JB/ctx/compare/v0.6.0...v0.6.1) (2026-08-13)
 
 
