@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from ctx.config import Config
 from ctx.git import git
 
 MakeOrigin = Callable[..., Path]
+
+requires_lfs = pytest.mark.skipif(shutil.which("git-lfs") is None, reason="git-lfs not installed")
 
 
 # Sync conveniences over the async API, for test setup and assertions.
@@ -83,4 +86,13 @@ def fake_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script: str) -> Non
 def commit_file(repo: Path, name: str, content: str = "x\n") -> None:
     (repo / name).write_text(content)
     git("add", name, cwd=repo)
+    git("commit", "-m", f"add {name}", cwd=repo)
+
+
+def commit_lfs_file(repo: Path, name: str, content: str = "payload\n") -> None:
+    """Commit a file tracked by git-lfs, installing its filters in the isolated config."""
+    git("lfs", "install", cwd=repo)
+    git("lfs", "track", name, cwd=repo)
+    (repo / name).write_text(content)
+    git("add", ".gitattributes", name, cwd=repo)
     git("commit", "-m", f"add {name}", cwd=repo)

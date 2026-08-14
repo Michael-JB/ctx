@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from conftest import MakeOrigin, add_repo, commit_file, update_repo
+from conftest import MakeOrigin, add_repo, commit_file, commit_lfs_file, requires_lfs, update_repo
 
 from ctx import repos
 from ctx.config import Config
@@ -89,6 +89,36 @@ def test_update_repo_tolerates_an_empty_repo(cfg: Config, make_origin: MakeOrigi
     add_repo(cfg, str(make_origin("empty", empty=True)))
 
     update_repo(cfg, "empty")
+
+
+def _lfs_objects(cfg: Config, name: str) -> list[Path]:
+    store = repos.repo_path(cfg, name) / "lfs" / "objects"
+    return [p for p in store.rglob("*") if p.is_file()]
+
+
+@requires_lfs
+def test_add_repo_populates_the_lfs_store(cfg: Config, origin: Path) -> None:
+    commit_lfs_file(origin, "data.bin")
+
+    add_repo(cfg, str(origin))
+
+    assert _lfs_objects(cfg, "origin")
+
+
+@requires_lfs
+def test_update_repo_fetches_new_lfs_objects(cfg: Config, origin: Path) -> None:
+    add_repo(cfg, str(origin))
+    commit_lfs_file(origin, "data.bin")
+
+    update_repo(cfg, "origin")
+
+    assert _lfs_objects(cfg, "origin")
+
+
+def test_add_repo_skips_lfs_for_repos_without_it(cfg: Config, origin: Path) -> None:
+    add_repo(cfg, str(origin))
+
+    assert not (repos.repo_path(cfg, "origin") / "lfs").exists()
 
 
 def test_remove_repo_unregisters(cfg: Config, origin: Path) -> None:

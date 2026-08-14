@@ -1,9 +1,17 @@
 import os
+import shutil
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from conftest import MakeOrigin, add_repo, commit_file, create_context
+from conftest import (
+    MakeOrigin,
+    add_repo,
+    commit_file,
+    commit_lfs_file,
+    create_context,
+    requires_lfs,
+)
 
 from ctx import contexts
 from ctx.config import Config
@@ -42,6 +50,18 @@ def test_create_maps_name_spaces_to_branch_dashes(cfg: Config, registered: Path)
 
     assert contexts.current_branch(ctx) == "two-words"
     assert contexts.find_context(cfg, "two words") == ctx
+
+
+@requires_lfs
+def test_create_smudges_lfs_files_from_the_mirror(cfg: Config, origin: Path) -> None:
+    commit_lfs_file(origin, "data.bin", "payload\n")
+    add_repo(cfg, str(origin))
+    # Only the mirror's LFS store may serve the checkout.
+    shutil.rmtree(origin / ".git" / "lfs")
+
+    ctx = create_context(cfg, "origin", "feat")
+
+    assert (ctx.path / "data.bin").read_text() == "payload\n"
 
 
 @pytest.mark.parametrize("name", ["", "   "])
