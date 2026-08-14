@@ -64,6 +64,7 @@ def test_git_async_returns_output_and_reports_failure(origin: Path) -> None:
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
         asyncio.run(git_async("rev-parse", "--verify", "no-such-ref", cwd=origin))
     assert "fatal" in exc_info.value.stderr
+    assert "fatal" in str(exc_info.value), "the message must carry git's stderr"
 
 
 def test_git_async_cancellation_kills_the_transport(

@@ -20,6 +20,14 @@ def _env() -> dict[str, str]:
     return env
 
 
+class GitError(subprocess.CalledProcessError):
+    """A failed git call whose message is git's own error, not just the exit status."""
+
+    def __str__(self) -> str:
+        detail = (self.stderr or "").strip()
+        return detail or super().__str__()
+
+
 def git(*args: str, cwd: Path | None = None) -> str:
     """Run git, letting stderr (progress, errors) stream to the terminal.
 
@@ -63,7 +71,7 @@ async def git_async(*args: str, cwd: Path | None = None) -> str:
         await proc.wait()
         raise
     if proc.returncode:
-        raise subprocess.CalledProcessError(
+        raise GitError(
             proc.returncode, argv, stdout.decode(errors="replace"), stderr.decode(errors="replace")
         )
     return stdout.decode(errors="replace").strip()
