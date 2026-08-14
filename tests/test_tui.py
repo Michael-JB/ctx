@@ -417,6 +417,28 @@ def test_archiving_the_current_context_switches_away_and_kills_last(
     assert contexts.find_archived(cfg, "one")
 
 
+def test_archiving_the_current_context_leaves_no_stale_busy_state(
+    cfg: Config, registered: Path
+) -> None:
+    """A TUI in a tmux popup outlives its session's kill; it must repaint."""
+    for name in ("one", "two"):
+        create_context(cfg, "origin", name)
+    ctx = contexts.find_context(cfg, "one")
+    app = CtxTui(cfg, RecordingMultiplexer(current="one"))
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._start_busy("contexts")
+            app._archive_worker(ctx)
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            assert not app._busy, "the panel stayed dimmed after the archive"
+            assert app._contexts_table.row_count == 1
+
+    run_async(drive())
+
+
 def test_slash_filters_and_enter_opens_the_match(cfg: Config, registered: Path) -> None:
     for name in ("alpha", "beta"):
         create_context(cfg, "origin", name)
