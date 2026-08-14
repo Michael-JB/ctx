@@ -291,7 +291,9 @@ def main() -> None:
         cli()
     except subprocess.CalledProcessError as exc:
         cmd = " ".join(map(str, exc.cmd))
-        click.echo(f"error: command failed ({cmd})", err=True)
+        message = f"error: command failed ({cmd})"
+        detail = (exc.stderr or "").strip()
+        click.echo(f"{message}\n{detail}" if detail else message, err=True)
         sys.exit(exc.returncode or 1)
     except LayoutError as exc:
         click.echo(f"error: invalid layout: {exc}", err=True)
