@@ -1,5 +1,6 @@
 import asyncio
 import shutil
+import subprocess
 from pathlib import Path
 
 from ctx.config import Config
@@ -20,6 +21,29 @@ def name_from_url(url: str) -> str:
     return url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git")
 
 
+async def _fetch_lfs(path: Path, branch: str) -> None:
+    """Populate a mirror's LFS store, which bare fetches leave empty.
+
+    Clones smudge against the mirror, so a missing object there fails every
+    checkout. The .gitattributes probe keeps repos without LFS away from the
+    lfs command, which may not even be installed.
+    """
+    try:
+        await git_async(
+            "grep",
+            "--quiet",
+            "filter=lfs",
+            branch,
+            "--",
+            ".gitattributes",
+            "*/.gitattributes",
+            cwd=path,
+        )
+    except subprocess.CalledProcessError:
+        return
+    await git_async("lfs", "fetch", "origin", branch, cwd=path)
+
+
 async def add_repo(cfg: Config, url: str, name: str | None = None) -> str:
     name = name or name_from_url(url)
     path = repo_path(cfg, name)
@@ -33,8 +57,9 @@ async def add_repo(cfg: Config, url: str, name: str | None = None) -> str:
         await git_async(
             "config", "remote.origin.fetch", f"+refs/heads/{branch}:refs/heads/{branch}", cwd=path
         )
-    except asyncio.CancelledError:
-        # A half-cloned mirror would squat on the name; leave it unregistered.
+        await _fetch_lfs(path, branch)
+    except (asyncio.CancelledError, subprocess.CalledProcessError):
+        # A half-made mirror would squat on the name; leave it unregistered.
         shutil.rmtree(path, ignore_errors=True)
         raise
     # The repo's contexts directory is part of its registration: users may
@@ -86,6 +111,7 @@ async def update_repo(cfg: Config, name: str) -> None:
     ) and not await git_async("ls-remote", "--heads", "origin", f"refs/heads/{branch}", cwd=path):
         return
     await git_async("fetch", "origin", f"+refs/heads/{branch}:refs/heads/{branch}", cwd=path)
+    await _fetch_lfs(path, branch)
 
 
 def repo_url(cfg: Config, name: str) -> str:
