@@ -38,6 +38,16 @@ def test_create_starts_a_branch_named_after_the_context(cfg: Config, registered:
     assert contexts.current_branch(ctx) == "feat"
 
 
+def test_create_adopts_an_existing_local_branch(cfg: Config, registered: Path) -> None:
+    # "main" already exists in the fresh clone as its default branch. The
+    # context checks it out instead of failing to create a branch of that name.
+    ctx = create_context(cfg, "origin", "main")
+
+    assert contexts.current_branch(ctx) == "main"
+    # No second branch was forked; the existing one is all there is.
+    assert git("branch", "--format=%(refname:short)", cwd=ctx.path) == "main"
+
+
 def test_create_applies_the_branch_prefix(cfg: Config, registered: Path) -> None:
     cfg = replace(cfg, branch_prefix="mb/")
 

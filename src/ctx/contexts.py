@@ -126,7 +126,11 @@ async def create_context(cfg: Config, repo: str, name: str, base: str | None = N
             except subprocess.CalledProcessError as exc:
                 remove_context(Context(repo, name, path))
                 raise FileNotFoundError(f"branch '{base}' not found on origin of '{repo}'") from exc
-        if await git_async("for-each-ref", f"refs/remotes/origin/{base}", cwd=path):
+        if not fetch_base and await git_async("for-each-ref", f"refs/heads/{branch}", cwd=path):
+            # The clone's default branch may already bear the requested name
+            # (e.g. a context named after it); adopt it instead of forking it.
+            await git_async("checkout", branch, cwd=path)
+        elif await git_async("for-each-ref", f"refs/remotes/origin/{base}", cwd=path):
             await git_async("checkout", "--no-track", "-b", branch, f"origin/{base}", cwd=path)
         else:
             # An empty repo has no commit to branch from; start the work branch unborn.
