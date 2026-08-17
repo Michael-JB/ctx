@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/Michael-JB/ctx/compare/v0.7.0...v0.7.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* create contexts even when run from a deleted directory ([79025fa](https://github.com/Michael-JB/ctx/commit/79025fa1defed8042e1cfb24738f9e6a52d37a31))
+
 ## [0.7.0](https://github.com/Michael-JB/ctx/compare/v0.6.2...v0.7.0) (2026-08-14)
 
 
