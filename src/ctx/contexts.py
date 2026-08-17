@@ -88,7 +88,10 @@ def _check_name(name: str, branch: str) -> None:
         raise ValueError(f"context name '{name}' must be a single path component")
     if name.startswith("-"):
         raise ValueError(f"context name '{name}' must not start with '-'")
-    check = subprocess.run(["git", "check-ref-format", f"refs/heads/{branch}"], capture_output=True)
+    # cwd="/": the process's own cwd may have been deleted under it.
+    check = subprocess.run(
+        ["git", "check-ref-format", f"refs/heads/{branch}"], capture_output=True, cwd="/"
+    )
     if check.returncode != 0:
         raise ValueError(f"context name '{name}' does not make a valid branch name ('{branch}')")
 

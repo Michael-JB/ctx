@@ -67,6 +67,21 @@ def test_git_async_returns_output_and_reports_failure(origin: Path) -> None:
     assert "fatal" in str(exc_info.value), "the message must carry git's stderr"
 
 
+def test_calls_survive_a_deleted_working_directory(
+    origin: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sitting in a deleted directory (e.g. a removed context) must not break git."""
+    doomed = tmp_path / "doomed"
+    doomed.mkdir()
+    monkeypatch.chdir(doomed)
+    doomed.rmdir()
+
+    clone = tmp_path / "clone"
+    git("clone", str(origin), str(clone))
+
+    assert asyncio.run(git_async("rev-parse", "--abbrev-ref", "HEAD", cwd=clone)) == "main"
+
+
 def test_git_async_cancellation_kills_the_transport(
     origin: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
