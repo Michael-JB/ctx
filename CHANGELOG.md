@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/Michael-JB/ctx/compare/v0.7.1...v0.7.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* adopt an existing local branch instead of failing to fork it ([51ab9ed](https://github.com/Michael-JB/ctx/commit/51ab9ed30dd78fd6f9173d5dc657606208717210))
+
 ## [0.7.1](https://github.com/Michael-JB/ctx/compare/v0.7.0...v0.7.1) (2026-08-17)
 
 
