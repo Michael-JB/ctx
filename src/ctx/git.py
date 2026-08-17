@@ -11,6 +11,11 @@ from pathlib import Path
 _SSH_COMMAND = "ssh -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
 _STALL_CONFIG = ("-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=60")
 
+# Fallback for callers that pass no cwd: the process's own cwd may have been
+# deleted under it (e.g. removing the context it sits in), which breaks git.
+# All call sites use absolute paths, so any directory that always exists does.
+_SAFE_CWD = Path("/")
+
 
 def _env() -> dict[str, str]:
     env = dict(os.environ)
@@ -37,7 +42,7 @@ def git(*args: str, cwd: Path | None = None) -> str:
     """
     result = subprocess.run(
         ["git", *_STALL_CONFIG, *args],
-        cwd=cwd,
+        cwd=cwd or _SAFE_CWD,
         check=True,
         stdout=subprocess.PIPE,
         text=True,
@@ -57,7 +62,7 @@ async def git_async(*args: str, cwd: Path | None = None) -> str:
     argv = ["git", *_STALL_CONFIG, *args]
     proc = await asyncio.create_subprocess_exec(
         *argv,
-        cwd=cwd,
+        cwd=cwd or _SAFE_CWD,
         env=_env(),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
