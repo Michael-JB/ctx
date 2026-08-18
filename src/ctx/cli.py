@@ -34,16 +34,21 @@ def cli(click_ctx: click.Context) -> None:
 
 @cli.command()
 @click.argument("repo")
-@click.argument("name")
+@click.argument("name", required=False)
 @click.option("-b", "--branch", "base", help="Base branch (default: the repo's default branch).")
 @click.pass_obj
-def new(deps: Deps, repo: str, name: str, base: str | None) -> None:
-    """Create a context: fresh checkout of REPO on a new local branch."""
+def new(deps: Deps, repo: str, name: str | None, base: str | None) -> None:
+    """Create a context: fresh checkout of REPO on a new local branch.
+
+    NAME defaults to a random adjective-animal pair.
+    """
     _create_and_open(deps, repo, name, base)
 
 
-def _create_and_open(deps: Deps, repo: str, name: str, base: str | None) -> None:
+def _create_and_open(deps: Deps, repo: str, name: str | None, base: str | None) -> None:
     try:
+        if name is None:
+            name = contexts.random_name(deps.cfg)
         ctx = asyncio.run(contexts.create_context(deps.cfg, repo, name, base))
     except (ValueError, FileExistsError, FileNotFoundError) as exc:
         raise click.ClickException(str(exc)) from exc

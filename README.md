@@ -67,6 +67,10 @@ ctx list
 # Contexts branch off the up-to-date default branch. To base one on another branch:
 ctx new papaya-nvim follow-up -b other-base
 
+# Leave the name out to get a generated one (e.g. holy-tiger); the TUI's new-context
+# prompt pre-fills the same, so enter accepts it and typing replaces it:
+ctx new papaya-nvim
+
 # Re-attach to a context, unarchiving it and recreating its session if needed:
 ctx open my-cool-feature
 
