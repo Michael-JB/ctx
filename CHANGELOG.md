@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/Michael-JB/ctx/compare/v0.7.2...v0.8.0) (2026-08-18)
+
+
+### Features
+
+* default new-context names to a random adjective-animal pair ([7fcc091](https://github.com/Michael-JB/ctx/commit/7fcc0911e5bedc0b0776be1c89ff022861154178))
+
+
+### Bug Fixes
+
+* **tui:** style dialog inputs with the configured theme ([9f1d9dd](https://github.com/Michael-JB/ctx/commit/9f1d9dd17dfce573e82a960040f7c653e804ca3f))
+
 ## [0.7.2](https://github.com/Michael-JB/ctx/compare/v0.7.1...v0.7.2) (2026-08-17)
 
 
