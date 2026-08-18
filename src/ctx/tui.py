@@ -107,15 +107,17 @@ class PromptScreen(ModalScreen[str | None]):
 
     BINDINGS: ClassVar = [Binding("escape", "cancel", show=False)]
 
-    def __init__(self, title: str, placeholder: str = "") -> None:
+    def __init__(self, title: str, placeholder: str = "", value: str = "") -> None:
         super().__init__()
         self._title = title
         self._placeholder = placeholder
+        self._value = value
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
             yield Label(self._title, markup=False)
-            yield Input(placeholder=self._placeholder)
+            # A pre-filled value is selected on focus, so typing replaces it.
+            yield Input(self._value, placeholder=self._placeholder)
 
     @on(Input.Submitted)
     def _submit(self, event: Input.Submitted) -> None:
@@ -693,7 +695,7 @@ class CtxTui(App[Request | None]):
             if name:
                 self._create(repo, name, None)
 
-        self.push_screen(PromptScreen(f"New context for {repo}", "name"), named)
+        self.push_screen(self._name_prompt(repo), named)
 
     def action_new_from_base(self) -> None:
         repo = self._repo_for_new()
@@ -711,7 +713,10 @@ class CtxTui(App[Request | None]):
 
             self.push_screen(PromptScreen(f"Base branch for {name}", "branch"), based)
 
-        self.push_screen(PromptScreen(f"New context for {repo}", "name"), named)
+        self.push_screen(self._name_prompt(repo), named)
+
+    def _name_prompt(self, repo: str) -> PromptScreen:
+        return PromptScreen(f"New context for {repo}", "name", contexts.random_name(self._cfg))
 
     def _create(self, repo: str, name: str, base: str | None) -> None:
         """Create in the background if we can stay running, else exit to the CLI."""

@@ -180,6 +180,34 @@ def test_create_from_an_empty_repo(cfg: Config, make_origin: MakeOrigin) -> None
     assert contexts.list_contexts(cfg) == [ctx]
 
 
+def test_random_name_pairs_an_adjective_with_an_animal(cfg: Config) -> None:
+    adjective, animal = contexts.random_name(cfg).split("-")
+
+    assert adjective in contexts._ADJECTIVES
+    assert animal in contexts._ANIMALS
+
+
+def test_random_name_avoids_live_and_archived_names(
+    cfg: Config, registered: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(contexts, "_ADJECTIVES", ("holy",))
+    monkeypatch.setattr(contexts, "_ANIMALS", ("tiger", "otter"))
+    contexts.archive_context(cfg, create_context(cfg, "origin", "holy-tiger"))
+
+    assert contexts.random_name(cfg) == "holy-otter"
+
+
+def test_random_name_fails_when_all_names_are_taken(
+    cfg: Config, registered: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(contexts, "_ADJECTIVES", ("holy",))
+    monkeypatch.setattr(contexts, "_ANIMALS", ("tiger",))
+    create_context(cfg, "origin", "holy-tiger")
+
+    with pytest.raises(FileExistsError, match="all generated names are taken"):
+        contexts.random_name(cfg)
+
+
 def test_list_contexts_returns_created_contexts(cfg: Config, registered: Path) -> None:
     created = create_context(cfg, "origin", "feat")
 

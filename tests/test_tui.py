@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from conftest import MakeOrigin, add_repo, create_context, fake_cli, fake_gh
 from textual.coordinate import Coordinate
-from textual.widgets import Button
+from textual.widgets import Button, Input
 
 from ctx import contexts, repos
 from ctx.config import Config, StatusColumn
@@ -255,6 +255,42 @@ def test_cursor_starts_on_top_without_a_current_context(cfg: Config, registered:
         async with app.run_test() as pilot:
             await pilot.pause()
             assert app._contexts_table.cursor_row == 0
+
+    run_async(drive())
+
+
+def test_new_prompt_prefills_a_generated_name(
+    cfg: Config, registered: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(contexts, "random_name", lambda cfg: "holy-tiger")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("n")
+            prompt_input = app.screen.query_one(Input)
+            assert prompt_input.value == "holy-tiger"
+            await pilot.press("enter")
+            await app.workers.wait_for_complete()
+
+    run_async(drive())
+
+    assert contexts.find_context(cfg, "holy-tiger")
+
+
+def test_typing_replaces_the_prefilled_name(
+    cfg: Config, registered: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(contexts, "random_name", lambda cfg: "holy-tiger")
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("n")
+            await pilot.press("x")
+            assert app.screen.query_one(Input).value == "x"
 
     run_async(drive())
 

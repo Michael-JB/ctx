@@ -1,4 +1,5 @@
 import asyncio
+import random
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -94,6 +95,37 @@ def _check_name(name: str, branch: str) -> None:
     )
     if check.returncode != 0:
         raise ValueError(f"context name '{name}' does not make a valid branch name ('{branch}')")
+
+
+_ADJECTIVES = (
+    "amber", "bold", "brave", "breezy", "bright", "calm", "cheeky", "clever",
+    "cosmic", "cozy", "curious", "daring", "dapper", "dusty", "eager", "fancy",
+    "fluffy", "frosty", "fuzzy", "gentle", "golden", "happy", "hazy", "holy",
+    "humble", "jolly", "keen", "lively", "lucky", "mellow", "merry", "mighty",
+    "misty", "nimble", "perky", "plucky", "proud", "quiet", "rosy", "rusty",
+    "shiny", "sleepy", "sly", "snappy", "snug", "stormy", "sunny", "swift",
+    "vivid", "witty",
+)  # fmt: skip
+
+_ANIMALS = (
+    "badger", "bear", "beaver", "bison", "crane", "dingo", "dolphin", "eagle",
+    "falcon", "ferret", "finch", "fox", "gecko", "goose", "hare", "hawk",
+    "heron", "husky", "jaguar", "koala", "lemur", "llama", "lynx", "magpie",
+    "marmot", "moose", "narwhal", "otter", "owl", "panda", "pelican", "penguin",
+    "puffin", "quail", "raccoon", "raven", "robin", "seal", "sparrow", "stork",
+    "swan", "tiger", "toucan", "trout", "turtle", "walrus", "weasel", "wombat",
+    "wren", "yak",
+)  # fmt: skip
+
+
+def random_name(cfg: Config) -> str:
+    """A free adjective-animal name for when the user would rather not pick one."""
+    taken = {c.name for c in list_contexts(cfg) + list_archived(cfg)}
+    names = [f"{adjective}-{animal}" for adjective in _ADJECTIVES for animal in _ANIMALS]
+    free = [name for name in names if name not in taken]
+    if not free:
+        raise FileExistsError("all generated names are taken; pick one yourself")
+    return random.choice(free)
 
 
 async def create_context(cfg: Config, repo: str, name: str, base: str | None = None) -> Context:

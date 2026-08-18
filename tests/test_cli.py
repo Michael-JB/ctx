@@ -88,6 +88,17 @@ def test_new_reports_the_created_context(runner: CliRunner, deps: Deps, register
     assert "created origin/feat" in result.output
 
 
+def test_new_without_a_name_generates_one(
+    runner: CliRunner, deps: Deps, monkeypatch: pytest.MonkeyPatch, registered: Path
+) -> None:
+    monkeypatch.setattr(contexts, "random_name", lambda cfg: "holy-tiger")
+
+    result = runner.invoke(cli, ["new", "origin"], obj=deps)
+
+    assert result.exit_code == 0
+    assert "created origin/holy-tiger" in result.output
+
+
 def test_new_opens_a_session(
     runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
 ) -> None:
