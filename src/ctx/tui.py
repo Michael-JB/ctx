@@ -362,6 +362,16 @@ class CtxTui(App[Request | None]):
         align-horizontal: center;
     }
     #dialog Label { margin-bottom: 1; width: 100%; }
+    #dialog Input {
+        background: ansi_default;
+        color: $ctx-foreground;
+        border: round $ctx-border-inactive;
+    }
+    #dialog Input:focus { border: round $ctx-border-active; }
+    Input > .input--selection {
+        background: $ctx-selection;
+        color: $ctx-foreground;
+    }
     #buttons { height: auto; align-horizontal: right; }
     #buttons Button { margin-left: 2; }
     PromptScreen, ConfirmScreen, AlertScreen, HelpScreen { align: center middle; }
