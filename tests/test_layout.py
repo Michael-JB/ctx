@@ -29,6 +29,27 @@ def test_splits_nest() -> None:
     )
 
 
+def test_pane_takes_a_builtin_with_args() -> None:
+    node = parse_layout({"builtin": "claude", "args": "--model opus", "focus": True})
+
+    assert node == Pane(builtin="claude", args="--model opus", focus=True)
+
+
+def test_pane_rejects_command_and_builtin_together() -> None:
+    with pytest.raises(LayoutError, match="either a command or a builtin"):
+        parse_layout({"command": "claude", "builtin": "claude"})
+
+
+def test_pane_rejects_an_unknown_builtin() -> None:
+    with pytest.raises(LayoutError, match="unknown pane builtin 'clod'"):
+        parse_layout({"builtin": "clod"})
+
+
+def test_pane_rejects_args_without_a_builtin() -> None:
+    with pytest.raises(LayoutError, match="args require a builtin"):
+        parse_layout({"command": "nvim", "args": "-R"})
+
+
 def test_unknown_pane_key_rejected() -> None:
     with pytest.raises(LayoutError, match="unknown pane key"):
         parse_layout({"comand": "nvim"})
