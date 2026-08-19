@@ -45,15 +45,22 @@ def cli(click_ctx: click.Context) -> None:
     metavar="KEY=VALUE",
     help="Pass a value to the layout's builtin panes (e.g. prompt=... for claude).",
 )
+@click.option("-d", "--detach", is_flag=True, help="Start the session without attaching to it.")
 @click.pass_obj
 def new(
-    deps: Deps, repo: str, name: str | None, base: str | None, assignments: tuple[str, ...]
+    deps: Deps,
+    repo: str,
+    name: str | None,
+    base: str | None,
+    assignments: tuple[str, ...],
+    detach: bool,
 ) -> None:
     """Create a context: fresh checkout of REPO on a new local branch.
 
     NAME defaults to a random adjective-animal pair.
     """
-    _create_and_open(deps, repo, name, base, _parse_assignments(deps.cfg, assignments))
+    values = _parse_assignments(deps.cfg, assignments)
+    _create_and_open(deps, repo, name, base, values, detach=detach)
 
 
 def _parse_assignments(cfg: Config, assignments: tuple[str, ...]) -> dict[str, str]:
@@ -72,7 +79,12 @@ def _parse_assignments(cfg: Config, assignments: tuple[str, ...]) -> dict[str, s
 
 
 def _create_and_open(
-    deps: Deps, repo: str, name: str | None, base: str | None, values: dict[str, str]
+    deps: Deps,
+    repo: str,
+    name: str | None,
+    base: str | None,
+    values: dict[str, str],
+    detach: bool = False,
 ) -> None:
     try:
         if name is None:
@@ -82,7 +94,10 @@ def _create_and_open(
         raise click.ClickException(str(exc)) from exc
     click.echo(f"created {ctx.qualified} at {ctx.path} on {contexts.current_branch(ctx)}")
     try:
-        deps.mux.open(ctx, values)
+        if detach:
+            deps.mux.create(ctx, values)
+        else:
+            deps.mux.open(ctx, values)
     except MultiplexerError as exc:
         raise click.ClickException(str(exc)) from exc
 

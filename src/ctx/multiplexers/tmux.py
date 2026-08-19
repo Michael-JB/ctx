@@ -68,10 +68,13 @@ class TmuxMultiplexer(Multiplexer):
             return False
         return _tmux("display-message", "-p", "#S") == _session_name(ctx)
 
+    def create(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
+        if not self.exists(ctx):
+            _create_session(_session_name(ctx), ctx.path, resolve_layout(self._layout, values))
+
     def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         session = _session_name(ctx)
-        if not self.exists(ctx):
-            _create_session(session, ctx.path, resolve_layout(self._layout, values))
+        self.create(ctx, values)
         if os.environ.get("TMUX"):
             _tmux("switch-client", "-t", f"={session}")
         else:

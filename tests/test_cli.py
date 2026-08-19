@@ -20,6 +20,7 @@ class SpyMultiplexer(Multiplexer):
     def __init__(self) -> None:
         self.running: set[str] = set()
         self.opened: list[str] = []
+        self.created: list[str] = []
         self.killed: list[str] = []
         self.values: list[Mapping[str, str] | None] = []
 
@@ -31,6 +32,10 @@ class SpyMultiplexer(Multiplexer):
 
     def is_current(self, ctx: Context) -> bool:
         return False
+
+    def create(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
+        self.created.append(ctx.qualified)
+        self.values.append(values)
 
     def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         self.opened.append(ctx.qualified)
@@ -124,6 +129,17 @@ def test_new_rejects_an_unregistered_repo(runner: CliRunner, deps: Deps) -> None
 
     assert result.exit_code == 1
     assert "not registered" in result.stderr
+
+
+def test_new_detach_creates_the_session_without_opening(
+    runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
+) -> None:
+    result = runner.invoke(cli, ["new", "origin", "feat", "--detach"], obj=deps)
+
+    assert result.exit_code == 0
+    assert mux.created == ["origin/feat"]
+    assert mux.opened == []
+    assert mux.values == [{}]
 
 
 def test_new_marks_the_session_as_fresh(
