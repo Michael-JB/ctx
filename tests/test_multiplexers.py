@@ -82,6 +82,12 @@ def test_zellij_layout_splits_command_into_args() -> None:
     assert 'args "-R" "file.txt"' in out
 
 
+def test_zellij_layout_escapes_kdl_strings() -> None:
+    out = zellij._render_layout(Pane("claude 'say \"hi\"'"), Path("/w"))
+
+    assert 'args "say \\"hi\\""' in out
+
+
 def test_zellij_layout_marks_focus() -> None:
     out = zellij._render_layout(Pane("nvim", focus=True), Path("/w"))
 
