@@ -114,8 +114,8 @@ nerd_font = true                              # false swaps builtin glyphs for p
 
 ```toml
 # The pane layout: a tree of panes and "row"/"column" splits ("row" = side
-# by side, "column" = stacked). A pane runs `command` (default: a shell) in
-# the checkout; at most one pane may set `focus`.
+# by side, "column" = stacked). A pane runs `command` or a `builtin`
+# (default: a shell) in the checkout; at most one pane may set `focus`.
 [layout]
 split = "row"
 
@@ -127,8 +127,22 @@ command = "lazygit"
 command = "nvim"
 
 [[layout.panes]]
-command = "claude"
+builtin = "claude"
 focus = true
+```
+
+#### Pane builtins
+
+A pane can use a `builtin` instead of a command. Where a `command` pane
+always runs the same string, a builtin names something `ctx` knows how to
+run, so it can compose the invocation itself. Extra flags go in `args`.
+
+The `claude` builtin runs Claude Code:
+
+```toml
+[[layout.panes]]
+builtin = "claude"
+args = "--model opus"      # optional extra flags
 ```
 
 #### Instant picker

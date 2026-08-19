@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -32,8 +33,12 @@ class Multiplexer(ABC):
         """Whether this process runs inside the context's session."""
 
     @abstractmethod
-    def open(self, ctx: Context) -> None:
-        """Create the context's session if needed, then attach to it."""
+    def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
+        """Create the context's session if needed, then attach to it.
+
+        `values` feed the layout's builtin panes and only take effect when
+        this call creates the session.
+        """
 
     @abstractmethod
     def kill(self, ctx: Context) -> None:

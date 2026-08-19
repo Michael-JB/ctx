@@ -82,6 +82,34 @@ def test_zellij_layout_splits_command_into_args() -> None:
     assert 'args "-R" "file.txt"' in out
 
 
+def test_tmux_open_resolves_builtin_panes_on_session_creation(monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_tmux(*args: str) -> str:
+        calls.append(args)
+        return "%0"
+
+    monkeypatch.setattr(tmux, "_tmux", fake_tmux)
+    monkeypatch.setattr(tmux.TmuxMultiplexer, "exists", lambda self, ctx: False)
+    monkeypatch.setenv("TMUX", "/tmp/tmux-1/default,1,0")
+    mux = tmux.TmuxMultiplexer(Pane(builtin="claude"))
+
+    mux.open(Context(repo="repo", name="a", path=Path("/w")), {"prompt": "hi"})
+
+    assert ("send-keys", "-t", "%0", "claude hi", "Enter") in calls
+
+
+def test_zellij_layout_file_resolves_builtin_panes() -> None:
+    mux = zellij.ZellijMultiplexer(Pane(builtin="claude"))
+    ctx = Context(repo="repo", name="a", path=Path("/w"))
+
+    layout_file = mux._write_layout_file(ctx, {"prompt": "explore x"})
+
+    content = Path(layout_file).read_text()
+    assert 'command="claude"' in content
+    assert 'args "explore x"' in content
+
+
 def test_zellij_layout_escapes_kdl_strings() -> None:
     out = zellij._render_layout(Pane("claude 'say \"hi\"'"), Path("/w"))
 
