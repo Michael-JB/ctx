@@ -114,6 +114,16 @@ def test_resolve_claude_keeps_extra_args() -> None:
     assert node == Pane("claude --model opus")
 
 
+def test_resolve_claude_on_a_recreated_session_resumes() -> None:
+    assert resolve_layout(Pane(builtin="claude"), None) == Pane("claude --continue")
+
+
+def test_resolve_claude_on_a_recreated_session_keeps_extra_args() -> None:
+    node = resolve_layout(Pane(builtin="claude", args="--model opus"), None)
+
+    assert node == Pane("claude --model opus --continue")
+
+
 def test_resolve_leaves_command_panes_alone() -> None:
     node = Split(SplitDirection.COLUMN, (Pane("nvim"), Pane(builtin="claude")))
 

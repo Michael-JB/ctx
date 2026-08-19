@@ -71,7 +71,7 @@ class TmuxMultiplexer(Multiplexer):
     def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         session = _session_name(ctx)
         if not self.exists(ctx):
-            _create_session(session, ctx.path, resolve_layout(self._layout, values or {}))
+            _create_session(session, ctx.path, resolve_layout(self._layout, values))
         if os.environ.get("TMUX"):
             _tmux("switch-client", "-t", f"={session}")
         else:

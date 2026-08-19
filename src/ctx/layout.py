@@ -86,10 +86,11 @@ def accepted_keys(node: Node) -> frozenset[str]:
     return frozenset().union(*(accepted_keys(pane) for pane in node.panes))
 
 
-def resolve_layout(node: Node, values: Mapping[str, str]) -> Node:
+def resolve_layout(node: Node, values: Mapping[str, str] | None) -> Node:
     """Concretise builtin panes into command panes.
 
-    `values` carries creation-time key=value data for the builtins.
+    `values` carries creation-time key=value data for the builtins; None
+    means the session is being recreated for an existing context.
     """
     if isinstance(node, Pane):
         if node.builtin is None:

@@ -152,6 +152,9 @@ you) can spin off an exploration into its own context:
 ctx new myrepo --set prompt="explore the flaky login test"
 ```
 
+Recreating the session later (`ctx open` after a kill or an unarchive)
+resumes the checkout's conversation via `claude --continue`.
+
 #### Instant picker
 
 In your multiplexer's config, bind a key that opens the TUI as a floating
