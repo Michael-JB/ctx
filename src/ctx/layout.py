@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from ctx import builtins
+
 
 class LayoutError(Exception):
     pass
@@ -14,7 +16,9 @@ class SplitDirection(StrEnum):
 
 @dataclass(frozen=True)
 class Pane:
-    command: str | None = None  # None means a plain shell
+    command: str | None = None  # None means a plain shell (unless a builtin is set)
+    builtin: str | None = None  # a builtin standing in for a command
+    args: str | None = None  # extra flags appended to a builtin's command
     focus: bool = False
 
 
@@ -50,11 +54,22 @@ def _parse_node(data: dict[str, Any]) -> Node:
         if not isinstance(panes, list) or not panes:
             raise LayoutError("a split needs a non-empty 'panes' list")
         return Split(direction, tuple(_parse_node(pane) for pane in panes))
-    unknown = data.keys() - {"command", "focus"}
+    unknown = data.keys() - {"command", "builtin", "args", "focus"}
     if unknown:
         raise LayoutError(f"unknown pane key(s): {', '.join(sorted(unknown))}")
-    command = str(data["command"]) if "command" in data else None
-    return Pane(command, focus=bool(data.get("focus", False)))
+    if "command" in data and "builtin" in data:
+        raise LayoutError("a pane takes either a command or a builtin, not both")
+    if "builtin" in data and data["builtin"] not in builtins.PANE_BUILTINS:
+        valid = ", ".join(builtins.PANE_BUILTINS)
+        raise LayoutError(f"unknown pane builtin '{data['builtin']}' (supported: {valid})")
+    if "args" in data and "builtin" not in data:
+        raise LayoutError("pane args require a builtin")
+    return Pane(
+        command=str(data["command"]) if "command" in data else None,
+        builtin=str(data["builtin"]) if "builtin" in data else None,
+        args=str(data["args"]) if "args" in data else None,
+        focus=bool(data.get("focus", False)),
+    )
 
 
 def _count_focus(node: Node) -> int:
