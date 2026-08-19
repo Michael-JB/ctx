@@ -1,9 +1,10 @@
 import os
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 from ctx.contexts import Context
-from ctx.layout import Node, Pane, SplitDirection
+from ctx.layout import Node, Pane, SplitDirection, resolve_layout
 from ctx.multiplexer import Multiplexer
 
 
@@ -67,10 +68,10 @@ class TmuxMultiplexer(Multiplexer):
             return False
         return _tmux("display-message", "-p", "#S") == _session_name(ctx)
 
-    def open(self, ctx: Context) -> None:
+    def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         session = _session_name(ctx)
         if not self.exists(ctx):
-            _create_session(session, ctx.path, self._layout)
+            _create_session(session, ctx.path, resolve_layout(self._layout, values or {}))
         if os.environ.get("TMUX"):
             _tmux("switch-client", "-t", f"={session}")
         else:

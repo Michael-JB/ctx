@@ -4,10 +4,11 @@ import shlex
 import subprocess
 import sys
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 
 from ctx.contexts import Context
-from ctx.layout import Node, Pane, SplitDirection
+from ctx.layout import Node, Pane, SplitDirection, resolve_layout
 from ctx.multiplexer import Multiplexer, MultiplexerError
 
 # macOS caps sockaddr_un paths at 104 bytes including the terminator, and
@@ -108,7 +109,7 @@ class ZellijMultiplexer(Multiplexer):
     def is_current(self, ctx: Context) -> bool:
         return os.environ.get("ZELLIJ_SESSION_NAME") == _session_name(ctx)
 
-    def open(self, ctx: Context) -> None:
+    def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         session = _session_name(ctx)
         exists = self.exists(ctx)
         if os.environ.get("ZELLIJ"):
@@ -117,7 +118,7 @@ class ZellijMultiplexer(Multiplexer):
             # only takes effect when the target session doesn't exist yet.
             command = ["zellij", "action", "switch-session", session]
             if not exists:
-                command += ["--layout", self._write_layout_file(ctx)]
+                command += ["--layout", self._write_layout_file(ctx, values)]
             result = subprocess.run(command, capture_output=True, text=True)
             if result.returncode != 0:
                 detail = result.stderr.strip() or result.stdout.strip()
@@ -126,16 +127,17 @@ class ZellijMultiplexer(Multiplexer):
             return
         if exists:
             os.execvp("zellij", ["zellij", "attach", session])
-        layout_file = self._write_layout_file(ctx)
+        layout_file = self._write_layout_file(ctx, values)
         os.execvp(
             "zellij",
             ["zellij", "--session", session, "--new-session-with-layout", layout_file],
         )
 
-    def _write_layout_file(self, ctx: Context) -> str:
+    def _write_layout_file(self, ctx: Context, values: Mapping[str, str] | None) -> str:
         fd, layout_file = tempfile.mkstemp(prefix="ctx-", suffix=".kdl")
         os.close(fd)
-        Path(layout_file).write_text(_render_layout(self._layout, ctx.path))
+        layout = resolve_layout(self._layout, values or {})
+        Path(layout_file).write_text(_render_layout(layout, ctx.path))
         return layout_file
 
     def kill(self, ctx: Context) -> None:

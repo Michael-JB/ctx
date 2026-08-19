@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -76,3 +77,23 @@ def _count_focus(node: Node) -> int:
     if isinstance(node, Pane):
         return int(node.focus)
     return sum(_count_focus(pane) for pane in node.panes)
+
+
+def accepted_keys(node: Node) -> frozenset[str]:
+    """All creation-time value keys the layout's builtin panes consume."""
+    if isinstance(node, Pane):
+        return builtins.BUILTIN_KEYS.get(node.builtin or "", frozenset())
+    return frozenset().union(*(accepted_keys(pane) for pane in node.panes))
+
+
+def resolve_layout(node: Node, values: Mapping[str, str]) -> Node:
+    """Concretise builtin panes into command panes.
+
+    `values` carries creation-time key=value data for the builtins.
+    """
+    if isinstance(node, Pane):
+        if node.builtin is None:
+            return node
+        command = builtins.builtin_command(node.builtin, node.args, values)
+        return Pane(command, focus=node.focus)
+    return Split(node.direction, tuple(resolve_layout(pane, values) for pane in node.panes))

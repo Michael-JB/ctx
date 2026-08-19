@@ -1,6 +1,14 @@
 import pytest
 
-from ctx.layout import LayoutError, Pane, Split, SplitDirection, parse_layout
+from ctx.layout import (
+    LayoutError,
+    Pane,
+    Split,
+    SplitDirection,
+    accepted_keys,
+    parse_layout,
+    resolve_layout,
+)
 
 
 def test_empty_pane_gives_defaults() -> None:
@@ -78,3 +86,37 @@ def test_missing_panes_rejected() -> None:
 def test_multiple_focus_rejected() -> None:
     with pytest.raises(LayoutError, match="at most one pane"):
         parse_layout({"split": "row", "panes": [{"focus": True}, {"focus": True}]})
+
+
+def test_accepted_keys_collects_builtin_keys_across_the_tree() -> None:
+    node = Split(SplitDirection.ROW, (Pane(builtin="claude"), Pane("nvim"), Pane()))
+
+    assert accepted_keys(node) == {"prompt"}
+
+
+def test_accepted_keys_is_empty_without_builtins() -> None:
+    assert accepted_keys(Pane("claude")) == frozenset()
+
+
+def test_resolve_claude_passes_the_prompt_as_one_word() -> None:
+    node = resolve_layout(Pane(builtin="claude", focus=True), {"prompt": "explore the bug"})
+
+    assert node == Pane("claude 'explore the bug'", focus=True)
+
+
+def test_resolve_claude_without_a_prompt() -> None:
+    assert resolve_layout(Pane(builtin="claude"), {}) == Pane("claude")
+
+
+def test_resolve_claude_keeps_extra_args() -> None:
+    node = resolve_layout(Pane(builtin="claude", args="--model opus"), {})
+
+    assert node == Pane("claude --model opus")
+
+
+def test_resolve_leaves_command_panes_alone() -> None:
+    node = Split(SplitDirection.COLUMN, (Pane("nvim"), Pane(builtin="claude")))
+
+    resolved = resolve_layout(node, {"prompt": "x"})
+
+    assert resolved == Split(SplitDirection.COLUMN, (Pane("nvim"), Pane("claude x")))
