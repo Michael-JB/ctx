@@ -27,6 +27,9 @@ class StubMultiplexer(Multiplexer):
     def is_current(self, ctx: Context) -> bool:
         return False
 
+    def create(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
+        pass
+
     def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         pass
 

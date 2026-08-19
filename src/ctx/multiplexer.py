@@ -33,6 +33,13 @@ class Multiplexer(ABC):
         """Whether this process runs inside the context's session."""
 
     @abstractmethod
+    def create(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
+        """Create the context's session without attaching, if it doesn't exist.
+
+        `values` has open()'s semantics.
+        """
+
+    @abstractmethod
     def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         """Create the context's session if needed, then attach to it.
 

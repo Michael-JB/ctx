@@ -99,6 +99,49 @@ def test_tmux_open_resolves_builtin_panes_on_session_creation(monkeypatch) -> No
     assert ("send-keys", "-t", "%0", "claude hi", "Enter") in calls
 
 
+def test_tmux_create_does_not_attach(monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_tmux(*args: str) -> str:
+        calls.append(args)
+        return "%0"
+
+    monkeypatch.setattr(tmux, "_tmux", fake_tmux)
+    monkeypatch.setattr(tmux.TmuxMultiplexer, "exists", lambda self, ctx: False)
+    monkeypatch.setenv("TMUX", "/tmp/tmux-1/default,1,0")
+    mux = tmux.TmuxMultiplexer(Pane())
+
+    mux.create(Context(repo="repo", name="a", path=Path("/w")), {})
+
+    assert any(call[0] == "new-session" for call in calls)
+    assert not any(call[0] in ("switch-client", "attach-session") for call in calls)
+
+
+def test_zellij_create_makes_a_background_session(monkeypatch) -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(zellij.subprocess, "run", fake_run)
+    monkeypatch.setattr(zellij.ZellijMultiplexer, "exists", lambda self, ctx: False)
+    mux = zellij.ZellijMultiplexer(Pane())
+
+    mux.create(Context(repo="repo", name="a", path=Path("/w")), {})
+
+    (command,) = commands
+    assert command[0] == "zellij"
+    assert command[1] == "--layout"
+    assert command[3:] == ["attach", "--create-background", "repo--a"]
+
+
 def test_zellij_layout_file_resolves_builtin_panes() -> None:
     mux = zellij.ZellijMultiplexer(Pane(builtin="claude"))
     ctx = Context(repo="repo", name="a", path=Path("/w"))

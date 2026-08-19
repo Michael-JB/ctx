@@ -109,6 +109,21 @@ class ZellijMultiplexer(Multiplexer):
     def is_current(self, ctx: Context) -> bool:
         return os.environ.get("ZELLIJ_SESSION_NAME") == _session_name(ctx)
 
+    def create(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
+        if self.exists(ctx):
+            return
+        session = _session_name(ctx)
+        layout_file = self._write_layout_file(ctx, values)
+        result = subprocess.run(
+            ["zellij", "--layout", layout_file, "attach", "--create-background", session],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip()
+            message = f"zellij could not create '{session}'"
+            raise MultiplexerError(f"{message}: {detail}" if detail else message)
+
     def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         session = _session_name(ctx)
         exists = self.exists(ctx)
