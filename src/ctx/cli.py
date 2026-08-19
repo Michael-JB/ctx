@@ -9,7 +9,7 @@ import click
 
 from ctx import claude_hook, contexts, repos, status
 from ctx.config import Config, ConfigError, load_config
-from ctx.layout import LayoutError
+from ctx.layout import LayoutError, accepted_keys
 from ctx.multiplexer import Multiplexer, MultiplexerError, get_multiplexer
 
 
@@ -37,16 +37,43 @@ def cli(click_ctx: click.Context) -> None:
 @click.argument("repo")
 @click.argument("name", required=False)
 @click.option("-b", "--branch", "base", help="Base branch (default: the repo's default branch).")
+@click.option(
+    "-s",
+    "--set",
+    "assignments",
+    multiple=True,
+    metavar="KEY=VALUE",
+    help="Pass a value to the layout's builtin panes (e.g. prompt=... for claude).",
+)
 @click.pass_obj
-def new(deps: Deps, repo: str, name: str | None, base: str | None) -> None:
+def new(
+    deps: Deps, repo: str, name: str | None, base: str | None, assignments: tuple[str, ...]
+) -> None:
     """Create a context: fresh checkout of REPO on a new local branch.
 
     NAME defaults to a random adjective-animal pair.
     """
-    _create_and_open(deps, repo, name, base)
+    _create_and_open(deps, repo, name, base, _parse_assignments(deps.cfg, assignments))
 
 
-def _create_and_open(deps: Deps, repo: str, name: str | None, base: str | None) -> None:
+def _parse_assignments(cfg: Config, assignments: tuple[str, ...]) -> dict[str, str]:
+    accepted = accepted_keys(cfg.layout)
+    values: dict[str, str] = {}
+    for assignment in assignments:
+        key, sep, value = assignment.partition("=")
+        if not sep or not key:
+            raise click.ClickException(f"--set needs KEY=VALUE, got '{assignment}'")
+        if key in values:
+            raise click.ClickException(f"--set gives '{key}' twice")
+        if key not in accepted:
+            raise click.ClickException(f"no builtin pane in the layout accepts '{key}'")
+        values[key] = value
+    return values
+
+
+def _create_and_open(
+    deps: Deps, repo: str, name: str | None, base: str | None, values: dict[str, str]
+) -> None:
     try:
         if name is None:
             name = contexts.random_name(deps.cfg)
@@ -55,7 +82,7 @@ def _create_and_open(deps: Deps, repo: str, name: str | None, base: str | None) 
         raise click.ClickException(str(exc)) from exc
     click.echo(f"created {ctx.qualified} at {ctx.path} on {contexts.current_branch(ctx)}")
     try:
-        deps.mux.open(ctx)
+        deps.mux.open(ctx, values)
     except MultiplexerError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -213,7 +240,7 @@ def tui(deps: Deps, exit_on_open: bool) -> None:
             except (LookupError, MultiplexerError) as exc:
                 raise click.ClickException(str(exc)) from exc
         case NewRequest(repo=repo_name, name=name, base=base):
-            _create_and_open(deps, repo_name, name, base)
+            _create_and_open(deps, repo_name, name, base, {})
         case None:
             pass
 
