@@ -78,6 +78,14 @@ def test_version(runner: CliRunner) -> None:
     assert result.exit_code == 0
 
 
+def test_agent_docs_prints_the_spin_off_flow(runner: CliRunner, deps: Deps) -> None:
+    result = runner.invoke(cli, ["agent-docs"], obj=deps)
+
+    assert result.exit_code == 0
+    assert "ctx new <repo> <name> --detach" in result.output
+    assert '--set prompt="' in result.output
+
+
 def test_changelog_prints_release_sections(runner: CliRunner, deps: Deps) -> None:
     result = runner.invoke(cli, ["changelog"], obj=deps)
 

@@ -260,6 +260,13 @@ def tui(deps: Deps, exit_on_open: bool) -> None:
             pass
 
 
+@cli.command("agent-docs")
+def agent_docs() -> None:
+    """Print ctx usage docs for coding agents, ready to install as a skill."""
+    docs = importlib.resources.files("ctx").joinpath("agent_docs.md").read_text()
+    click.echo(docs, nl=False)
+
+
 @cli.command()
 def changelog() -> None:
     """Print the installed version's changelog."""

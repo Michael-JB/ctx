@@ -38,7 +38,9 @@ answer using the concrete snippets under Configuration.
    builtin, install the hooks from the Agent builtin section.
 4. Which key should summon the picker? Bind it in the multiplexer's config
    as shown under Instant picker.
-5. Verify: register a repo (`ctx repo add`), create a context (`ctx new`),
+5. Should the agent be able to use ctx itself? Install the docs as shown
+   under Agent docs.
+6. Verify: register a repo (`ctx repo add`), create a context (`ctx new`),
    and check that `ctx list` shows the configured columns.
 
 ## Usage
@@ -237,6 +239,15 @@ checkout:
 [[status]]
 name = "anything"
 command = "my-status"      # first line of any command, run in the checkout
+```
+
+### Agent docs
+
+To make your agent ctx-aware, install the output of `ctx agent-docs` as
+a skill. E.g., for Claude Code:
+
+```sh
+mkdir -p ~/.claude/skills/ctx && ctx agent-docs > ~/.claude/skills/ctx/SKILL.md
 ```
 
 ### Environment variables
