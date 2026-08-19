@@ -145,6 +145,13 @@ builtin = "claude"
 args = "--model opus"      # optional extra flags
 ```
 
+`ctx new --set prompt="..."` hands it an initial prompt, so an agent (or
+you) can spin off an exploration into its own context:
+
+```sh
+ctx new myrepo --set prompt="explore the flaky login test"
+```
+
 #### Instant picker
 
 In your multiplexer's config, bind a key that opens the TUI as a floating

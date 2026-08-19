@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from ctx import contexts
 from ctx.cli import Deps, cli
 from ctx.config import Config, StatusColumn
 from ctx.contexts import Context
+from ctx.layout import Pane
 from ctx.multiplexer import Multiplexer
 
 
@@ -19,6 +21,7 @@ class SpyMultiplexer(Multiplexer):
         self.running: set[str] = set()
         self.opened: list[str] = []
         self.killed: list[str] = []
+        self.values: list[Mapping[str, str] | None] = []
 
     def can_open_in_place(self) -> bool:
         return True
@@ -29,8 +32,9 @@ class SpyMultiplexer(Multiplexer):
     def is_current(self, ctx: Context) -> bool:
         return False
 
-    def open(self, ctx: Context) -> None:
+    def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         self.opened.append(ctx.qualified)
+        self.values.append(values)
 
     def kill(self, ctx: Context) -> None:
         self.killed.append(ctx.qualified)
@@ -120,6 +124,46 @@ def test_new_rejects_an_unregistered_repo(runner: CliRunner, deps: Deps) -> None
 
     assert result.exit_code == 1
     assert "not registered" in result.stderr
+
+
+def test_new_set_passes_values_to_the_session(
+    runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
+) -> None:
+    deps = Deps(replace(deps.cfg, layout=Pane(builtin="claude")), mux)
+
+    result = runner.invoke(cli, ["new", "origin", "feat", "--set", "prompt=explore x"], obj=deps)
+
+    assert result.exit_code == 0
+    assert mux.values == [{"prompt": "explore x"}]
+
+
+def test_new_set_rejects_a_key_no_builtin_accepts(
+    runner: CliRunner, deps: Deps, registered: Path
+) -> None:
+    result = runner.invoke(cli, ["new", "origin", "feat", "--set", "prompt=x"], obj=deps)
+
+    assert result.exit_code == 1
+    assert "no builtin pane in the layout accepts 'prompt'" in result.stderr
+
+
+def test_new_set_rejects_a_malformed_assignment(
+    runner: CliRunner, deps: Deps, registered: Path
+) -> None:
+    result = runner.invoke(cli, ["new", "origin", "feat", "--set", "prompt"], obj=deps)
+
+    assert result.exit_code == 1
+    assert "--set needs KEY=VALUE" in result.stderr
+
+
+def test_new_set_rejects_a_repeated_key(runner: CliRunner, deps: Deps, registered: Path) -> None:
+    deps = Deps(replace(deps.cfg, layout=Pane(builtin="claude")), deps.mux)
+
+    result = runner.invoke(
+        cli, ["new", "origin", "feat", "--set", "prompt=a", "--set", "prompt=b"], obj=deps
+    )
+
+    assert result.exit_code == 1
+    assert "'prompt' twice" in result.stderr
 
 
 def test_new_rejects_an_invalid_name(runner: CliRunner, deps: Deps, registered: Path) -> None:
