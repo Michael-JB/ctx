@@ -36,18 +36,23 @@ def _session_name(ctx: Context) -> str:
     return f"{name[: max(budget - 7, 1)]}-{digest}"
 
 
+def _kdl_string(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
 def _render_node(node: Node, cwd: Path, indent: int) -> str:
     pad = "    " * indent
     if isinstance(node, Pane):
         argv = shlex.split(node.command) if node.command else []
         line = f"{pad}pane"
         if argv:
-            line += f' command="{argv[0]}"'
-        line += f' cwd="{cwd}"'
+            line += f" command={_kdl_string(argv[0])}"
+        line += f" cwd={_kdl_string(str(cwd))}"
         if node.focus:
             line += " focus=true"
         if len(argv) > 1:
-            args = " ".join(f'"{arg}"' for arg in argv[1:])
+            args = " ".join(_kdl_string(arg) for arg in argv[1:])
             line += f" {{\n{pad}    args {args}\n{pad}}}"
         return line
     # Zellij's split_direction names the split axis, not the arrangement:
