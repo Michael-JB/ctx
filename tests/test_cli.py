@@ -126,6 +126,24 @@ def test_new_rejects_an_unregistered_repo(runner: CliRunner, deps: Deps) -> None
     assert "not registered" in result.stderr
 
 
+def test_new_marks_the_session_as_fresh(
+    runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
+) -> None:
+    runner.invoke(cli, ["new", "origin", "feat"], obj=deps)
+
+    assert mux.values == [{}]
+
+
+def test_open_marks_the_session_as_recreated(
+    runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
+) -> None:
+    create_context(deps.cfg, "origin", "feat")
+
+    runner.invoke(cli, ["open", "feat"], obj=deps)
+
+    assert mux.values == [None]
+
+
 def test_new_set_passes_values_to_the_session(
     runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
 ) -> None:

@@ -37,7 +37,9 @@ class Multiplexer(ABC):
         """Create the context's session if needed, then attach to it.
 
         `values` feed the layout's builtin panes and only take effect when
-        this call creates the session.
+        this call creates the session. Pass a mapping (possibly empty) when
+        opening a freshly created context; None marks a recreated session,
+        where builtins resume instead of starting anew.
         """
 
     @abstractmethod

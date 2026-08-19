@@ -1,7 +1,7 @@
 import asyncio
 import subprocess
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +27,7 @@ class StubMultiplexer(Multiplexer):
     def is_current(self, ctx: Context) -> bool:
         return False
 
-    def open(self, ctx: Context) -> None:
+    def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         pass
 
     def kill(self, ctx: Context) -> None:
@@ -46,7 +46,7 @@ class RecordingMultiplexer(StubMultiplexer):
     def is_current(self, ctx: Context) -> bool:
         return ctx.name == self._current
 
-    def open(self, ctx: Context) -> None:
+    def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         self.calls.append(("open", ctx.name))
 
     def kill(self, ctx: Context) -> None:

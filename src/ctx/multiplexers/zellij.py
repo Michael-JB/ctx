@@ -136,7 +136,7 @@ class ZellijMultiplexer(Multiplexer):
     def _write_layout_file(self, ctx: Context, values: Mapping[str, str] | None) -> str:
         fd, layout_file = tempfile.mkstemp(prefix="ctx-", suffix=".kdl")
         os.close(fd)
-        layout = resolve_layout(self._layout, values or {})
+        layout = resolve_layout(self._layout, values)
         Path(layout_file).write_text(_render_layout(layout, ctx.path))
         return layout_file
 

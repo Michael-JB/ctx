@@ -753,7 +753,7 @@ class CtxTui(App[Request | None]):
         self._finish_busy()
         try:
             with _silenced_stderr():
-                self._mux.open(ctx)
+                self._mux.open(ctx, {})
         except (MultiplexerError, subprocess.CalledProcessError) as exc:
             self.push_screen(AlertScreen(str(exc)))
             return
