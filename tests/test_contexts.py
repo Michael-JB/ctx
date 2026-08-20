@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -17,6 +18,7 @@ from conftest import (
 from ctx import contexts, repos
 from ctx.config import Config
 from ctx.git import git
+from ctx.layout import Pane
 
 
 @pytest.fixture
@@ -46,6 +48,17 @@ def test_create_adopts_an_existing_local_branch(cfg: Config, registered: Path) -
     assert contexts.current_branch(ctx) == "main"
     # No second branch was forked; the existing one is all there is.
     assert git("branch", "--format=%(refname:short)", cwd=ctx.path) == "main"
+
+
+def test_create_prepares_the_checkout_for_builtin_panes(
+    cfg: Config, registered: Path, isolated_claude_config: Path
+) -> None:
+    cfg = replace(cfg, layout=Pane(builtin="claude"))
+
+    ctx = create_context(cfg, "origin", "feat")
+
+    config = json.loads((isolated_claude_config / ".claude.json").read_text())
+    assert config["projects"][str(ctx.path)]["hasTrustDialogAccepted"] is True
 
 
 def test_create_applies_the_branch_prefix(cfg: Config, registered: Path) -> None:

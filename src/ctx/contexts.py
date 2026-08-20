@@ -5,7 +5,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from ctx import repos
+from ctx import builtins, layout, repos
 from ctx.config import Config
 from ctx.git import git, git_async
 
@@ -182,6 +182,8 @@ async def create_context(cfg: Config, repo: str, name: str, base: str | None = N
         if not preexisting:
             shutil.rmtree(path, ignore_errors=True)
         raise
+    for builtin in sorted(layout.builtin_names(cfg.layout)):
+        builtins.prepare_checkout(builtin, path)
     return Context(repo, name, path)
 
 

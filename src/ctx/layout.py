@@ -79,6 +79,13 @@ def _count_focus(node: Node) -> int:
     return sum(_count_focus(pane) for pane in node.panes)
 
 
+def builtin_names(node: Node) -> frozenset[str]:
+    """All builtins the layout's panes use."""
+    if isinstance(node, Pane):
+        return frozenset(() if node.builtin is None else (node.builtin,))
+    return frozenset().union(*(builtin_names(pane) for pane in node.panes))
+
+
 def accepted_keys(node: Node) -> frozenset[str]:
     """All creation-time value keys the layout's builtin panes consume."""
     if isinstance(node, Pane):

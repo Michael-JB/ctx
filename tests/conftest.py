@@ -39,6 +39,15 @@ def isolated_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GIT_CONFIG_SYSTEM", "/dev/null")
 
 
+@pytest.fixture(autouse=True)
+def isolated_claude_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point Claude Code checkout preparation at a throwaway config directory."""
+    config_dir = tmp_path / "claude-config"
+    config_dir.mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    return config_dir
+
+
 @pytest.fixture
 def cfg(tmp_path: Path) -> Config:
     return Config(

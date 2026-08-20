@@ -157,6 +157,11 @@ ctx new myrepo --set prompt="explore the flaky login test"
 Recreating the session later (`ctx open` after a kill or an unarchive)
 resumes the checkout's conversation via `claude --continue`.
 
+Creating a context also pre-answers Claude Code's folder-trust dialog for
+the new checkout (in `~/.claude.json`), so the pane starts straight in the
+conversation. Registering a repo with `ctx` is taken as trusting its
+clones, including any `.claude/settings.json` they check in.
+
 #### Instant picker
 
 In your multiplexer's config, bind a key that opens the TUI as a floating
