@@ -949,18 +949,18 @@ class CtxTui(App[Request | None]):
 
     def _teardown(self, ctx: Context, remove: Callable[[], object]) -> None:
         try:
-            if self._mux.exists(ctx) and self._mux.is_current(ctx):
-                # Killing our own session can take the TUI (and the client)
-                # down with it, so land the client elsewhere and kill last.
-                # A TUI that outlives the kill (e.g. in a tmux popup, which
-                # belongs to the client) still needs the cleanup below.
-                self._switch_away(ctx)
-                remove()
+            if self._mux.exists(ctx):
+                if self._mux.is_current(ctx):
+                    # Killing our own session can take the TUI (and the
+                    # client) down with it, so land the client elsewhere
+                    # first.
+                    self._switch_away(ctx)
+                # Kill before removing: if the removal dies half-way (with
+                # the TUI, or alone), the checkout is still whole and the
+                # delete can be retried, rather than a live session
+                # squatting on a gutted checkout.
                 self._mux.kill(ctx)
-            else:
-                if self._mux.exists(ctx):
-                    self._mux.kill(ctx)
-                remove()
+            remove()
         except (OSError, subprocess.CalledProcessError) as exc:
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
         self.call_from_thread(self._reload)
