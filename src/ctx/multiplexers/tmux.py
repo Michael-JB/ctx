@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ctx.contexts import Context
 from ctx.layout import Node, Pane, SplitDirection, resolve_layout
-from ctx.multiplexer import Multiplexer
+from ctx.multiplexer import Multiplexer, MultiplexerError
 
 
 def _session_name(ctx: Context) -> str:
@@ -15,8 +15,15 @@ def _session_name(ctx: Context) -> str:
 
 
 def _tmux(*args: str) -> str:
-    result = subprocess.run(["tmux", *args], check=True, stdout=subprocess.PIPE, text=True)
+    result = subprocess.run(["tmux", *args], check=True, capture_output=True, text=True)
     return result.stdout.strip()
+
+
+def _first_pane(node: Node) -> Pane:
+    """The leaf a split hands its original region to."""
+    while not isinstance(node, Pane):
+        node = node.panes[0]
+    return node
 
 
 def _build(node: Node, pane_id: str, cwd: Path) -> list[tuple[str, Pane]]:
@@ -29,10 +36,12 @@ def _build(node: Node, pane_id: str, cwd: Path) -> list[tuple[str, Pane]]:
         case SplitDirection.COLUMN:
             flag = "-v"
     regions = [pane_id]
-    for _ in node.panes[1:]:
-        regions.append(
-            _tmux("split-window", flag, "-t", regions[-1], "-c", str(cwd), "-P", "-F", "#{pane_id}")
-        )
+    for child in node.panes[1:]:
+        args = ["split-window", flag, "-t", regions[-1], "-c", str(cwd), "-P", "-F", "#{pane_id}"]
+        command = _first_pane(child).command
+        if command is not None:
+            args.append(command)
+        regions.append(_tmux(*args))
     leaves: list[tuple[str, Pane]] = []
     for child, region in zip(node.panes, regions, strict=True):
         leaves.extend(_build(child, region, cwd))
@@ -40,11 +49,21 @@ def _build(node: Node, pane_id: str, cwd: Path) -> list[tuple[str, Pane]]:
 
 
 def _create_session(session: str, cwd: Path, layout: Node) -> None:
-    first = _tmux("new-session", "-d", "-s", session, "-c", str(cwd), "-P", "-F", "#{pane_id}")
-    leaves = _build(layout, first, cwd)
-    for pane_id, pane in leaves:
-        if pane.command is not None:
-            _tmux("send-keys", "-t", pane_id, pane.command, "Enter")
+    # Commands run as the panes' start commands: delivering them by typing
+    # into a shell instead races its startup, and the kernel's canonical
+    # line buffer truncates what arrives too early to 1024 bytes on macOS.
+    args = ["new-session", "-d", "-s", session, "-c", str(cwd), "-P", "-F", "#{pane_id}"]
+    command = _first_pane(layout).command
+    if command is not None:
+        args.append(command)
+    try:
+        first = _tmux(*args)
+        leaves = _build(layout, first, cwd)
+    except subprocess.CalledProcessError as exc:
+        subprocess.run(["tmux", "kill-session", "-t", f"={session}"], capture_output=True)
+        if "command too long" in (exc.stderr or ""):
+            raise MultiplexerError("a pane command exceeds tmux's ~16KB limit") from exc
+        raise
     focused = next((pane_id for pane_id, pane in leaves if pane.focus), leaves[0][0])
     _tmux("select-pane", "-t", focused)
 
