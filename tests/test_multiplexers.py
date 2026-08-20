@@ -101,7 +101,7 @@ def test_tmux_open_resolves_builtin_panes_on_session_creation(monkeypatch) -> No
     mux.open(Context(repo="repo", name="a", path=Path("/w")), {"prompt": "hi"})
 
     (new_session,) = [call for call in calls if call[0] == "new-session"]
-    assert new_session[-1] == "claude hi"
+    assert new_session[-1] == "sh -c 'ctx claude-trust; exec claude hi'"
 
 
 def test_tmux_split_panes_start_their_own_commands(monkeypatch) -> None:
@@ -187,8 +187,8 @@ def test_zellij_layout_file_resolves_builtin_panes() -> None:
     layout_file = mux._write_layout_file(ctx, {"prompt": "explore x"})
 
     content = Path(layout_file).read_text()
-    assert 'command="claude"' in content
-    assert 'args "explore x"' in content
+    assert 'command="sh"' in content
+    assert "exec claude 'explore x'" in content
 
 
 def test_zellij_layout_escapes_kdl_strings() -> None:

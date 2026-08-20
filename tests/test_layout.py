@@ -98,30 +98,36 @@ def test_accepted_keys_is_empty_without_builtins() -> None:
     assert accepted_keys(Pane("claude")) == frozenset()
 
 
+_TRUST = "ctx claude-trust"
+
+
 def test_resolve_claude_passes_the_prompt_as_one_word() -> None:
     node = resolve_layout(Pane(builtin="claude", focus=True), {"prompt": "explore the bug"})
 
-    assert node == Pane("claude 'explore the bug'", focus=True)
+    quoted_prompt = "'\"'\"'explore the bug'\"'\"'"
+    assert node == Pane(f"sh -c '{_TRUST}; exec claude {quoted_prompt}'", focus=True)
 
 
 def test_resolve_claude_without_a_prompt() -> None:
-    assert resolve_layout(Pane(builtin="claude"), {}) == Pane("claude")
+    assert resolve_layout(Pane(builtin="claude"), {}) == Pane(f"sh -c '{_TRUST}; exec claude'")
 
 
 def test_resolve_claude_keeps_extra_args() -> None:
     node = resolve_layout(Pane(builtin="claude", args="--model opus"), {})
 
-    assert node == Pane("claude --model opus")
+    assert node == Pane(f"sh -c '{_TRUST}; exec claude --model opus'")
 
 
 def test_resolve_claude_on_a_recreated_session_resumes() -> None:
-    assert resolve_layout(Pane(builtin="claude"), None) == Pane("claude --continue")
+    assert resolve_layout(Pane(builtin="claude"), None) == Pane(
+        f"sh -c '{_TRUST}; exec claude --continue'"
+    )
 
 
 def test_resolve_claude_on_a_recreated_session_keeps_extra_args() -> None:
     node = resolve_layout(Pane(builtin="claude", args="--model opus"), None)
 
-    assert node == Pane("claude --model opus --continue")
+    assert node == Pane(f"sh -c '{_TRUST}; exec claude --model opus --continue'")
 
 
 def test_resolve_leaves_command_panes_alone() -> None:
@@ -129,4 +135,7 @@ def test_resolve_leaves_command_panes_alone() -> None:
 
     resolved = resolve_layout(node, {"prompt": "x"})
 
-    assert resolved == Split(SplitDirection.COLUMN, (Pane("nvim"), Pane("claude x")))
+    assert resolved == Split(
+        SplitDirection.COLUMN,
+        (Pane("nvim"), Pane(f"sh -c '{_TRUST}; exec claude x'")),
+    )
