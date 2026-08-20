@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.9.0](https://github.com/Michael-JB/ctx/compare/v0.8.0...v0.9.0) (2026-08-20)
+
+
+### Features
+
+* hand a new context's Claude an initial prompt via ctx new --set ([c15a51c](https://github.com/Michael-JB/ctx/commit/c15a51c66cfb85cdc46d42a6b86a929780ad5b6e))
+* make agents ctx-aware via ctx agent-docs ([138e477](https://github.com/Michael-JB/ctx/commit/138e4773d960bb2269ed328213da73aff22894a1))
+* print the installed version's changelog via ctx changelog ([a886018](https://github.com/Michael-JB/ctx/commit/a8860188e77d206f362a1e07088bcc5c5b6568b0))
+* resume the Claude conversation when a session is recreated ([8679f19](https://github.com/Michael-JB/ctx/commit/8679f19528fd8f71cefb5ff5783707746029078a))
+* run Claude Code in a pane via the claude layout builtin ([effcea7](https://github.com/Michael-JB/ctx/commit/effcea74b1b102b33711990f1360ea7a64f398d2))
+* start a context's session without attaching via ctx new --detach ([cc47888](https://github.com/Michael-JB/ctx/commit/cc47888a6e86d52b1968a705594693b74f3ce29c))
+
+
+### Bug Fixes
+
+* escape quotes and newlines in zellij layout strings ([d41dec4](https://github.com/Michael-JB/ctx/commit/d41dec4979f5addec4a42bfdd75a89d0e89d7247))
+* leave no broken context behind when a deletion is interrupted ([92abe66](https://github.com/Michael-JB/ctx/commit/92abe6673b8ed7c92eee22b262d0b121488a5727))
+* list a damaged checkout as branchless instead of crashing ([b1ab1f9](https://github.com/Michael-JB/ctx/commit/b1ab1f99f5f3ae503211a8f2a698ec4ca04fb92a))
+* **tui:** finish interrupted deletions at startup ([df21866](https://github.com/Michael-JB/ctx/commit/df21866ebb0a1c142d1b79677879a8a8e312dbe8))
+* **tui:** kill a context's session even when its removal is interrupted ([62d1119](https://github.com/Michael-JB/ctx/commit/62d11196ac8dc39f1f6381448dd61ded95e1d79c))
+
+
+### Upgrade Notes
+
+* ensure layout panes running Claude use builtin = "claude" rather than a command ([effcea7](https://github.com/Michael-JB/ctx/commit/effcea74b1b102b33711990f1360ea7a64f398d2))
+* ensure the agent docs are installed as a skill (README &gt; Agent docs) ([138e477](https://github.com/Michael-JB/ctx/commit/138e4773d960bb2269ed328213da73aff22894a1))
+
 ## [0.8.0](https://github.com/Michael-JB/ctx/compare/v0.7.2...v0.8.0) (2026-08-18)
 
 
