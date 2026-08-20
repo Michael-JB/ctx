@@ -1,4 +1,5 @@
 import asyncio
+import importlib.resources
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -215,6 +216,13 @@ def tui(deps: Deps, exit_on_open: bool) -> None:
             _create_and_open(deps, repo_name, name, base)
         case None:
             pass
+
+
+@cli.command()
+def changelog() -> None:
+    """Print the installed version's changelog."""
+    text = importlib.resources.files("ctx").joinpath("CHANGELOG.md").read_text()
+    click.echo(text, nl=False)
 
 
 @cli.command("claude-hook")
