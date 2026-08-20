@@ -69,6 +69,14 @@ def test_version(runner: CliRunner) -> None:
     assert result.exit_code == 0
 
 
+def test_changelog_prints_release_sections(runner: CliRunner, deps: Deps) -> None:
+    result = runner.invoke(cli, ["changelog"], obj=deps)
+
+    assert result.exit_code == 0
+    assert result.output.startswith("# Changelog")
+    assert "## [0" in result.output
+
+
 def test_claude_hook_feeds_the_status_file_from_stdin(
     runner: CliRunner, deps: Deps, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

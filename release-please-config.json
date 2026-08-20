@@ -3,6 +3,16 @@
   "packages": {
     ".": {
       "release-type": "python",
+      "changelog-path": "src/ctx/CHANGELOG.md",
+      "changelog-sections": [
+        { "type": "feat", "section": "Features" },
+        { "type": "fix", "section": "Bug Fixes" },
+        { "type": "perf", "section": "Performance Improvements" },
+        { "type": "deps", "section": "Dependencies" },
+        { "type": "revert", "section": "Reverts" },
+        { "type": "docs", "section": "Documentation" },
+        { "type": "upgrade", "section": "Upgrade Notes" }
+      ],
       "extra-files": [
         {
           "path": "uv.lock",
