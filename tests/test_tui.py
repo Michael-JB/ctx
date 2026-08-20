@@ -466,7 +466,7 @@ def test_add_repo_key_is_local_to_the_repos_panel(cfg: Config, registered: Path)
     run_async(drive())
 
 
-def test_archiving_the_current_context_switches_away_and_kills_last(
+def test_archiving_the_current_context_switches_away_then_kills(
     cfg: Config, registered: Path
 ) -> None:
     for name in ("one", "two"):
@@ -478,7 +478,9 @@ def test_archiving_the_current_context_switches_away_and_kills_last(
     _run_worker(app, lambda: app._archive_worker(ctx))
 
     assert mux.calls == [("open", "two"), ("kill", "one")]
-    assert mux.path_present_at_kill is False, "the move must finish before the kill"
+    # Kill before removing: an interrupted removal must not leave a live
+    # session pointing at a gutted checkout.
+    assert mux.path_present_at_kill is True, "the kill must come before the move"
     assert contexts.find_archived(cfg, "one")
 
 
