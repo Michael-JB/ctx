@@ -1,7 +1,11 @@
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from ctx.contexts import Context
 from ctx.layout import Pane, Split, SplitDirection
+from ctx.multiplexer import MultiplexerError
 from ctx.multiplexers import tmux, zellij
 
 
@@ -96,7 +100,41 @@ def test_tmux_open_resolves_builtin_panes_on_session_creation(monkeypatch) -> No
 
     mux.open(Context(repo="repo", name="a", path=Path("/w")), {"prompt": "hi"})
 
-    assert ("send-keys", "-t", "%0", "claude hi", "Enter") in calls
+    (new_session,) = [call for call in calls if call[0] == "new-session"]
+    assert new_session[-1] == "claude hi"
+
+
+def test_tmux_split_panes_start_their_own_commands(monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_tmux(*args: str) -> str:
+        calls.append(args)
+        return f"%{len(calls)}"
+
+    monkeypatch.setattr(tmux, "_tmux", fake_tmux)
+    layout = Split(SplitDirection.ROW, (Pane("nvim"), Pane(), Pane("htop")))
+
+    tmux._create_session("s", Path("/w"), layout)
+
+    (new_session,) = [call for call in calls if call[0] == "new-session"]
+    assert new_session[-1] == "nvim"
+    shell_split, htop_split = [call for call in calls if call[0] == "split-window"]
+    assert shell_split[-1] == "#{pane_id}"
+    assert htop_split[-1] == "htop"
+
+
+def test_tmux_reports_an_over_long_pane_command(monkeypatch) -> None:
+    def fake_tmux(*args: str) -> str:
+        raise subprocess.CalledProcessError(1, ["tmux", *args], stderr="command too long")
+
+    killed: list[list[str]] = []
+    monkeypatch.setattr(tmux, "_tmux", fake_tmux)
+    monkeypatch.setattr(tmux.subprocess, "run", lambda command, **kwargs: killed.append(command))
+
+    with pytest.raises(MultiplexerError, match="16KB"):
+        tmux._create_session("s", Path("/w"), Pane("claude " + "x" * 20_000))
+
+    assert killed == [["tmux", "kill-session", "-t", "=s"]]
 
 
 def test_tmux_create_does_not_attach(monkeypatch) -> None:
