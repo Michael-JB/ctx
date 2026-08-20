@@ -356,6 +356,14 @@ def test_unarchive_rejects_a_name_taken_by_a_live_context(cfg: Config, registere
     assert clash.exists()
 
 
+def test_current_branch_tolerates_a_damaged_checkout(cfg: Config, registered: Path) -> None:
+    """A context whose removal was interrupted must not break listings."""
+    ctx = create_context(cfg, "origin", "feat")
+    (ctx.path / ".git" / "HEAD").unlink()
+
+    assert contexts.current_branch(ctx) == ""
+
+
 def test_remove_context_deletes_the_checkout(cfg: Config, registered: Path) -> None:
     ctx = create_context(cfg, "origin", "feat")
 

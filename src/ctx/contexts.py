@@ -228,9 +228,13 @@ def current_branch(ctx: Context) -> str:
     """The checkout's branch, read from `.git/HEAD` to spare a subprocess.
 
     Anything but a symbolic ref to a branch (e.g. a detached HEAD's raw
-    hash) reads as no branch, like `git branch --show-current`.
+    hash) reads as no branch, like `git branch --show-current`. So does an
+    unreadable HEAD: a checkout damaged on disk must not break listings.
     """
-    head = (ctx.path / ".git" / "HEAD").read_text().strip()
+    try:
+        head = (ctx.path / ".git" / "HEAD").read_text().strip()
+    except OSError:
+        return ""
     prefix = "ref: refs/heads/"
     return head.removeprefix(prefix) if head.startswith(prefix) else ""
 
