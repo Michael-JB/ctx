@@ -18,7 +18,10 @@ def _claude(args: str | None, values: Mapping[str, str] | None) -> str:
         command += " --continue"
     elif "prompt" in values:
         command += f" {shlex.quote(values['prompt'])}"
-    return command
+    # Pre-trust the checkout so the session doesn't stop at the trust dialog.
+    # Run through `sh` because a pane may exec its command as argv rather
+    # than through a shell.
+    return f"sh -c {shlex.quote(f'ctx claude-trust; exec {command}')}"
 
 
 _RESOLVERS = {"claude": _claude}

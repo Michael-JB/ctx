@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from ctx import claude_hook, contexts, repos, status
+from ctx import claude_hook, claude_trust, contexts, repos, status
 from ctx.config import Config, ConfigError, load_config
 from ctx.layout import LayoutError, accepted_keys
 from ctx.multiplexer import Multiplexer, MultiplexerError, get_multiplexer
@@ -278,6 +278,12 @@ def changelog() -> None:
 def claude_hook_() -> None:
     """Feed the agent status column from a Claude Code hook event on stdin."""
     claude_hook.handle(sys.stdin.read(), Path.cwd())
+
+
+@cli.command("claude-trust")
+def claude_trust_() -> None:
+    """Mark the current directory trusted so Claude Code skips its trust dialog."""
+    claude_trust.trust(Path.cwd())
 
 
 @cli.group()
