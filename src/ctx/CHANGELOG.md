@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/Michael-JB/ctx/compare/v0.9.0...v0.9.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* tmux no longer truncates long pane commands ([56c5830](https://github.com/Michael-JB/ctx/commit/56c58302fa0ea99899aec2058ef92921398b1cb1))
+
 ## [0.9.0](https://github.com/Michael-JB/ctx/compare/v0.8.0...v0.9.0) (2026-08-20)
 
 
