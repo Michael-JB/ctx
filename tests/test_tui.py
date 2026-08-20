@@ -451,6 +451,21 @@ def test_delete_context_worker_removes_the_checkout(cfg: Config, registered: Pat
         contexts.find_context(cfg, "one")
 
 
+def test_startup_sweeps_interrupted_deletions(cfg: Config, registered: Path) -> None:
+    ctx = create_context(cfg, "origin", "one")
+    leftover = ctx.path.with_name("one.deleting")
+    ctx.path.rename(leftover)
+    app = CtxTui(cfg, StubMultiplexer())
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            assert not leftover.exists()
+
+    run_async(drive())
+
+
 def test_add_repo_key_is_local_to_the_repos_panel(cfg: Config, registered: Path) -> None:
     """`a` opens the add-repo prompt only while the repos panel is focused."""
     app = CtxTui(cfg, StubMultiplexer())

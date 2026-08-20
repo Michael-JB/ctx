@@ -23,7 +23,7 @@ class Context:
 
 # Checkouts are renamed to this suffix before removal, so an interrupted
 # delete leaves a marked corpse rather than a live-looking, half-gutted
-# context.
+# context. `sweep_deleting` finishes such leftovers.
 _DELETING_SUFFIX = ".deleting"
 
 
@@ -264,6 +264,19 @@ def remove_context(ctx: Context) -> None:
         shutil.rmtree(doomed, ignore_errors=True)
     ctx.path.rename(doomed)
     shutil.rmtree(doomed)
+
+
+def sweep_deleting(cfg: Config) -> None:
+    """Finish removals that a crash or kill interrupted mid-delete."""
+    for root in (cfg.contexts_dir, cfg.archive_dir):
+        if not root.is_dir():
+            continue
+        for repo_dir in root.iterdir():
+            if not repo_dir.is_dir():
+                continue
+            for entry in repo_dir.iterdir():
+                if entry.name.endswith(_DELETING_SUFFIX) and entry.is_dir():
+                    shutil.rmtree(entry, ignore_errors=True)
 
 
 def empty_archive(cfg: Config) -> None:
