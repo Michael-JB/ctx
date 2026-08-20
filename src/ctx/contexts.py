@@ -21,6 +21,12 @@ class Context:
         return f"{self.repo}/{self.name}"
 
 
+# Checkouts are renamed to this suffix before removal, so an interrupted
+# delete leaves a marked corpse rather than a live-looking, half-gutted
+# context.
+_DELETING_SUFFIX = ".deleting"
+
+
 def context_path(cfg: Config, repo: str, name: str) -> Path:
     return cfg.contexts_dir / repo / name
 
@@ -46,6 +52,8 @@ def _scan(root: Path) -> list[Context]:
         if not repo_dir.is_dir():
             continue
         for ctx_dir in sorted(repo_dir.iterdir()):
+            if ctx_dir.name.endswith(_DELETING_SUFFIX):
+                continue
             if (ctx_dir / ".git").exists():
                 found.append(Context(repo_dir.name, ctx_dir.name, ctx_dir))
     found.sort(key=lambda c: (-last_active(c), c.qualified))
@@ -89,6 +97,8 @@ def _check_name(name: str, branch: str) -> None:
         raise ValueError(f"context name '{name}' must be a single path component")
     if name.startswith("-"):
         raise ValueError(f"context name '{name}' must not start with '-'")
+    if name.endswith(_DELETING_SUFFIX):
+        raise ValueError(f"context name '{name}' must not end with '{_DELETING_SUFFIX}'")
     # cwd="/": the process's own cwd may have been deleted under it.
     check = subprocess.run(
         ["git", "check-ref-format", f"refs/heads/{branch}"], capture_output=True, cwd="/"
@@ -249,7 +259,11 @@ def unpushed_commits(ctx: Context) -> list[str]:
 
 
 def remove_context(ctx: Context) -> None:
-    shutil.rmtree(ctx.path)
+    doomed = ctx.path.with_name(ctx.path.name + _DELETING_SUFFIX)
+    if doomed.exists():
+        shutil.rmtree(doomed, ignore_errors=True)
+    ctx.path.rename(doomed)
+    shutil.rmtree(doomed)
 
 
 def empty_archive(cfg: Config) -> None:

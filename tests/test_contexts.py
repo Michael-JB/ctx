@@ -370,6 +370,33 @@ def test_remove_context_deletes_the_checkout(cfg: Config, registered: Path) -> N
     contexts.remove_context(ctx)
 
     assert contexts.list_contexts(cfg) == []
+    assert list((cfg.contexts_dir / "origin").iterdir()) == []
+
+
+def test_interrupted_removals_are_hidden_from_listings(cfg: Config, registered: Path) -> None:
+    kept = create_context(cfg, "origin", "live")
+    doomed = create_context(cfg, "origin", "feat")
+    # An interrupted remove_context leaves the renamed checkout behind.
+    doomed.path.rename(doomed.path.with_name("feat.deleting"))
+
+    assert contexts.list_contexts(cfg) == [kept]
+
+
+def test_remove_context_replaces_a_stale_leftover(cfg: Config, registered: Path) -> None:
+    ctx = create_context(cfg, "origin", "feat")
+    stale = ctx.path.with_name("feat.deleting")
+    stale.mkdir()
+    (stale / "junk").write_text("x\n")
+
+    contexts.remove_context(ctx)
+
+    assert not ctx.path.exists()
+    assert not stale.exists()
+
+
+def test_create_rejects_names_reserved_for_deletion(cfg: Config, registered: Path) -> None:
+    with pytest.raises(ValueError, match=r"\.deleting"):
+        create_context(cfg, "origin", "feat.deleting")
 
 
 def test_empty_archive_deletes_all_archived_contexts(cfg: Config, registered: Path) -> None:
