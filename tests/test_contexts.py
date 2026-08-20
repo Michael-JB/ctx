@@ -373,12 +373,18 @@ def test_remove_context_deletes_the_checkout(cfg: Config, registered: Path) -> N
     assert list((cfg.contexts_dir / "origin").iterdir()) == []
 
 
-def test_interrupted_removals_are_hidden_from_listings(cfg: Config, registered: Path) -> None:
+def test_interrupted_removals_are_hidden_and_swept(cfg: Config, registered: Path) -> None:
     kept = create_context(cfg, "origin", "live")
     doomed = create_context(cfg, "origin", "feat")
     # An interrupted remove_context leaves the renamed checkout behind.
-    doomed.path.rename(doomed.path.with_name("feat.deleting"))
+    leftover = doomed.path.with_name("feat.deleting")
+    doomed.path.rename(leftover)
 
+    assert contexts.list_contexts(cfg) == [kept]
+
+    contexts.sweep_deleting(cfg)
+
+    assert not leftover.exists()
     assert contexts.list_contexts(cfg) == [kept]
 
 

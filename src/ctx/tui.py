@@ -449,6 +449,7 @@ class CtxTui(App[Request | None]):
         # Let the empty panels paint before the (subprocess-heavy) first
         # load; the alternative is a blank screen until the data is in.
         self.call_after_refresh(self._reload)
+        self._sweep_worker()
         ctx_table.focus()
         self.set_interval(0.1, self._spin)
         if self._cfg.status:
@@ -905,6 +906,11 @@ class CtxTui(App[Request | None]):
     @work(thread=True)
     def _delete_context_worker(self, ctx: Context) -> None:
         self._teardown(ctx, lambda: contexts.remove_context(ctx))
+
+    @work(thread=True)
+    def _sweep_worker(self) -> None:
+        """Finish any context deletions a previous run left half-done."""
+        contexts.sweep_deleting(self._cfg)
 
     def action_open_pr(self) -> None:
         if self._active_table() is not self._contexts_table:
