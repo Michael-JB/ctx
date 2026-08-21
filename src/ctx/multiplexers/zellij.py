@@ -114,10 +114,16 @@ class ZellijMultiplexer(Multiplexer):
             return
         session = _session_name(ctx)
         layout_file = self._write_layout_file(ctx, values)
+        # Inside a session, zellij turns any --layout invocation into new
+        # tabs of the current session and never reaches the attach
+        # subcommand; hide the session env so the command runs as if from
+        # outside.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("ZELLIJ")}
         result = subprocess.run(
             ["zellij", "--layout", layout_file, "attach", "--create-background", session],
             capture_output=True,
             text=True,
+            env=env,
         )
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip()

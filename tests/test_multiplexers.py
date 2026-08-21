@@ -157,9 +157,11 @@ def test_tmux_create_does_not_attach(monkeypatch) -> None:
 
 def test_zellij_create_makes_a_background_session(monkeypatch) -> None:
     commands: list[list[str]] = []
+    envs: list[dict[str, str] | None] = []
 
     def fake_run(command, **kwargs):
         commands.append(command)
+        envs.append(kwargs.get("env"))
 
         class Result:
             returncode = 0
@@ -170,6 +172,8 @@ def test_zellij_create_makes_a_background_session(monkeypatch) -> None:
 
     monkeypatch.setattr(zellij.subprocess, "run", fake_run)
     monkeypatch.setattr(zellij.ZellijMultiplexer, "exists", lambda self, ctx: False)
+    monkeypatch.setenv("ZELLIJ", "0")
+    monkeypatch.setenv("ZELLIJ_SESSION_NAME", "elsewhere")
     mux = zellij.ZellijMultiplexer(Pane())
 
     mux.create(Context(repo="repo", name="a", path=Path("/w")), {})
@@ -178,6 +182,11 @@ def test_zellij_create_makes_a_background_session(monkeypatch) -> None:
     assert command[0] == "zellij"
     assert command[1] == "--layout"
     assert command[3:] == ["attach", "--create-background", "repo--a"]
+    # With the session env visible, zellij would open the layout as new
+    # tabs of the current session instead of creating one.
+    (env,) = envs
+    assert env is not None
+    assert not any(key.startswith("ZELLIJ") for key in env)
 
 
 def test_zellij_layout_file_resolves_builtin_panes() -> None:
