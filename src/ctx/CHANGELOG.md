@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0](https://github.com/Michael-JB/ctx/compare/v0.9.1...v1.0.0) (2026-08-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* ctx claude-hook is gone. Update Claude Code hook configs to invoke ctx builtin claude status-hook instead.
+
+### Features
+
+* move builtin entry points under a hidden ctx builtin group ([e681421](https://github.com/Michael-JB/ctx/commit/e6814212762e41b157208e800c29c8e5aec597a0))
+* pre-answer Claude Code's trust dialog for context checkouts ([299b9d9](https://github.com/Michael-JB/ctx/commit/299b9d919ff36047241553fa230002d75cade278))
+
 ## [0.9.1](https://github.com/Michael-JB/ctx/compare/v0.9.0...v0.9.1) (2026-08-20)
 
 
