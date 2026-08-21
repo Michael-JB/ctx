@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/Michael-JB/ctx/compare/v1.0.1...v1.0.2) (2026-08-21)
+
+
+### Bug Fixes
+
+* ctx new --detach inside zellij no longer opens tabs in the current session ([4c236a4](https://github.com/Michael-JB/ctx/commit/4c236a44b51c1f271acd83373e67e4e667e160cd))
+
 ## [1.0.1](https://github.com/Michael-JB/ctx/compare/v1.0.0...v1.0.1) (2026-08-21)
 
 
