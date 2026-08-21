@@ -502,6 +502,25 @@ def test_archiving_the_current_context_switches_away_then_kills(
     assert contexts.find_archived(cfg, "one")
 
 
+def test_archiving_kills_the_session_even_when_the_move_fails(
+    cfg: Config, registered: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_context(cfg, "origin", "one")
+    ctx = contexts.find_context(cfg, "one")
+    mux = RecordingMultiplexer()
+    app = CtxTui(cfg, mux)
+
+    def boom(cfg: Config, ctx: Context) -> None:
+        raise OSError("move failed")
+
+    monkeypatch.setattr(contexts, "archive_context", boom)
+
+    _run_worker(app, lambda: app._archive_worker(ctx))
+
+    assert mux.calls == [("kill", "one")]
+    assert ctx.path.exists()
+
+
 def test_archiving_the_current_context_leaves_no_stale_busy_state(
     cfg: Config, registered: Path
 ) -> None:

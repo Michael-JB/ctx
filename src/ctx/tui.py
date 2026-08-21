@@ -960,11 +960,14 @@ class CtxTui(App[Request | None]):
                 # down with it, so land the client elsewhere first.
                 self._switch_away(ctx)
             # Kill last: killing our own session ends the TUI, so nothing
-            # after the kill is guaranteed to run. An interrupted removal
-            # is finished by the startup sweep.
-            remove()
-            if self._mux.exists(ctx):
-                self._mux.kill(ctx)
+            # after the kill is guaranteed to run. Kill even when the
+            # removal fails half-way; the startup sweep finishes the
+            # removal.
+            try:
+                remove()
+            finally:
+                if self._mux.exists(ctx):
+                    self._mux.kill(ctx)
         except (OSError, subprocess.CalledProcessError) as exc:
             self.call_from_thread(self.push_screen, AlertScreen(str(exc)))
         self.call_from_thread(self._reload)

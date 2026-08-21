@@ -326,6 +326,27 @@ def test_rm_of_the_current_context_removes_before_the_kill(
     assert mux.path_present_at_kill is False
 
 
+def test_rm_kills_the_session_even_when_removal_fails(
+    runner: CliRunner,
+    deps: Deps,
+    mux: SpyMultiplexer,
+    registered: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_context(deps.cfg, "origin", "feat")
+    mux.running.add("origin/feat")
+
+    def boom(ctx: Context) -> None:
+        raise OSError("removal failed")
+
+    monkeypatch.setattr(contexts, "remove_context", boom)
+
+    result = runner.invoke(cli, ["rm", "feat"], obj=deps)
+
+    assert result.exit_code != 0
+    assert mux.killed == ["origin/feat"]
+
+
 def test_rm_refuses_unpushed_work(runner: CliRunner, deps: Deps, registered: Path) -> None:
     ctx = create_context(deps.cfg, "origin", "feat")
     commit_file(ctx.path, "work.txt")
