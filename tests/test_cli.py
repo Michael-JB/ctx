@@ -1,3 +1,4 @@
+import json
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -100,10 +101,27 @@ def test_claude_hook_feeds_the_status_file_from_stdin(
     (tmp_path / ".git").mkdir()
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(cli, ["claude-hook"], obj=deps, input='{"hook_event_name": "Stop"}')
+    result = runner.invoke(
+        cli, ["builtin", "claude", "status-hook"], obj=deps, input='{"hook_event_name": "Stop"}'
+    )
 
     assert result.exit_code == 0
     assert (tmp_path / ".git" / "agent-status").read_text() == "idle\n"
+
+
+def test_claude_trust_records_the_current_directory(
+    runner: CliRunner, deps: Deps, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_dir = tmp_path / "claude-config"
+    config_dir.mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(cli, ["builtin", "claude", "trust"], obj=deps)
+
+    assert result.exit_code == 0
+    data = json.loads((config_dir / ".claude.json").read_text())
+    assert data["projects"][str(tmp_path)] == {"hasTrustDialogAccepted": True}
 
 
 def test_new_reports_the_created_context(runner: CliRunner, deps: Deps, registered: Path) -> None:

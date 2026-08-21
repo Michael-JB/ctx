@@ -274,13 +274,25 @@ def changelog() -> None:
     click.echo(text, nl=False)
 
 
-@cli.command("claude-hook")
+# Plumbing invoked by composed commands and hook configs, not browsed for:
+# hidden from top-level help.
+@cli.group(hidden=True)
+def builtin() -> None:
+    """Entry points backing the builtins."""
+
+
+@builtin.group()
+def claude() -> None:
+    """Adapters for Claude Code."""
+
+
+@claude.command("status-hook")
 def claude_hook_() -> None:
     """Feed the agent status column from a Claude Code hook event on stdin."""
     claude_hook.handle(sys.stdin.read(), Path.cwd())
 
 
-@cli.command("claude-trust")
+@claude.command("trust")
 def claude_trust_() -> None:
     """Mark the current directory trusted so Claude Code skips its trust dialog."""
     claude_trust.trust(Path.cwd())
