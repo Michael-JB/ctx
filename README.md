@@ -221,11 +221,11 @@ Code, add the following to `~/.claude/settings.json`:
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "ctx claude-hook"}]}],
-    "PreToolUse": [{"hooks": [{"type": "command", "command": "ctx claude-hook"}]}],
-    "Notification": [{"matcher": "permission_prompt|elicitation_dialog|agent_needs_input", "hooks": [{"type": "command", "command": "ctx claude-hook"}]}],
-    "Stop": [{"hooks": [{"type": "command", "command": "ctx claude-hook"}]}],
-    "SessionEnd": [{"hooks": [{"type": "command", "command": "ctx claude-hook"}]}]
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "ctx builtin claude status-hook"}]}],
+    "PreToolUse": [{"hooks": [{"type": "command", "command": "ctx builtin claude status-hook"}]}],
+    "Notification": [{"matcher": "permission_prompt|elicitation_dialog|agent_needs_input", "hooks": [{"type": "command", "command": "ctx builtin claude status-hook"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "ctx builtin claude status-hook"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "ctx builtin claude status-hook"}]}]
   }
 }
 ```

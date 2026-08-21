@@ -98,7 +98,7 @@ def test_accepted_keys_is_empty_without_builtins() -> None:
     assert accepted_keys(Pane("claude")) == frozenset()
 
 
-_TRUST = "ctx claude-trust"
+_TRUST = "ctx builtin claude trust"
 
 
 def test_resolve_claude_passes_the_prompt_as_one_word() -> None:
