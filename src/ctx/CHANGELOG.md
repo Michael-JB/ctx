@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/Michael-JB/ctx/compare/v1.0.0...v1.0.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* a delete or archive that fails no longer leaves the session running ([083301e](https://github.com/Michael-JB/ctx/commit/083301ebe867b6f53b1e615ee88f4aab5e75ff3d))
+* deleting or archiving the current context no longer leaves the checkout behind ([a61771c](https://github.com/Michael-JB/ctx/commit/a61771cd25498b309bdb4d1f61854c6132d6b1e3))
+
 ## [1.0.0](https://github.com/Michael-JB/ctx/compare/v0.9.1...v1.0.0) (2026-08-21)
 
 
