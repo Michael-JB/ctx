@@ -20,9 +20,11 @@ class SpyMultiplexer(Multiplexer):
 
     def __init__(self) -> None:
         self.running: set[str] = set()
+        self.current: str | None = None
         self.opened: list[str] = []
         self.created: list[str] = []
         self.killed: list[str] = []
+        self.path_present_at_kill: bool | None = None
         self.values: list[Mapping[str, str] | None] = []
 
     def can_open_in_place(self) -> bool:
@@ -32,7 +34,7 @@ class SpyMultiplexer(Multiplexer):
         return ctx.qualified in self.running
 
     def is_current(self, ctx: Context) -> bool:
-        return False
+        return ctx.qualified == self.current
 
     def create(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         self.created.append(ctx.qualified)
@@ -43,6 +45,7 @@ class SpyMultiplexer(Multiplexer):
         self.values.append(values)
 
     def kill(self, ctx: Context) -> None:
+        self.path_present_at_kill = ctx.path.exists()
         self.killed.append(ctx.qualified)
 
 
@@ -323,6 +326,22 @@ def test_rm_kills_a_running_session(
     runner.invoke(cli, ["rm", "feat"], obj=deps)
 
     assert mux.killed == ["origin/feat"]
+
+
+def test_rm_of_the_current_context_removes_before_the_kill(
+    runner: CliRunner, deps: Deps, mux: SpyMultiplexer, registered: Path
+) -> None:
+    """Killing our own session ends this process; the removal must land first."""
+    ctx = create_context(deps.cfg, "origin", "feat")
+    mux.running.add("origin/feat")
+    mux.current = "origin/feat"
+
+    result = runner.invoke(cli, ["rm", "feat"], obj=deps)
+
+    assert result.exit_code == 0
+    assert not ctx.path.exists()
+    assert mux.killed == ["origin/feat"]
+    assert mux.path_present_at_kill is False
 
 
 def test_rm_refuses_unpushed_work(runner: CliRunner, deps: Deps, registered: Path) -> None:

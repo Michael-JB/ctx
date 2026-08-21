@@ -496,9 +496,9 @@ def test_archiving_the_current_context_switches_away_then_kills(
     _run_worker(app, lambda: app._archive_worker(ctx))
 
     assert mux.calls == [("open", "two"), ("kill", "one")]
-    # Kill before removing: an interrupted removal must not leave a live
-    # session pointing at a gutted checkout.
-    assert mux.path_present_at_kill is True, "the kill must come before the move"
+    # Killing our own session ends the process, so the move must have
+    # landed by the time the kill happens.
+    assert mux.path_present_at_kill is False, "the move must come before the kill"
     assert contexts.find_archived(cfg, "one")
 
 

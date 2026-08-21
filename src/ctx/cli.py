@@ -179,10 +179,13 @@ def _remove_one(deps: Deps, name: str, force: bool) -> str | None:
             problems.append(f"{len(unpushed)} unpushed commit(s)")
         if problems:
             return f"{ctx.qualified} has {' and '.join(problems)}; use --force to delete anyway"
-    if deps.mux.exists(ctx):
-        deps.mux.kill(ctx)
+    # Kill last: killing our own session takes this process down with it,
+    # so nothing after the kill is guaranteed to run. An interrupted
+    # removal is finished by the startup sweep.
     contexts.remove_context(ctx)
     click.echo(f"removed {ctx.qualified}")
+    if deps.mux.exists(ctx):
+        deps.mux.kill(ctx)
     return None
 
 
