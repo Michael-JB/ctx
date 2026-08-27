@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/Michael-JB/ctx/compare/v1.0.3...v1.0.4) (2026-08-27)
+
+
+### Bug Fixes
+
+* launcher panes take keyboard input again ([7f63bc3](https://github.com/Michael-JB/ctx/commit/7f63bc3b65c04f2a64b5eef1d4832ae64a475f50))
+
 ## [1.0.3](https://github.com/Michael-JB/ctx/compare/v1.0.2...v1.0.3) (2026-08-27)
 
 
