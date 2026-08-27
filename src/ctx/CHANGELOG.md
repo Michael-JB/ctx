@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/Michael-JB/ctx/compare/v1.0.2...v1.0.3) (2026-08-27)
+
+
+### Bug Fixes
+
+* pane commands run in the user's shell environment again ([1b98aeb](https://github.com/Michael-JB/ctx/commit/1b98aeb1cefde89ab3ae9c56a67ab953974c575d))
+
 ## [1.0.2](https://github.com/Michael-JB/ctx/compare/v1.0.1...v1.0.2) (2026-08-21)
 
 
