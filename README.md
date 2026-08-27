@@ -137,7 +137,9 @@ focus = true
 
 A pane can use a `builtin` instead of a command. Where a `command` pane
 always runs the same string, a builtin names something `ctx` knows how to
-run, so it can compose the invocation itself. Extra flags go in `args`.
+run, so it can compose the invocation itself. Extra flags go in `args`; a
+command to run the invocation through (an environment loader, a package
+manager's `run`, ...) goes in `wrap`.
 
 The `claude` builtin runs Claude Code:
 
@@ -145,6 +147,7 @@ The `claude` builtin runs Claude Code:
 [[layout.panes]]
 builtin = "claude"
 args = "--model opus"      # optional extra flags
+wrap = "direnv exec ."     # optional: runs `direnv exec . claude --model opus`
 ```
 
 `ctx new --set prompt="..."` hands it an initial prompt, so an agent (or
@@ -261,6 +264,11 @@ all of a repo's contexts from a single `.envrc` there:
 echo 'export MY_SECRET=some-value' > <contexts_dir>/papaya-nvim/.envrc
 direnv allow <contexts_dir>/papaya-nvim
 ```
+
+Shell panes pick this up through direnv's shell hook. Command and builtin
+panes don't: the multiplexer starts them directly, not from your shell. Give
+a builtin pane the env via `wrap = "direnv exec ."`, and a command pane by
+writing it out (`command = "direnv exec . lazygit"`).
 
 ## Contributing
 

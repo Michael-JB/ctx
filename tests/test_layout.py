@@ -43,6 +43,12 @@ def test_pane_takes_a_builtin_with_args() -> None:
     assert node == Pane(builtin="claude", args="--model opus", focus=True)
 
 
+def test_pane_takes_a_builtin_with_a_wrap() -> None:
+    node = parse_layout({"builtin": "claude", "wrap": "direnv exec ."})
+
+    assert node == Pane(builtin="claude", wrap="direnv exec .")
+
+
 def test_pane_rejects_command_and_builtin_together() -> None:
     with pytest.raises(LayoutError, match="either a command or a builtin"):
         parse_layout({"command": "claude", "builtin": "claude"})
@@ -56,6 +62,11 @@ def test_pane_rejects_an_unknown_builtin() -> None:
 def test_pane_rejects_args_without_a_builtin() -> None:
     with pytest.raises(LayoutError, match="args require a builtin"):
         parse_layout({"command": "nvim", "args": "-R"})
+
+
+def test_pane_rejects_wrap_without_a_builtin() -> None:
+    with pytest.raises(LayoutError, match="wrap requires a builtin"):
+        parse_layout({"command": "nvim", "wrap": "direnv exec ."})
 
 
 def test_unknown_pane_key_rejected() -> None:
@@ -116,6 +127,12 @@ def test_resolve_claude_keeps_extra_args() -> None:
     node = resolve_layout(Pane(builtin="claude", args="--model opus"), {})
 
     assert node == Pane(f"sh -c '{_TRUST}; exec claude --model opus'")
+
+
+def test_resolve_claude_runs_through_the_wrap() -> None:
+    node = resolve_layout(Pane(builtin="claude", args="--model opus", wrap="direnv exec ."), {})
+
+    assert node == Pane(f"sh -c '{_TRUST}; exec direnv exec . claude --model opus'")
 
 
 def test_resolve_claude_on_a_recreated_session_resumes() -> None:

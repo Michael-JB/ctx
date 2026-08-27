@@ -20,6 +20,7 @@ class Pane:
     command: str | None = None  # None means a plain shell (unless a builtin is set)
     builtin: str | None = None  # a builtin standing in for a command
     args: str | None = None  # extra flags appended to a builtin's command
+    wrap: str | None = None  # a command a builtin's command runs through, e.g. "direnv exec ."
     focus: bool = False
 
 
@@ -55,7 +56,7 @@ def _parse_node(data: dict[str, Any]) -> Node:
         if not isinstance(panes, list) or not panes:
             raise LayoutError("a split needs a non-empty 'panes' list")
         return Split(direction, tuple(_parse_node(pane) for pane in panes))
-    unknown = data.keys() - {"command", "builtin", "args", "focus"}
+    unknown = data.keys() - {"command", "builtin", "args", "wrap", "focus"}
     if unknown:
         raise LayoutError(f"unknown pane key(s): {', '.join(sorted(unknown))}")
     if "command" in data and "builtin" in data:
@@ -65,10 +66,13 @@ def _parse_node(data: dict[str, Any]) -> Node:
         raise LayoutError(f"unknown pane builtin '{data['builtin']}' (supported: {valid})")
     if "args" in data and "builtin" not in data:
         raise LayoutError("pane args require a builtin")
+    if "wrap" in data and "builtin" not in data:
+        raise LayoutError("pane wrap requires a builtin")
     return Pane(
         command=str(data["command"]) if "command" in data else None,
         builtin=str(data["builtin"]) if "builtin" in data else None,
         args=str(data["args"]) if "args" in data else None,
+        wrap=str(data["wrap"]) if "wrap" in data else None,
         focus=bool(data.get("focus", False)),
     )
 
@@ -95,6 +99,6 @@ def resolve_layout(node: Node, values: Mapping[str, str] | None) -> Node:
     if isinstance(node, Pane):
         if node.builtin is None:
             return node
-        command = builtins.builtin_command(node.builtin, node.args, values)
+        command = builtins.builtin_command(node.builtin, node.args, node.wrap, values)
         return Pane(command, focus=node.focus)
     return Split(node.direction, tuple(resolve_layout(pane, values) for pane in node.panes))

@@ -9,7 +9,7 @@ import shlex
 from collections.abc import Mapping
 
 
-def _claude(args: str | None, values: Mapping[str, str] | None) -> str:
+def _claude(args: str | None, wrap: str | None, values: Mapping[str, str] | None) -> str:
     command = "claude"
     if args:
         command += f" {args}"
@@ -18,6 +18,8 @@ def _claude(args: str | None, values: Mapping[str, str] | None) -> str:
         command += " --continue"
     elif "prompt" in values:
         command += f" {shlex.quote(values['prompt'])}"
+    if wrap:
+        command = f"{wrap} {command}"
     # Pre-trust the checkout so the session doesn't stop at the trust dialog.
     # Run through `sh` because a pane may exec its command as argv rather
     # than through a shell.
@@ -32,10 +34,13 @@ PANE_BUILTINS = tuple(_RESOLVERS)
 BUILTIN_KEYS = {"claude": frozenset({"prompt"})}
 
 
-def builtin_command(name: str, args: str | None, values: Mapping[str, str] | None) -> str:
+def builtin_command(
+    name: str, args: str | None, wrap: str | None, values: Mapping[str, str] | None
+) -> str:
     """The command a builtin pane runs.
 
+    `wrap` is a command the builtin's own command is passed to as arguments.
     `values` carries creation-time key=value data; None means the session
     is being recreated for an existing context.
     """
-    return _RESOLVERS[name](args, values)
+    return _RESOLVERS[name](args, wrap, values)
