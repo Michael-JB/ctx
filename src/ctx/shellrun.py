@@ -16,6 +16,9 @@ from pathlib import Path
 
 from ctx.layout import Node, Pane, Split
 
+# XXX Assumes $SHELL is a POSIX-family shell that runs its prompt hooks
+# before the first read from a non-tty stdin (holds for zsh and bash;
+# fish untested, non-POSIX shells would break).
 _LAUNCHER_HEAD = """\
 #!/bin/sh
 shell="${SHELL:-/bin/sh}"
