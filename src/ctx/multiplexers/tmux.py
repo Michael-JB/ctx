@@ -6,6 +6,7 @@ from pathlib import Path
 from ctx.contexts import Context
 from ctx.layout import Node, Pane, SplitDirection, resolve_layout
 from ctx.multiplexer import Multiplexer, MultiplexerError
+from ctx.shellrun import via_shell
 
 
 def _session_name(ctx: Context) -> str:
@@ -89,7 +90,8 @@ class TmuxMultiplexer(Multiplexer):
 
     def create(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         if not self.exists(ctx):
-            _create_session(_session_name(ctx), ctx.path, resolve_layout(self._layout, values))
+            layout = via_shell(resolve_layout(self._layout, values))
+            _create_session(_session_name(ctx), ctx.path, layout)
 
     def open(self, ctx: Context, values: Mapping[str, str] | None = None) -> None:
         session = _session_name(ctx)
