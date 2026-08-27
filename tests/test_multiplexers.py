@@ -106,7 +106,7 @@ def test_tmux_open_resolves_builtin_panes_on_session_creation(monkeypatch) -> No
     launcher = shlex.split(new_session[-1])
     assert launcher[0] == "sh"
     script = Path(launcher[1]).read_text()
-    assert "exec sh -c 'ctx builtin claude trust; exec claude hi' </dev/tty" in script
+    assert "exec sh -c 'ctx builtin claude trust; exec claude hi' <&9 9<&-" in script
 
 
 def test_tmux_split_panes_start_their_own_commands(monkeypatch) -> None:

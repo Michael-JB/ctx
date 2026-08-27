@@ -32,14 +32,17 @@ case "${shell##*/}" in
         set -- -i
         ;;
 esac
-exec "$shell" "$@" <<'CTX_PANE_COMMAND'
+# Hand the pane tty down on fd 9 rather than reopening /dev/tty: macOS
+# kqueue cannot watch the /dev/tty alias, leaving kqueue-polling TUIs
+# (anything on Node) deaf to input.
+exec "$shell" "$@" 9<&0 <<'CTX_PANE_COMMAND'
 """
 
 
 def _launcher(command: str) -> str:
     fd, path = tempfile.mkstemp(prefix="ctx-pane-", suffix=".sh")
     os.close(fd)
-    Path(path).write_text(_LAUNCHER_HEAD + f"exec {command} </dev/tty\nCTX_PANE_COMMAND\n")
+    Path(path).write_text(_LAUNCHER_HEAD + f"exec {command} <&9 9<&-\nCTX_PANE_COMMAND\n")
     return f"sh {shlex.quote(path)}"
 
 

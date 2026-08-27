@@ -22,7 +22,7 @@ def test_via_shell_defers_the_command_to_a_launcher_script() -> None:
     assert isinstance(wrapped, Pane)
     assert wrapped.focus
     script = _script(wrapped)
-    assert "exec nvim -R file.txt </dev/tty" in script
+    assert "exec nvim -R file.txt <&9 9<&-" in script
     assert '"$shell" "$@"' in script
 
 
