@@ -19,8 +19,8 @@ def _claude(args: str | None, values: Mapping[str, str] | None) -> str:
     elif "prompt" in values:
         command += f" {shlex.quote(values['prompt'])}"
     # Pre-trust the checkout so the session doesn't stop at the trust dialog.
-    # Run through `sh` because a pane may exec its command as argv rather
-    # than through a shell.
+    # Run through `sh` so the composed line parses the same everywhere: the
+    # shell that ends up reading it may not speak POSIX quoting (fish).
     return f"sh -c {shlex.quote(f'ctx builtin claude trust; exec {command}')}"
 
 

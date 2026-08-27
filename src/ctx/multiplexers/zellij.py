@@ -10,6 +10,7 @@ from pathlib import Path
 from ctx.contexts import Context
 from ctx.layout import Node, Pane, SplitDirection, resolve_layout
 from ctx.multiplexer import Multiplexer, MultiplexerError
+from ctx.shellrun import via_shell
 
 # macOS caps sockaddr_un paths at 104 bytes including the terminator, and
 # zellij offers no working way to relocate its socket dir, so session names
@@ -157,7 +158,7 @@ class ZellijMultiplexer(Multiplexer):
     def _write_layout_file(self, ctx: Context, values: Mapping[str, str] | None) -> str:
         fd, layout_file = tempfile.mkstemp(prefix="ctx-", suffix=".kdl")
         os.close(fd)
-        layout = resolve_layout(self._layout, values)
+        layout = via_shell(resolve_layout(self._layout, values))
         Path(layout_file).write_text(_render_layout(layout, ctx.path))
         return layout_file
 
