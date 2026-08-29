@@ -160,19 +160,34 @@ resumes the checkout's conversation via `claude --continue`.
 
 #### Instant picker
 
-In your multiplexer's config, bind a key that opens the TUI as a floating
-overlay in whatever session you're in. zellij (`config.kdl`):
+The best way to summon the TUI is in a floating overlay in your current
+multiplexer session.
+
+##### zellij
+
+Add the following to your `config.kdl` to open `ctx` with `Ctrl-o g`:
 
 ```kdl
-bind "Alt c" {
-    Run "ctx" "tui" "--exit" {
-        floating true
-        close_on_exit true
+keybinds {
+    session {
+        bind "g" {
+            Run "ctx" "tui" "--exit" {
+                floating true
+                close_on_exit true
+            }
+            SwitchToMode "Normal"
+        }
     }
 }
 ```
 
-tmux: `bind -n M-c display-popup -E "ctx tui --exit"`.
+##### tmux
+
+Add the following to your `.tmux.conf` to open `ctx` with `Ctrl-b g`:
+
+```tmux
+bind g display-popup -E "ctx tui --exit"
+```
 
 ### Theme
 
