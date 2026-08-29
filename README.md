@@ -32,16 +32,17 @@ answer using the concrete snippets under Configuration.
 1. Which multiplexer do you use, tmux or zellij? Set `multiplexer` in
    the config file.
 2. Which panes should every context session open with (agent, editor,
-   lazygit, ...), and which gets focus? Write the `layout` table.
-3. Which additional status columns do you want? For the `github` builtin, check
-   `gh auth status` and whether the terminal uses a nerd font; for the `agent`
-   builtin, install the hooks from the Agent builtin section.
+   git client, ...), and which gets focus? Write the `layout` table.
+3. Which additional status columns do you want? (github, agent). Make sure
+   their pre-requisites are met, then add them to the `[[status]]` table.
 4. Which key should summon the picker? Bind it in the multiplexer's config
    as shown under Instant picker.
 5. Should the agent be able to use ctx itself? Install the docs as shown
    under Agent docs.
 6. Verify: register a repo (`ctx repo add`), create a context (`ctx new`),
-   and check that `ctx list` shows the configured columns.
+   and check that `ctx list` shows the configured columns. Then clean up
+   (`ctx rm`).
+7. Instruct the user on how to open and use the TUI.
 
 ## Usage
 
