@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ctx: repo-scoped work contexts</title>
+  <meta name="description" content="ctx is a TUI and CLI for managing repo-scoped work contexts: each context is a fresh full checkout on its own branch, wrapped in a terminal multiplexer session with your panes already laid out.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23161b22'/%3E%3Ctext x='8' y='12' font-family='monospace' font-size='10' fill='%23ff966c' text-anchor='middle'%3E%E2%9D%AF%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main>
+  <header class="hero">
+    <h1><span class="prompt">❯</span> ctx</h1>
+    <p class="tagline">Make context switching fast, in the terminal setup you already have.</p>
+    <p class="subtitle">
+      <code>ctx</code> is a TUI and CLI for managing repo-scoped work contexts:
+      each context is a fresh full checkout on its own local branch, wrapped in
+      a terminal multiplexer session with your panes already laid out. Spin one
+      up per task, jump between them, archive them when you're done.
+    </p>
+    <div class="install">
+      <code><span class="prompt">$</span> uv tool install ctx-tui</code>
+    </div>
+    <nav class="links">
+      <a href="https://github.com/Michael-JB/ctx">GitHub</a>
+      <a href="https://pypi.org/project/ctx-tui/">PyPI</a>
+      <a href="https://github.com/Michael-JB/ctx#setup">Setup guide</a>
+    </nav>
+  </header>
+
+  <section class="terminal" aria-label="Example ctx list output">
+    <div class="terminal-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="terminal-title">ctx</span>
+    </div>
+    <pre><span class="prompt">$</span> ctx list
+<span class="th">NAME            REPO         BRANCH             STATUS  PR       AGENT</span>
+holy-tiger      papaya-nvim  mb/holy-tiger      *       <span class="s-green">open ✓</span>   <span class="s-green">working</span>
+tokeniser-perf  bm25         mb/tokeniser-perf  ↑2      <span class="s-dim">draft</span>    <span class="s-yellow">idle</span>
+ppo-baseline    nano-rl      mb/ppo-baseline            <span class="s-red">failing</span>  <span class="s-red">blocked</span>
+docs-pass       nano-rl      mb/docs-pass               <span class="s-magenta">merged</span></pre>
+  </section>
+
+  <section class="why">
+    <p>
+      Agents let you work on several things at once. <code>ctx</code> takes
+      the friction out of switching between them.
+    </p>
+  </section>
+
+  <section class="features">
+    <div class="feature">
+      <h2>Fresh checkouts, not worktrees</h2>
+      <p>
+        Every context is a full clone on its own branch, cut from the
+        up-to-date default branch. No shared state, nothing to untangle:
+        <code>ctx rm</code> and it's gone.
+      </p>
+    </div>
+    <div class="feature">
+      <h2>Sessions laid out your way</h2>
+      <p>
+        <code>ctx</code> is unopinionated about your setup. You describe the
+        panes a context opens with (editor, git client, an agent, anything)
+        and every session comes up that way, in the multiplexer you already
+        use.
+      </p>
+    </div>
+    <div class="feature">
+      <h2>Status at a glance</h2>
+      <p>
+        Status columns are pluggable. Git state is built in; add PR status,
+        agent state (<span class="s-green">working</span>,
+        <span class="s-yellow">idle</span>,
+        <span class="s-red">blocked</span>), or integrate your own.
+      </p>
+    </div>
+    <div class="feature">
+      <h2>Agent-native</h2>
+      <p>
+        Agents know how to use <code>ctx</code>. With the skill installed,
+        they can manage contexts themselves: tell one to do something in a
+        new ctx and it spins one up, works in there, and wraps up when it's
+        done.
+      </p>
+    </div>
+  </section>
+
+  <section class="get-started">
+    <h2>Get started</h2>
+    <pre><span class="prompt">$</span> uv tool install ctx-tui
+<span class="prompt">$</span> ctx repo add https://github.com/you/your-repo.git
+<span class="prompt">$</span> ctx</pre>
+    <p>
+      That last command opens the TUI, where everything happens: create,
+      open, archive (<code>?</code> lists the keys). Zero config required;
+      see the
+      <a href="https://github.com/Michael-JB/ctx#setup">README</a> for layouts,
+      status columns, and agent hooks.
+    </p>
+  </section>
+
+  <footer>
+    <p>
+      <a href="https://github.com/Michael-JB/ctx">github.com/Michael-JB/ctx</a>
+      · MIT licensed
+    </p>
+  </footer>
+</main>
+
+</body>
+</html>
