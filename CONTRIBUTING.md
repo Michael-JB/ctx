@@ -58,7 +58,7 @@ Then open <http://localhost:8000>.
 ## TODOs
 
 - [x] Add a TUI or interactive mode
-- [ ] Add a default project
+- [x] Add a default project
 - [ ] Project-specific layouts (e.g. for `uv run nvim`)
 - [x] Release/versioning mechanism
 - [x] Support for pulling in environment vars (maybe .env files?)
