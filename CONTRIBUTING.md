@@ -45,6 +45,16 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 merging its release PR bumps the version, updates the changelog, and tags a
 GitHub release, which publishes to PyPI.
 
+## Website
+
+The project website is static-served from `docs/`. To prototype locally:
+
+```sh
+uv run -m http.server -d docs
+```
+
+Then open <http://localhost:8000>.
+
 ## TODOs
 
 - [x] Add a TUI or interactive mode
