@@ -1,3 +1,3 @@
 fn main() {
-    println!("ctx-rs scaffold; CLI lands with the cli module");
+    std::process::exit(ctx_tui::cli::main());
 }
