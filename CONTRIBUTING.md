@@ -31,8 +31,10 @@ cargo install --path .
   shows the what.
 - A change that needs user action after upgrading (a config edit, a
   command to run) declares it as an extra `upgrade: ensure ...` line in
-  the commit body. These render as the release's Upgrade Notes section,
-  which agents apply when they upgrade ctx (via `ctx changelog`).
+  the commit body — one single line, however long: the changelog parser
+  drops wrapped continuations. These render as the release's Upgrade
+  Notes section, which agents apply when they upgrade ctx (via
+  `ctx changelog`).
 
 ## XXX comments
 
