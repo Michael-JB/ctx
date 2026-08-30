@@ -206,7 +206,12 @@ fn all_status_cells(cfg: &Config, ctxs: &[contexts::Context]) -> Vec<Vec<String>
             .collect();
         handles
             .into_iter()
-            .map(|handle| handle.join().expect("status fetch must not panic"))
+            // A panicking provider blanks its row rather than killing the listing.
+            .map(|handle| {
+                handle
+                    .join()
+                    .unwrap_or_else(|_| vec![String::new(); 1 + cfg.status.len()])
+            })
             .collect()
     })
 }
