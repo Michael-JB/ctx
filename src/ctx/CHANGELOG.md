@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.5](https://github.com/Michael-JB/ctx/compare/v1.0.4...v1.0.5) (2026-08-30)
+
+
+### Documentation
+
+* add project website ([7e9a577](https://github.com/Michael-JB/ctx/commit/7e9a577407a5a6afd7c3908e63e807cd5cb902b1))
+* bind the instant picker to leader+g ([17d1c9b](https://github.com/Michael-JB/ctx/commit/17d1c9b00bab1df9dd1e75111518fe7914ec1009))
+* refine agent setup instructions ([70e740e](https://github.com/Michael-JB/ctx/commit/70e740e8017224dcb087cda8527924262c2609fc))
+
 ## [1.0.4](https://github.com/Michael-JB/ctx/compare/v1.0.3...v1.0.4) (2026-08-27)
 
 
