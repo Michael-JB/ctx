@@ -864,17 +864,13 @@ impl CtxTui {
                     }
                 }
             }
-            MouseEventKind::ScrollDown => {
-                if self.modal.is_none() && self.filter.is_none() {
-                    let table = self.table_mut(self.panel);
-                    table.move_cursor(table.cursor as isize + 1);
-                }
+            MouseEventKind::ScrollDown if self.modal.is_none() && self.filter.is_none() => {
+                let table = self.table_mut(self.panel);
+                table.move_cursor(table.cursor as isize + 1);
             }
-            MouseEventKind::ScrollUp => {
-                if self.modal.is_none() && self.filter.is_none() {
-                    let table = self.table_mut(self.panel);
-                    table.move_cursor(table.cursor as isize - 1);
-                }
+            MouseEventKind::ScrollUp if self.modal.is_none() && self.filter.is_none() => {
+                let table = self.table_mut(self.panel);
+                table.move_cursor(table.cursor as isize - 1);
             }
             _ => {}
         }
