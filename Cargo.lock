@@ -358,7 +358,6 @@ name = "ctx-tui"
 version = "1.0.4"
 dependencies = [
  "clap",
- "crossterm",
  "libc",
  "rand 0.10.2",
  "ratatui",
