@@ -27,7 +27,7 @@ fn session_name_budget() -> Option<usize> {
     let sock_dir = std::env::temp_dir()
         .join(format!("zellij-{uid}"))
         .join("contract_version_1");
-    Some(SOCKET_PATH_MAX.saturating_sub(sock_dir.to_string_lossy().len()) - 1)
+    Some(SOCKET_PATH_MAX.saturating_sub(sock_dir.to_string_lossy().len() + 1))
 }
 
 fn session_name(ctx: &Context) -> String {
@@ -39,16 +39,19 @@ fn session_name_within(name: String, budget: Option<usize>) -> String {
     let Some(budget) = budget else {
         return name;
     };
-    if name.len() <= budget {
+    if name.chars().count() <= budget {
         return name;
     }
-    // Truncate over-budget names; a digest of the full name keeps them unique.
+    // Truncate over-budget names; a digest of the full name keeps them
+    // unique. Cut by characters — a byte index could split a multi-byte
+    // character and panic.
     let digest: String = Sha256::digest(name.as_bytes())
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
     let keep = std::cmp::max(budget.saturating_sub(7), 1);
-    format!("{}-{}", &name[..keep], &digest[..6])
+    let kept: String = name.chars().take(keep).collect();
+    format!("{kept}-{}", &digest[..6])
 }
 
 fn kdl_string(value: &str) -> String {
@@ -355,6 +358,26 @@ mod tests {
 
         assert_eq!(name.len(), 20);
         assert!(name.starts_with("repo--a-very-"));
+    }
+
+    #[test]
+    fn session_name_survives_a_zero_budget() {
+        // A very long TMPDIR can eat the whole socket-path budget; the name
+        // must still shorten instead of underflowing or panicking.
+        let name = session_name_within("repo--name".to_string(), Some(0));
+
+        assert!(
+            name.len() <= 8,
+            "budget 0 must yield a minimal name: {name}"
+        );
+    }
+
+    #[test]
+    fn session_name_truncates_multibyte_names_by_character() {
+        let name = session_name_within("repo--überlanger-kontext-name".to_string(), Some(20));
+
+        assert_eq!(name.chars().count(), 20);
+        assert!(name.starts_with("repo--über"));
     }
 
     #[test]
