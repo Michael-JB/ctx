@@ -58,6 +58,27 @@ pub fn push_env(key: &str, value: &str) -> EnvGuard {
     EnvGuard
 }
 
+/// The calling test's value for a variable, if it pushed one (latest wins).
+pub fn get_env(key: &str) -> Option<String> {
+    EXTRA_ENV.with(|extra| {
+        extra
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.clone())
+    })
+}
+
+/// Overlay the calling test's pushed variables onto an environment map.
+pub fn overlay_env(env: &mut std::collections::BTreeMap<String, String>) {
+    EXTRA_ENV.with(|extra| {
+        for (key, value) in extra.borrow().iter() {
+            env.insert(key.clone(), value.clone());
+        }
+    });
+}
+
 pub struct EnvGuard;
 
 impl Drop for EnvGuard {

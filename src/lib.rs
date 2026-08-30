@@ -8,8 +8,10 @@ pub mod forge;
 pub mod git;
 pub mod layout;
 pub mod multiplexer;
+pub mod multiplexers;
 pub mod repos;
 pub mod shellrun;
+pub mod status;
 
 #[cfg(test)]
 pub mod testutil;
