@@ -306,14 +306,17 @@ fn remove_one(deps: &Deps, io: &mut Io, name: &str, force: bool) -> Result<()> {
     }
     // Kill last: killing our own session takes this process down with it,
     // so nothing after the kill is guaranteed to run. Kill even when the
-    // removal fails half-way; the startup sweep finishes the removal.
+    // removal (or the echo — e.g. a broken pipe) fails half-way; the
+    // startup sweep finishes the removal.
     let removed = contexts::remove_context(&ctx);
-    if removed.is_ok() {
-        writeln!(io.out, "removed {}", ctx.qualified())?;
-    }
+    let echoed = match &removed {
+        Ok(()) => writeln!(io.out, "removed {}", ctx.qualified()),
+        Err(_) => Ok(()),
+    };
     if deps.mux.exists(&ctx) {
         deps.mux.kill(&ctx)?;
     }
+    echoed?;
     removed
 }
 
@@ -1021,6 +1024,34 @@ mod tests {
         std::fs::set_permissions(&leftover, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         assert_ne!(run.code, 0);
+        assert_eq!(mux.state().killed, ["origin/feat"]);
+    }
+
+    #[test]
+    fn rm_kills_the_session_even_when_the_echo_fails() {
+        // A broken stdout (e.g. `ctx rm a | head -0`) must not skip the kill.
+        struct BrokenPipe;
+        impl Write for BrokenPipe {
+            fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let (_env, deps, mux) = registered();
+        create(&deps, "feat");
+        mux.state().running.push("origin/feat".to_string());
+        let (mut out, mut err) = (BrokenPipe, Vec::new());
+        let mut io = Io {
+            out: &mut out,
+            err: &mut err,
+        };
+
+        let result = remove_one(&deps, &mut io, "feat", false);
+
+        assert!(result.is_err(), "the broken pipe must still surface");
         assert_eq!(mux.state().killed, ["origin/feat"]);
     }
 
