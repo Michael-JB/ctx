@@ -1,6 +1,7 @@
 pub mod builtins;
 pub mod claude_hook;
 pub mod claude_trust;
+pub mod cli;
 pub mod config;
 pub mod contexts;
 pub mod errors;
