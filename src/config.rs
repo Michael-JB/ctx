@@ -6,10 +6,36 @@ use toml::{Table, Value};
 use crate::layout::{LayoutError, Node, default_layout, parse_layout};
 use crate::multiplexer::MultiplexerKind;
 
-fn home() -> PathBuf {
-    env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
+/// The home directory of a passwd entry produced by `lookup`.
+///
+/// getpwnam/getpwuid share a static buffer; ctx only calls them from these
+/// rare fallbacks, never concurrently with themselves in practice.
+fn passwd_home(lookup: impl FnOnce() -> *mut libc::passwd) -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let entry = lookup();
+    if entry.is_null() {
+        return None;
+    }
+    let dir = unsafe { (*entry).pw_dir };
+    if dir.is_null() {
+        return None;
+    }
+    let bytes = unsafe { std::ffi::CStr::from_ptr(dir) }.to_bytes();
+    Some(PathBuf::from(std::ffi::OsStr::from_bytes(bytes)))
+}
+
+fn user_home(user: &str) -> Option<PathBuf> {
+    let name = std::ffi::CString::new(user).ok()?;
+    passwd_home(|| unsafe { libc::getpwnam(name.as_ptr()) })
+}
+
+/// $HOME, falling back to the pwd database like Python's Path.home().
+pub(crate) fn home() -> PathBuf {
+    if let Some(home) = env::var_os("HOME").filter(|home| !home.is_empty()) {
+        return PathBuf::from(home);
+    }
+    passwd_home(|| unsafe { libc::getpwuid(libc::getuid()) }).unwrap_or_else(|| PathBuf::from("/"))
 }
 
 fn xdg_dir(variable: &str, fallback: &str) -> PathBuf {
@@ -33,10 +59,24 @@ fn expand_user(path: &str) -> PathBuf {
     if path == "~" {
         return home();
     }
-    match path.strip_prefix("~/") {
-        Some(rest) => home().join(rest),
-        None => PathBuf::from(path),
+    if let Some(rest) = path.strip_prefix("~/") {
+        return home().join(rest);
     }
+    if let Some(rest) = path.strip_prefix('~') {
+        // ~user forms resolve via the pwd database, like Python's
+        // expanduser; an unknown user stays verbatim, also like it.
+        let (user, sub) = match rest.split_once('/') {
+            Some((user, sub)) => (user, Some(sub)),
+            None => (rest, None),
+        };
+        if let Some(dir) = user_home(user) {
+            return match sub {
+                Some(sub) => dir.join(sub),
+                None => dir,
+            };
+        }
+    }
+    PathBuf::from(path)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -124,8 +164,12 @@ fn coerce_string(value: &Value) -> String {
 }
 
 pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return Ok(Config::default());
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        // Only absence means defaults; an existing config that cannot be
+        // read must not be silently ignored.
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Config::default()),
+        Err(err) => return config_err(format!("cannot read {}: {err}", path.display())),
     };
     let data: Table =
         toml::from_str(&text).map_err(|exc| ConfigError::Config(exc.message().to_string()))?;
@@ -331,6 +375,38 @@ mod tests {
         let cfg = load("archive_dir = \"~/archive\"").unwrap();
 
         assert_eq!(cfg.archive_dir, home().join("archive"));
+    }
+
+    #[test]
+    fn tilde_user_paths_resolve_via_the_pwd_database() {
+        let root_home = user_home("root").expect("root exists in passwd");
+
+        assert_eq!(expand_user("~root"), root_home);
+        assert_eq!(expand_user("~root/repos"), root_home.join("repos"));
+        // Unknown users stay verbatim, like Python's expanduser.
+        assert_eq!(
+            expand_user("~no-such-user-xyz/repos"),
+            PathBuf::from("~no-such-user-xyz/repos")
+        );
+    }
+
+    #[test]
+    fn unreadable_config_errors_instead_of_defaulting() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_config(dir.path(), "branch_prefix = \"mb/\"");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let result = load_config(&path);
+
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(
+            result
+                .expect_err("must not default")
+                .to_string()
+                .contains("cannot read")
+        );
     }
 
     #[test]
