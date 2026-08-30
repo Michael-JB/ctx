@@ -1564,7 +1564,27 @@ impl CtxTui {
         let Some(modal) = &self.modal else {
             return;
         };
-        let width = 60.min(area.width.saturating_sub(4)).max(20);
+        // The help dialog sizes to its widest binding line; the rest stay
+        // at the classic dialog width.
+        let width = match modal {
+            Modal::Help { panel } => {
+                let bindings = panel_keybindings(*panel);
+                let pad = bindings
+                    .iter()
+                    .map(|(key, _)| key.chars().count())
+                    .max()
+                    .unwrap_or(0)
+                    + 3;
+                let widest = bindings
+                    .iter()
+                    .map(|(_, desc)| pad + desc.chars().count())
+                    .max()
+                    .unwrap_or(0) as u16;
+                widest + 6
+            }
+            _ => 60,
+        };
+        let width = width.min(area.width.saturating_sub(4)).max(20);
         let inner_width = width.saturating_sub(6) as usize;
         // Title, body, whether an input field follows, confirm buttons.
         type ModalParts<'a> = (
@@ -1581,10 +1601,19 @@ impl CtxTui {
                 (None, wrapped_lines(message, inner_width), false, None)
             }
             Modal::Help { panel } => {
+                let bindings = panel_keybindings(*panel);
+                // Pad keys to the longest so the descriptions align.
+                let pad = bindings
+                    .iter()
+                    .map(|(key, _)| key.chars().count())
+                    .max()
+                    .unwrap_or(0)
+                    + 3;
                 let mut lines = vec![Line::from(format!("Keybindings ({})", panel.name()))];
                 lines.push(Line::default());
-                for (key, desc) in panel_keybindings(*panel) {
-                    lines.push(Line::from(format!("{key:<16}{desc}")));
+                for (key, desc) in bindings {
+                    let fill = " ".repeat(pad - key.chars().count());
+                    lines.push(Line::from(format!("{key}{fill}{desc}")));
                 }
                 (None, lines, false, None)
             }
@@ -1849,7 +1878,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
     let common: &[(&str, &str)] = &[
         ("j / k / ↓ / ↑", "move within panel"),
         ("g / G", "jump to top / bottom"),
-        ("h / l / ← / →", "switch panel"),
+        ("h / l / ← / → / tab / shift-tab", "switch panel"),
         ("1 / 2 / 3", "jump to panel"),
         ("/", "fuzzy filter by repo and name"),
         ("r", "refresh"),
