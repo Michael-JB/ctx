@@ -268,6 +268,14 @@ fn spawn_worker<F: FnOnce() + Send + 'static>(f: F) {
     std::thread::spawn(f);
 }
 
+// Scoped fetch threads carry the calling test's env stubs along.
+#[cfg(test)]
+use crate::testutil::propagate_env as carry_env;
+#[cfg(not(test))]
+fn carry_env<R, F: FnOnce() -> R + Send>(f: F) -> F {
+    f
+}
+
 impl CtxTui {
     pub fn new(cfg: Config, mux: Arc<dyn Multiplexer>, exit_on_open: bool) -> CtxTui {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -423,14 +431,14 @@ impl CtxTui {
                 for ctx in &ctxs {
                     let tx = tx.clone();
                     let cfg = &cfg;
-                    scope.spawn(move || {
+                    scope.spawn(carry_env(move || {
                         let cell = fetch_cell(cfg, ctx, index);
                         let _ = tx.send(Event::Cell {
                             key: ctx.name.clone(),
                             column: index,
                             cell,
                         });
-                    });
+                    }));
                 }
             });
             let _ = tx.send(Event::ColumnDone(index));

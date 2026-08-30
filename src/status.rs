@@ -48,25 +48,29 @@ fn run(mut cmd: Command, ctx: &Context) -> Option<String> {
         .env("CTX_NAME", &ctx.name)
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
+    let deadline = std::time::Instant::now() + TIMEOUT;
     let mut child = cmd.spawn().ok()?;
     // Drain stdout on a thread so a chatty provider can't fill the pipe and
-    // deadlock against the timed wait.
+    // deadlock against the timed wait. The result comes over a channel: the
+    // timeout must bound the read as well as the wait, because a spawned
+    // grandchild can hold the pipe open long after the provider exits.
     let mut stdout = child.stdout.take()?;
-    let reader = std::thread::spawn(move || {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
         let mut buf = Vec::new();
         let _ = stdout.read_to_end(&mut buf);
-        buf
+        let _ = tx.send(buf);
     });
     let status = match child.wait_timeout(TIMEOUT).ok()? {
         Some(status) => status,
         None => {
             let _ = child.kill();
             let _ = child.wait();
-            let _ = reader.join();
             return None;
         }
     };
-    let buf = reader.join().ok()?;
+    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+    let buf = rx.recv_timeout(remaining).ok()?;
     if !status.success() {
         return None;
     }
@@ -318,20 +322,34 @@ pub fn column_status(ctx: &Context, column: &StatusColumn) -> Option<String> {
     }
 }
 
+// Scoped provider threads carry the calling test's env stubs along.
+#[cfg(test)]
+use crate::testutil::propagate_env as carry_env;
+#[cfg(not(test))]
+fn carry_env<R, F: FnOnce() -> R + Send>(f: F) -> F {
+    f
+}
+
 /// Compact git state: `*` for uncommitted changes, `↑n` for unpushed commits.
 pub fn git_state(ctx: &Context) -> String {
-    let dirty = run_argv(&["git", "status", "--porcelain"], ctx);
-    let unpushed = run_argv(
-        &[
-            "git",
-            "rev-list",
-            "--count",
-            "--branches",
-            "--not",
-            "--remotes",
-        ],
-        ctx,
-    );
+    // Both probes can idle up to the timeout; overlap them.
+    let (dirty, unpushed) = std::thread::scope(|scope| {
+        let dirty = scope.spawn(carry_env(|| {
+            run_argv(&["git", "status", "--porcelain"], ctx)
+        }));
+        let unpushed = run_argv(
+            &[
+                "git",
+                "rev-list",
+                "--count",
+                "--branches",
+                "--not",
+                "--remotes",
+            ],
+            ctx,
+        );
+        (dirty.join().unwrap_or(None), unpushed)
+    });
     let mut parts = Vec::new();
     if dirty.is_some_and(|out| !out.is_empty()) {
         parts.push("*".to_string());
@@ -347,15 +365,29 @@ pub fn git_state(ctx: &Context) -> String {
 
 /// The STATUS column's value plus one display cell per configured column.
 pub fn status_cells(cfg: &Config, ctx: &Context) -> Vec<String> {
-    let mut cells = vec![git_state(ctx)];
-    for column in &cfg.status {
-        let cell = column_status(ctx, column);
-        cells.push(match cell {
+    // Each provider can take up to the full timeout; running them together
+    // keeps a listing's latency at the slowest provider, not the sum.
+    let (state, cells) = std::thread::scope(|scope| {
+        let columns: Vec<_> = cfg
+            .status
+            .iter()
+            .map(|column| scope.spawn(carry_env(move || column_status(ctx, column))))
+            .collect();
+        let state = git_state(ctx);
+        let cells: Vec<Option<String>> = columns
+            .into_iter()
+            .map(|handle| handle.join().unwrap_or(None))
+            .collect();
+        (state, cells)
+    });
+    let mut out = vec![state];
+    for (column, cell) in cfg.status.iter().zip(cells) {
+        out.push(match cell {
             Some(cell) if !cell.is_empty() => cell_icon(column, &cell, cfg.nerd_font),
             _ => String::new(),
         });
     }
-    cells
+    out
 }
 
 #[cfg(test)]
@@ -504,6 +536,42 @@ mod tests {
         assert_eq!(
             command_status(&ctx, "echo \"$CTX_REPO/$CTX_NAME\"").as_deref(),
             Some("origin/feat")
+        );
+    }
+
+    #[test]
+    fn command_status_is_bounded_even_when_a_grandchild_holds_the_pipe() {
+        // A backgrounded process inherits the provider's stdout; the read
+        // must give up at the timeout instead of waiting for its exit.
+        let (_env, ctx) = context();
+
+        let start = std::time::Instant::now();
+        let cell = command_status(&ctx, "sleep 5 & echo working");
+
+        assert_eq!(cell, None);
+        assert!(
+            start.elapsed() < Duration::from_secs(4),
+            "the provider read outlived the timeout"
+        );
+    }
+
+    #[test]
+    fn status_cells_run_a_context_s_providers_concurrently() {
+        let (env, ctx) = context();
+        let mut cfg = env.cfg.clone();
+        cfg.status = vec![
+            column("a", Some("sleep 0.6; echo a"), None, None),
+            column("b", Some("sleep 0.6; echo b"), None, None),
+        ];
+
+        let start = std::time::Instant::now();
+        let cells = status_cells(&cfg, &ctx);
+
+        assert_eq!(cells, vec!["", "a", "b"]);
+        assert!(
+            start.elapsed() < Duration::from_millis(1100),
+            "providers ran sequentially: {:?}",
+            start.elapsed()
         );
     }
 
