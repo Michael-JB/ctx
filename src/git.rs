@@ -113,8 +113,11 @@ pub fn install_interrupt_handler() {
 }
 
 /// Kill every in-flight git call's process group (quit with a transfer running).
+///
+/// Only the calls running right now are killed; the interrupt flag stays
+/// untouched so the process can keep using git — the TUI kills a stray
+/// transfer on exit and then creates the context the user asked for.
 pub fn kill_inflight() {
-    INTERRUPTED.store(true, Ordering::SeqCst);
     for pgid in INFLIGHT.lock().expect("registry lock").iter() {
         unsafe {
             libc::killpg(*pgid, libc::SIGKILL);
