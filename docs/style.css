@@ -124,8 +124,22 @@ code {
   line-height: 1.7;
 }
 
+.terminal pre.tui {
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
 .th {
   color: var(--fg-dim);
+}
+
+.ba { color: var(--blue); }
+.bd { color: var(--fg-dim); }
+.fk { color: var(--accent); }
+
+.cur {
+  background: #2f334d;
+  font-weight: 600;
 }
 
 .s-green { color: var(--green); }
