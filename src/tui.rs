@@ -114,6 +114,8 @@ struct PanelTable {
     rows: Vec<TableRow>,
     cursor: usize,
     view: TableState,
+    // Visible rows at the last render, for page-wise movement.
+    page: usize,
 }
 
 impl PanelTable {
@@ -123,6 +125,7 @@ impl PanelTable {
             rows: Vec::new(),
             cursor: 0,
             view: TableState::default(),
+            page: 10,
         }
     }
 
@@ -254,6 +257,9 @@ pub struct CtxTui {
     poll_at: Vec<Instant>,
     filter: Option<Filter>,
     modal: Option<Modal>,
+    // Alerts that arrived while a prompt or confirm was open; shown once
+    // the popup closes (Textual stacked screens instead).
+    pending_alerts: Vec<String>,
     workers: usize,
     outcome: Option<Request>,
     quit: bool,
@@ -309,6 +315,7 @@ impl CtxTui {
             poll_at: vec![now; intervals],
             filter: None,
             modal: None,
+            pending_alerts: Vec::new(),
             workers: 0,
             outcome: None,
             quit: false,
@@ -426,6 +433,22 @@ impl CtxTui {
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
         spawn_worker(move || {
+            // ColumnDone must go out even if a fetch thread panics (the
+            // scope re-panics on join), or the column stays marked
+            // in-flight and never refreshes again.
+            struct Done {
+                tx: Sender<Event>,
+                index: usize,
+            }
+            impl Drop for Done {
+                fn drop(&mut self) {
+                    let _ = self.tx.send(Event::ColumnDone(self.index));
+                }
+            }
+            let _done = Done {
+                tx: tx.clone(),
+                index,
+            };
             let ctxs = contexts::list_contexts(&cfg);
             std::thread::scope(|scope| {
                 for ctx in &ctxs {
@@ -441,7 +464,6 @@ impl CtxTui {
                     }));
                 }
             });
-            let _ = tx.send(Event::ColumnDone(index));
         });
     }
 
@@ -507,9 +529,21 @@ impl CtxTui {
     }
 
     fn alert(&mut self, message: impl Into<String>) {
+        if self.modal.is_some() {
+            self.pending_alerts.push(message.into());
+            return;
+        }
         self.modal = Some(Modal::Alert {
             message: message.into(),
         });
+    }
+
+    /// Show the next queued alert once the current popup is gone.
+    fn show_pending_alert(&mut self) {
+        if self.modal.is_none() && !self.pending_alerts.is_empty() {
+            let message = self.pending_alerts.remove(0);
+            self.modal = Some(Modal::Alert { message });
+        }
     }
 
     // ------------------------------------------------------------------
@@ -553,6 +587,11 @@ impl CtxTui {
         if !self.busy.is_empty() {
             self.spinner_frame += 1;
         }
+        // Background polling only runs with status columns configured,
+        // like the original; a bare listing refreshes on demand.
+        if self.cfg.status.is_empty() {
+            return;
+        }
         let intervals = self.poll_intervals();
         let now = Instant::now();
         for (index, interval) in intervals.iter().enumerate() {
@@ -593,10 +632,18 @@ impl CtxTui {
                 let table = self.table_mut(self.panel);
                 table.move_cursor(table.cursor as isize - 1);
             }
-            KeyCode::Char('g') => self.table_mut(self.panel).move_cursor(0),
-            KeyCode::Char('G') => {
+            KeyCode::Char('g') | KeyCode::Home => self.table_mut(self.panel).move_cursor(0),
+            KeyCode::Char('G') | KeyCode::End => {
                 let table = self.table_mut(self.panel);
                 table.move_cursor(table.row_count() as isize - 1);
+            }
+            KeyCode::PageDown => {
+                let table = self.table_mut(self.panel);
+                table.move_cursor(table.cursor as isize + table.page.max(1) as isize);
+            }
+            KeyCode::PageUp => {
+                let table = self.table_mut(self.panel);
+                table.move_cursor(table.cursor as isize - table.page.max(1) as isize);
             }
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('r') => self.reload(),
@@ -647,12 +694,24 @@ impl CtxTui {
             return;
         };
         match modal {
+            // q and r stay live under popups, like the app-level bindings
+            // that kept firing beneath Textual's modal screens.
             Modal::Alert { message } => match key.code {
                 KeyCode::Esc | KeyCode::Enter => {}
+                KeyCode::Char('q') => self.quit = true,
+                KeyCode::Char('r') => {
+                    self.reload();
+                    self.modal = Some(Modal::Alert { message });
+                }
                 _ => self.modal = Some(Modal::Alert { message }),
             },
             Modal::Help { panel } => match key.code {
                 KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?') => {}
+                KeyCode::Char('q') => self.quit = true,
+                KeyCode::Char('r') => {
+                    self.reload();
+                    self.modal = Some(Modal::Help { panel });
+                }
                 _ => self.modal = Some(Modal::Help { panel }),
             },
             Modal::Prompt {
@@ -678,13 +737,27 @@ impl CtxTui {
                     }
                 }
                 code => {
+                    // The pre-fill acts selected: plain typing replaces it,
+                    // backspace/delete removes it whole, anything else (a
+                    // chord, a cursor move) just deselects.
+                    let mut consumed = false;
                     if replace_on_type {
-                        if matches!(code, KeyCode::Char(_)) {
-                            input = Input::default();
-                        }
                         replace_on_type = false;
+                        let plain = !key.modifiers.intersects(
+                            KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
+                        );
+                        match code {
+                            KeyCode::Char(_) if plain => input = Input::default(),
+                            KeyCode::Backspace | KeyCode::Delete => {
+                                input = Input::default();
+                                consumed = true;
+                            }
+                            _ => {}
+                        }
                     }
-                    input.handle_event(&ratatui::crossterm::event::Event::Key(key));
+                    if !consumed {
+                        input.handle_event(&ratatui::crossterm::event::Event::Key(key));
+                    }
                     self.modal = Some(Modal::Prompt {
                         title,
                         placeholder,
@@ -701,6 +774,16 @@ impl CtxTui {
                 kind,
             } => match key.code {
                 KeyCode::Esc => {}
+                KeyCode::Char('q') => self.quit = true,
+                KeyCode::Char('r') => {
+                    self.reload();
+                    self.modal = Some(Modal::Confirm {
+                        message,
+                        confirm_label,
+                        selected,
+                        kind,
+                    });
+                }
                 KeyCode::Enter => {
                     if selected == 0 {
                         self.confirm(kind);
@@ -734,6 +817,7 @@ impl CtxTui {
                 }
             },
         }
+        self.show_pending_alert();
     }
 
     fn handle_filter_key(&mut self, key: KeyEvent) {
@@ -767,12 +851,15 @@ impl CtxTui {
                         && area.contains((mouse.column, mouse.row).into())
                     {
                         self.panel = panel;
-                        // Rows start below the border and header.
+                        // Rows start below the border and header; clicks on
+                        // blank space past the last row only focus the panel.
                         let first_row = area.y + 2;
                         if mouse.row >= first_row {
                             let index =
                                 (mouse.row - first_row) as usize + self.table(panel).view.offset();
-                            self.table_mut(panel).move_cursor(index as isize);
+                            if index < self.table(panel).row_count() {
+                                self.table_mut(panel).move_cursor(index as isize);
+                            }
                         }
                     }
                 }
@@ -807,6 +894,7 @@ impl CtxTui {
             if index == 0 {
                 self.confirm(kind);
             }
+            self.show_pending_alert();
         }
     }
 
@@ -1317,7 +1405,9 @@ impl CtxTui {
             .collect();
         let table = self.table_mut(target);
         table.rows = matching;
-        table.move_cursor(table.cursor as isize);
+        // Each keystroke re-selects the top match, like the original's
+        // clear-and-refill (whose clear reset the cursor).
+        table.move_cursor(0);
     }
 
     fn submit_filter(&mut self) {
@@ -1448,6 +1538,8 @@ impl CtxTui {
         block.render_widget(area, buffer);
 
         let table = self.table_mut(panel);
+        // One header line inside the borders; the rest is a page of rows.
+        table.page = inner.height.saturating_sub(1).max(1) as usize;
         let columns = table.headers.len();
         let mut widths = vec![0usize; columns];
         for (index, header) in table.headers.iter().enumerate() {
@@ -1842,16 +1934,30 @@ fn fuzzy_match(query: &str, name: &str) -> bool {
 }
 
 fn wrapped_lines(message: &str, width: usize) -> Vec<Line<'static>> {
+    use unicode_width::UnicodeWidthChar;
+
+    // Wrap by display width, not character count: a double-width character
+    // would otherwise overflow the popup and clip the message tail.
     let width = width.max(10);
     let mut lines = Vec::new();
     for raw in message.lines() {
-        let chars: Vec<char> = raw.chars().collect();
-        if chars.is_empty() {
+        if raw.is_empty() {
             lines.push(Line::default());
             continue;
         }
-        for chunk in chars.chunks(width) {
-            lines.push(Line::from(chunk.iter().collect::<String>()));
+        let mut current = String::new();
+        let mut used = 0;
+        for ch in raw.chars() {
+            let ch_width = ch.width().unwrap_or(0);
+            if used + ch_width > width && !current.is_empty() {
+                lines.push(Line::from(std::mem::take(&mut current)));
+                used = 0;
+            }
+            current.push(ch);
+            used += ch_width;
+        }
+        if !current.is_empty() {
+            lines.push(Line::from(current));
         }
     }
     lines
@@ -2679,6 +2785,196 @@ mod tests {
             app.drain_until(|app| app.slow_cells() == ["hi", "hi"]),
             "statuses never arrived"
         );
+    }
+
+    #[test]
+    fn typing_in_the_filter_reselects_the_top_match() {
+        let (env, _origin) = registered();
+        for name in ["match-one", "match-two", "other"] {
+            create(&env, "origin", name);
+        }
+        let mux = TestMux::recording(None);
+        let mut app = app(&env.cfg, mux.clone());
+        app.key(KeyCode::Down);
+        assert_eq!(
+            app.contexts.cursor, 1,
+            "precondition: cursor off the top row"
+        );
+
+        app.keys(&[KeyCode::Char('/'), KeyCode::Char('m'), KeyCode::Char('a')]);
+
+        assert_eq!(app.contexts.row_count(), 2);
+        assert_eq!(
+            app.contexts.cursor, 0,
+            "each keystroke must reselect the top match"
+        );
+        let top = app.contexts.selected_key().unwrap().to_string();
+        app.key(KeyCode::Enter);
+        assert!(mux.calls().contains(&("open".to_string(), top)));
+    }
+
+    #[test]
+    fn alerts_wait_for_an_open_prompt() {
+        let (env, _origin) = registered();
+        let mut app = app(&env.cfg, TestMux::stub());
+        app.key(KeyCode::Char('n'));
+        assert!(matches!(app.modal, Some(Modal::Prompt { .. })));
+
+        app.handle(Event::Worker(WorkerDone {
+            alert: Some("boom".to_string()),
+            finished: true,
+            ..WorkerDone::default()
+        }));
+
+        assert!(
+            matches!(app.modal, Some(Modal::Prompt { .. })),
+            "a worker alert must not clobber the prompt"
+        );
+        app.key(KeyCode::Esc);
+        match &app.modal {
+            Some(Modal::Alert { message }) => assert_eq!(message, "boom"),
+            other => panic!("expected the queued alert, got {:?}", other.is_some()),
+        }
+    }
+
+    #[test]
+    fn backspace_clears_the_prefilled_name_whole() {
+        let (env, _origin) = registered();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Char('n'));
+        app.key(KeyCode::Backspace);
+
+        match &app.modal {
+            Some(Modal::Prompt { input, .. }) => {
+                assert_eq!(
+                    input.value(),
+                    "",
+                    "backspace must delete the selected pre-fill"
+                )
+            }
+            _ => panic!("expected the name prompt"),
+        }
+    }
+
+    #[test]
+    fn control_chords_do_not_wipe_the_prefilled_name() {
+        let (env, _origin) = registered();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Char('n'));
+        let before = match &app.modal {
+            Some(Modal::Prompt { input, .. }) => input.value().to_string(),
+            _ => panic!("expected the name prompt"),
+        };
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+
+        match &app.modal {
+            Some(Modal::Prompt { input, .. }) => assert_eq!(input.value(), before),
+            _ => panic!("expected the name prompt"),
+        }
+    }
+
+    #[test]
+    fn polling_only_runs_with_status_columns() {
+        let (env, _origin) = registered();
+        create(&env, "origin", "one");
+
+        // Without status columns nothing polls in the background.
+        let mut app = app(&env.cfg, TestMux::stub());
+        app.drain_idle();
+        app.poll_at = vec![Instant::now() - Duration::from_secs(60)];
+        app.handle(Event::Tick);
+        assert!(app.fetching.is_empty(), "a bare listing must not poll");
+
+        // With one, the elapsed deadline refreshes its column.
+        let cfg = slow_status_cfg(&env);
+        let mut app = crate::tui::CtxTui::new(cfg, TestMux::stub(), false);
+        app.mount();
+        app.drain_idle();
+        app.poll_at = vec![Instant::now() - Duration::from_secs(60); 2];
+        app.handle(Event::Tick);
+        assert!(!app.fetching.is_empty(), "an elapsed deadline must poll");
+        app.drain_idle();
+    }
+
+    #[test]
+    fn q_and_r_stay_live_under_popups() {
+        let (env, _origin) = registered();
+        create(&env, "origin", "one");
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Char('?'));
+        app.key(KeyCode::Char('r'));
+        assert!(
+            matches!(app.modal, Some(Modal::Help { .. })),
+            "r must keep the popup"
+        );
+
+        app.key(KeyCode::Char('q'));
+        assert!(app.quit, "q must quit under a popup");
+    }
+
+    #[test]
+    fn page_keys_move_by_a_page() {
+        let (env, _origin) = registered();
+        for name in ["one", "two", "three"] {
+            create(&env, "origin", name);
+        }
+        let mut app = app(&env.cfg, TestMux::stub());
+        app.contexts.page = 2;
+
+        app.key(KeyCode::PageDown);
+        assert_eq!(app.contexts.cursor, 2);
+        app.key(KeyCode::PageUp);
+        assert_eq!(app.contexts.cursor, 0);
+        app.key(KeyCode::End);
+        assert_eq!(app.contexts.cursor, 2);
+        app.key(KeyCode::Home);
+        assert_eq!(app.contexts.cursor, 0);
+    }
+
+    #[test]
+    fn clicks_below_the_rows_leave_the_selection_alone() {
+        use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+
+        let (env, _origin) = registered();
+        for name in ["one", "two"] {
+            create(&env, "origin", name);
+        }
+        let mut app = app(&env.cfg, TestMux::stub());
+        render(&mut app); // record the panel areas for hit-testing
+
+        let area = app.areas[&Panel::Contexts];
+        let blank_row = area.y + 2 + app.contexts.row_count() as u16 + 3;
+        app.handle(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: area.x + 2,
+            row: blank_row,
+            modifiers: KeyModifiers::NONE,
+        }));
+
+        assert_eq!(
+            app.panel,
+            Panel::Contexts,
+            "the click still focuses the panel"
+        );
+        assert_eq!(
+            app.contexts.cursor, 0,
+            "blank space must not move the cursor"
+        );
+    }
+
+    #[test]
+    fn wrapped_lines_wrap_by_display_width() {
+        let wide = "あ".repeat(20); // each character is two columns wide
+
+        let lines = wrapped_lines(&wide, 10);
+
+        assert_eq!(lines.len(), 4, "twenty double-width chars at width 10");
     }
 
     #[test]

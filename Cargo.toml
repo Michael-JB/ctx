@@ -17,6 +17,7 @@ tempfile = "3.27.0"
 thiserror = "2.0.20"
 toml = "1.1.4"
 tui-input = "0.15.4"
+unicode-width = "0.2.2"
 wait-timeout = "0.2.1"
 
 [[bin]]
