@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use toml::{Table, Value};
 
-use crate::layout::{LayoutError, Node, default_layout, parse_layout};
+use crate::layout::{LayoutError, Node, coerce_string, default_layout, parse_layout};
 use crate::multiplexer::MultiplexerKind;
 
 /// The home directory of a passwd entry produced by `lookup`.
@@ -152,14 +152,6 @@ impl Default for Config {
             status: Vec::new(),
             theme: Theme::default(),
         }
-    }
-}
-
-/// A TOML value as the string Python's `str()` coercion would make of it.
-fn coerce_string(value: &Value) -> String {
-    match value {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
     }
 }
 

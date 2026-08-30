@@ -129,6 +129,31 @@ fn env_without_zellij() -> Vec<(String, String)> {
     env.into_iter().collect()
 }
 
+/// Run a zellij invocation that must succeed, folding its own error text
+/// (stderr, else stdout) into `message` on failure.
+fn run_zellij(mut cmd: std::process::Command, message: String) -> Result<(), MultiplexerError> {
+    let output = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|err| MultiplexerError(err.to_string()))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let detail = if stderr.trim().is_empty() {
+        stdout.trim().to_string()
+    } else {
+        stderr.trim().to_string()
+    };
+    Err(MultiplexerError(if detail.is_empty() {
+        message
+    } else {
+        format!("{message}: {detail}")
+    }))
+}
+
 pub struct ZellijMultiplexer {
     layout: Node,
 }
@@ -198,34 +223,14 @@ impl Multiplexer for ZellijMultiplexer {
         let layout_file = self.write_layout_file(ctx, values)?;
         let mut cmd = std::process::Command::new("zellij");
         cmd.env_clear().envs(env_without_zellij());
-        let output = cmd
-            .args([
-                "--layout",
-                &layout_file,
-                "attach",
-                "--create-background",
-                &session,
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .map_err(|err| MultiplexerError(err.to_string()))?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let detail = if stderr.trim().is_empty() {
-                stdout.trim().to_string()
-            } else {
-                stderr.trim().to_string()
-            };
-            let message = format!("zellij could not create '{session}'");
-            return Err(MultiplexerError(if detail.is_empty() {
-                message
-            } else {
-                format!("{message}: {detail}")
-            }));
-        }
-        Ok(())
+        cmd.args([
+            "--layout",
+            &layout_file,
+            "attach",
+            "--create-background",
+            &session,
+        ]);
+        run_zellij(cmd, format!("zellij could not create '{session}'"))
     }
 
     fn open(
@@ -250,28 +255,9 @@ impl Multiplexer for ZellijMultiplexer {
                 args.push("--layout".to_string());
                 args.push(self.write_layout_file(ctx, values)?);
             }
-            let output = new_command("zellij")
-                .args(&args)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .output()
-                .map_err(|err| MultiplexerError(err.to_string()))?;
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let detail = if stderr.trim().is_empty() {
-                    stdout.trim().to_string()
-                } else {
-                    stderr.trim().to_string()
-                };
-                let message = format!("zellij could not switch to '{session}'");
-                return Err(MultiplexerError(if detail.is_empty() {
-                    message
-                } else {
-                    format!("{message}: {detail}")
-                }));
-            }
-            return Ok(());
+            let mut cmd = new_command("zellij");
+            cmd.args(&args);
+            return run_zellij(cmd, format!("zellij could not switch to '{session}'"));
         }
         let err = if exists {
             new_command("zellij").args(["attach", &session]).exec()

@@ -13,8 +13,6 @@ const TIMEOUT: Duration = Duration::from_secs(2);
 
 const AGENT_STALE_SECONDS: f64 = 3600.0;
 
-pub const BUILTIN_NAMES: &[&str] = &["agent", "github"];
-
 const GITHUB_QUERY: &str = "
 query($owner: String!, $repo: String!, $branch: String!) {
   repository(owner: $owner, name: $repo) {
@@ -433,8 +431,14 @@ mod tests {
     }
 
     #[test]
-    fn builtins_match_the_config_allowlist() {
-        assert_eq!(BUILTIN_NAMES, config::BUILTIN_STATUS);
+    fn every_allowlisted_builtin_dispatches() {
+        // column_status panics on a builtin the allowlist admits but the
+        // dispatch below doesn't know; probe each against a real checkout.
+        let (_env, ctx) = context();
+
+        for builtin in config::BUILTIN_STATUS {
+            column_status(&ctx, &column(builtin, None, Some(builtin), None));
+        }
     }
 
     #[test]
