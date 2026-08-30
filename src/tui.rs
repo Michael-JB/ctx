@@ -572,7 +572,10 @@ impl CtxTui {
             KeyCode::Char('1') => self.panel = Panel::Contexts,
             KeyCode::Char('2') => self.panel = Panel::Repos,
             KeyCode::Char('3') => self.panel = Panel::Archived,
-            KeyCode::Char('h') | KeyCode::Left => self.panel = self.panel.cycle(-1),
+            KeyCode::Char('h') | KeyCode::Left | KeyCode::BackTab => {
+                self.panel = self.panel.cycle(-1)
+            }
+            KeyCode::Tab => self.panel = self.panel.cycle(1),
             KeyCode::Char('l') | KeyCode::Right => self.panel = self.panel.cycle(1),
             KeyCode::Char('j') | KeyCode::Down => {
                 let table = self.table_mut(self.panel);
@@ -695,8 +698,8 @@ impl CtxTui {
                         self.confirm(kind);
                     }
                 }
-                KeyCode::Char('j' | 'l') | KeyCode::Down | KeyCode::Right => {
-                    selected = (selected + 1).min(1);
+                KeyCode::Char('j' | 'l') | KeyCode::Down | KeyCode::Right | KeyCode::Tab => {
+                    selected = (selected + 1) % 2;
                     self.modal = Some(Modal::Confirm {
                         message,
                         confirm_label,
@@ -704,8 +707,8 @@ impl CtxTui {
                         kind,
                     });
                 }
-                KeyCode::Char('k' | 'h') | KeyCode::Up | KeyCode::Left => {
-                    selected = selected.saturating_sub(1);
+                KeyCode::Char('k' | 'h') | KeyCode::Up | KeyCode::Left | KeyCode::BackTab => {
+                    selected = (selected + 1) % 2;
                     self.modal = Some(Modal::Confirm {
                         message,
                         confirm_label,
@@ -2136,6 +2139,35 @@ mod tests {
         assert_eq!(selected(&app), first + 1);
         app.key(KeyCode::Up);
         assert_eq!(selected(&app), first);
+    }
+
+    #[test]
+    fn tab_cycles_panels_like_textual_focus() {
+        let (env, _origin) = registered();
+        create(&env, "origin", "one");
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Tab);
+        assert_eq!(app.panel, Panel::Repos);
+        app.key(KeyCode::Tab);
+        assert_eq!(app.panel, Panel::Archived);
+        app.key(KeyCode::Tab);
+        assert_eq!(app.panel, Panel::Contexts);
+        app.key(KeyCode::BackTab);
+        assert_eq!(app.panel, Panel::Archived);
+
+        // Inside a confirm dialog, tab moves between the buttons instead.
+        app.panel = Panel::Contexts;
+        app.key(KeyCode::Char('D'));
+        let selected = |app: &CtxTui| match &app.modal {
+            Some(Modal::Confirm { selected, .. }) => *selected,
+            _ => panic!("expected a confirm dialog"),
+        };
+        assert_eq!(selected(&app), 0);
+        app.key(KeyCode::Tab);
+        assert_eq!(selected(&app), 1);
+        app.key(KeyCode::Tab);
+        assert_eq!(selected(&app), 0, "button focus must wrap around");
     }
 
     #[test]
