@@ -79,6 +79,15 @@ pub fn overlay_env(env: &mut std::collections::BTreeMap<String, String>) {
     });
 }
 
+/// Carry the calling test's pushed variables into a worker thread's closure.
+pub fn propagate_env<F: FnOnce() + Send + 'static>(f: F) -> impl FnOnce() + Send + 'static {
+    let snapshot: Vec<(String, String)> = EXTRA_ENV.with(|extra| extra.borrow().clone());
+    move || {
+        EXTRA_ENV.with(|extra| *extra.borrow_mut() = snapshot);
+        f();
+    }
+}
+
 pub struct EnvGuard;
 
 impl Drop for EnvGuard {

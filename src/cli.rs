@@ -15,7 +15,7 @@ use crate::{claude_hook, claude_trust};
 /// Injectable dependencies shared by all commands.
 pub struct Deps {
     pub cfg: Config,
-    pub mux: Box<dyn Multiplexer>,
+    pub mux: std::sync::Arc<dyn Multiplexer>,
 }
 
 /// Both output streams, injectable so tests can capture them.
@@ -360,9 +360,30 @@ fn cmd_unarchive(deps: &Deps, io: &mut Io, name: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_tui(_deps: &Deps, _io: &mut Io, _exit_on_open: bool) -> Result<()> {
-    // The ratatui port lands as its own step; everything else works already.
-    msg("the interactive TUI is not ported yet")
+fn cmd_tui(deps: &Deps, io: &mut Io, exit_on_open: bool) -> Result<()> {
+    // When the multiplexer can open sessions in place (e.g. inside tmux),
+    // the TUI handles everything itself and exits with no request. The
+    // requests below are the fallback for terminal-takeover attaches.
+    let app = crate::tui::CtxTui::new(deps.cfg.clone(), deps.mux.clone(), exit_on_open);
+    match app.run()? {
+        Some(crate::tui::Request::Open { name }) => {
+            let ctx = contexts::find_context(&deps.cfg, &name)?;
+            deps.mux.open(&ctx, None)?;
+        }
+        Some(crate::tui::Request::New { repo, name, base }) => {
+            create_and_open(
+                deps,
+                io,
+                &repo,
+                Some(name),
+                base.as_deref(),
+                HashMap::new(),
+                false,
+            )?;
+        }
+        None => {}
+    }
+    Ok(())
 }
 
 fn cmd_repo(deps: &Deps, io: &mut Io, command: &RepoCommands) -> Result<i32> {
@@ -628,7 +649,7 @@ mod tests {
         (
             Deps {
                 cfg: env.cfg.clone(),
-                mux: Box::new(mux.clone()),
+                mux: std::sync::Arc::new(mux.clone()),
             },
             mux,
         )
