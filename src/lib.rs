@@ -13,6 +13,7 @@ pub mod multiplexers;
 pub mod repos;
 pub mod shellrun;
 pub mod status;
+pub mod tui;
 
 #[cfg(test)]
 pub mod testutil;

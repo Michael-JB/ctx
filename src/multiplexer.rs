@@ -85,11 +85,13 @@ pub trait Multiplexer: Send + Sync {
     fn kill(&self, ctx: &Context) -> Result<(), MultiplexerError>;
 }
 
-pub fn get_multiplexer(kind: MultiplexerKind, layout: Node) -> Box<dyn Multiplexer> {
+pub fn get_multiplexer(kind: MultiplexerKind, layout: Node) -> std::sync::Arc<dyn Multiplexer> {
     match kind {
-        MultiplexerKind::Tmux => Box::new(crate::multiplexers::tmux::TmuxMultiplexer::new(layout)),
+        MultiplexerKind::Tmux => {
+            std::sync::Arc::new(crate::multiplexers::tmux::TmuxMultiplexer::new(layout))
+        }
         MultiplexerKind::Zellij => {
-            Box::new(crate::multiplexers::zellij::ZellijMultiplexer::new(layout))
+            std::sync::Arc::new(crate::multiplexers::zellij::ZellijMultiplexer::new(layout))
         }
     }
 }
