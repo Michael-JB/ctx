@@ -11,3 +11,8 @@ wheels/
 
 # Claude Code session state
 .claude/
+
+
+# Added by cargo
+
+/target
