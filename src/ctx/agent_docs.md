@@ -30,7 +30,7 @@ the rest.
 ## Upgrading ctx
 
 1. Capture the installed version: `ctx --version`.
-2. Upgrade the package (e.g. `uv tool upgrade ctx-tui`).
+2. Upgrade the binary (e.g. `cargo install ctx-tui`).
 3. Run `ctx changelog` and apply the Upgrade Notes sections between the
    old and the new version.
 4. Refresh this skill: `ctx agent-docs > <this skill's file>`.

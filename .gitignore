@@ -11,3 +11,6 @@ wheels/
 
 # Claude Code session state
 .claude/
+
+# Rust build artifacts from the rewrite era sharing this checkout
+/target

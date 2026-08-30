@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.5](https://github.com/Michael-JB/ctx/compare/v1.0.4...v1.0.5) (2026-08-30)
+
+
+### Upgrade Notes
+
+* ensure ctx is reinstalled from its new home: run `cargo install ctx-tui` (or install a binary from https://github.com/Michael-JB/ctx/releases), remove this install with `uv tool uninstall ctx-tui`, then refresh this skill from the new binary (`ctx agent-docs`); contexts, repos, and config carry over unchanged — this is the final PyPI release
+
+
 ## [1.0.4](https://github.com/Michael-JB/ctx/compare/v1.0.3...v1.0.4) (2026-08-27)
 
 
