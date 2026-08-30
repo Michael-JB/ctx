@@ -355,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "ctx-tui"
-version = "1.0.4"
+version = "0.1.0"
 dependencies = [
  "clap",
  "libc",
