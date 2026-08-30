@@ -30,17 +30,26 @@
     </nav>
   </header>
 
-  <section class="terminal" aria-label="Example ctx list output">
+  <section class="terminal" aria-label="The ctx TUI">
     <div class="terminal-bar">
       <span class="dot"></span><span class="dot"></span><span class="dot"></span>
       <span class="terminal-title">ctx</span>
     </div>
-    <pre><span class="prompt">$</span> ctx list
-<span class="th">NAME            REPO         BRANCH             STATUS  PR       AGENT</span>
-holy-tiger      papaya-nvim  mb/holy-tiger      *       <span class="s-green">open ✓</span>   <span class="s-green">working</span>
-tokeniser-perf  bm25         mb/tokeniser-perf  ↑2      <span class="s-dim">draft</span>    <span class="s-yellow">idle</span>
-ppo-baseline    nano-rl      mb/ppo-baseline            <span class="s-red">failing</span>  <span class="s-red">blocked</span>
-docs-pass       nano-rl      mb/docs-pass               <span class="s-magenta">merged</span></pre>
+    <pre class="tui"><span class="ba">╭─ [1] Contexts ───────────────────────────────────────────────────────────────────╮</span>
+<span class="ba">│</span> <span class="th">NAME              REPO          BRANCH               STATUS  PR        AGENT    </span> <span class="ba">│</span>
+<span class="ba">│</span> <b class="s-green">holy-tiger</b>        papaya-nvim   mb/holy-tiger        *       <span class="s-green">open ✓</span>    <span class="s-green">working</span>   <span class="ba">│</span>
+<span class="ba">│</span> <span class="cur">tokeniser-perf    bm25          mb/tokeniser-perf    ↑2      <span class="s-dim">draft</span>     <span class="s-yellow">idle</span>     </span> <span class="ba">│</span>
+<span class="ba">│</span> ppo-baseline      nano-rl       mb/ppo-baseline              <span class="s-red">failing</span>   <span class="s-red">blocked</span>   <span class="ba">│</span>
+<span class="ba">│</span> docs-pass         nano-rl       mb/docs-pass                 <span class="s-magenta">merged</span>              <span class="ba">│</span>
+<span class="ba">│</span>                                                                                  <span class="ba">│</span>
+<span class="ba">╰──────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="bd">╭─ [2] Repos ────────────────────────────╮╭─ [3] Archived ─────────────────────────╮</span>
+<span class="bd">│</span> <span class="th">NAME          URL                     </span> <span class="bd">││</span> <span class="th">NAME        REPO         BRANCH       </span> <span class="bd">│</span>
+<span class="bd">│</span> papaya-nvim * github.com/mb/papaya-nv… <span class="bd">││</span> lsp-hover   papaya-nvim  mb/lsp-hover  <span class="bd">│</span>
+<span class="bd">│</span> bm25          github.com/mb/bm25       <span class="bd">││</span> stemming    bm25         mb/stemming   <span class="bd">│</span>
+<span class="bd">│</span> nano-rl       github.com/mb/nano-rl    <span class="bd">││</span> reward-fix  nano-rl      mb/reward-fix <span class="bd">│</span>
+<span class="bd">╰────────────────────────────────────────╯╰────────────────────────────────────────╯</span>
+<span class="s-dim"> <span class="fk">space</span> Open  <span class="fk">o</span> Open PR  <span class="fk">d</span> Archive  <span class="fk">n</span> New context  <span class="fk">/</span> Filter  <span class="fk">q</span> Quit  <span class="fk">?</span> Help</span></pre>
   </section>
 
   <section class="why">
