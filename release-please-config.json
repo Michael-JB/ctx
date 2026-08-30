@@ -12,7 +12,8 @@
         { "type": "revert", "section": "Reverts" },
         { "type": "docs", "section": "Documentation" },
         { "type": "upgrade", "section": "Upgrade Notes" }
-      ]
+      ],
+      "include-component-in-tag": false
     }
   }
 }
