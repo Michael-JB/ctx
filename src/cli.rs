@@ -475,10 +475,10 @@ fn dispatch(cli: Cli, deps: &Deps, io: &mut Io) -> Result<i32> {
         Commands::Unarchive { name } => cmd_unarchive(deps, io, &name)?,
         Commands::Tui { exit_on_open } => cmd_tui(deps, io, exit_on_open)?,
         Commands::AgentDocs => {
-            write!(io.out, "{}", include_str!("ctx/agent_docs.md"))?;
+            write!(io.out, "{}", include_str!("agent_docs.md"))?;
         }
         Commands::Changelog => {
-            write!(io.out, "{}", include_str!("ctx/CHANGELOG.md"))?;
+            write!(io.out, "{}", include_str!("../CHANGELOG.md"))?;
         }
         Commands::Builtin(BuiltinCommands::Claude(command)) => {
             let cwd = std::env::current_dir()?;

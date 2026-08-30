@@ -17,8 +17,11 @@ Disclaimer: this is fully vibe-coded.
 ## Install
 
 ```sh
-uv tool install ctx-tui
+cargo install ctx-tui
 ```
+
+Or grab a prebuilt binary from the
+[latest release](https://github.com/Michael-JB/ctx/releases/latest).
 
 ## Setup
 

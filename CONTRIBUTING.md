@@ -2,16 +2,16 @@
 
 ## Development setup
 
-Run from a checkout with [uv](https://docs.astral.sh/uv/):
+Run from a checkout with [cargo](https://doc.rust-lang.org/cargo/):
 
 ```sh
-uv run ctx
+cargo run --
 ```
 
 Or install your checkout as the `ctx` command:
 
 ```sh
-uv tool install --editable .
+cargo install --path .
 ```
 
 ## Checks
@@ -43,14 +43,14 @@ together with a removal condition.
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please):
 merging its release PR bumps the version, updates the changelog, and tags a
-GitHub release, which publishes to PyPI.
+GitHub release, which publishes to crates.io and uploads prebuilt binaries.
 
 ## Website
 
 The project website is static-served from `docs/`. To prototype locally:
 
 ```sh
-uv run -m http.server -d docs
+python3 -m http.server -d docs
 ```
 
 Then open <http://localhost:8000>.
