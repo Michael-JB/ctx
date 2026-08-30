@@ -352,7 +352,12 @@ fn copy_tree(src: &Path, dest: &Path) -> std::io::Result<()> {
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
         let target = dest.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
+        let kind = entry.file_type()?;
+        if kind.is_symlink() {
+            // Recreate symlinks (checkouts carry them, and a dangling or
+            // directory link would fail a dereferencing copy).
+            std::os::unix::fs::symlink(std::fs::read_link(entry.path())?, &target)?;
+        } else if kind.is_dir() {
             copy_tree(&entry.path(), &target)?;
         } else {
             std::fs::copy(entry.path(), &target)?;
@@ -956,6 +961,33 @@ mod tests {
         assert!(err.to_string().contains("already used by origin/feat"));
         assert!(live.path.exists());
         assert!(clash.exists());
+    }
+
+    #[test]
+    fn copy_tree_preserves_symlinks() {
+        // The cross-filesystem fallback must move symlinks as symlinks:
+        // dereferencing breaks relative links, and dangling ones error.
+        let env = test_env();
+        let src = env.root().join("src");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::write(src.join("sub").join("real.txt"), "x\n").unwrap();
+        std::os::unix::fs::symlink("sub/real.txt", src.join("file-link")).unwrap();
+        std::os::unix::fs::symlink("sub", src.join("dir-link")).unwrap();
+        std::os::unix::fs::symlink("nowhere", src.join("dangling")).unwrap();
+
+        let dest = env.root().join("dest");
+        copy_tree(&src, &dest).unwrap();
+
+        for (link, points_to) in [
+            ("file-link", "sub/real.txt"),
+            ("dir-link", "sub"),
+            ("dangling", "nowhere"),
+        ] {
+            assert_eq!(
+                std::fs::read_link(dest.join(link)).unwrap(),
+                PathBuf::from(points_to)
+            );
+        }
     }
 
     #[test]
