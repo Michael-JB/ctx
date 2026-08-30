@@ -19,10 +19,7 @@ fn config_file_from(config_dir: Option<&str>, home: &Path) -> PathBuf {
 
 fn config_file() -> PathBuf {
     let config_dir = std::env::var("CLAUDE_CONFIG_DIR").ok();
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"));
-    config_file_from(config_dir.as_deref(), &home)
+    config_file_from(config_dir.as_deref(), &crate::config::home())
 }
 
 /// Record `cwd` as trusted in Claude Code's user config.

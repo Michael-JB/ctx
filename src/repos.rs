@@ -58,9 +58,11 @@ fn fetch_lfs(path: &Path, branch: &str) -> Result<()> {
 }
 
 pub fn add_repo(cfg: &Config, url: &str, name: Option<&str>) -> Result<String> {
+    // An empty name falls back like Python's `name or name_from_url(url)`
+    // (a '' name would clone into a hidden `.git` entry).
     let name = match name {
-        Some(name) => name.to_string(),
-        None => name_from_url(url),
+        Some(name) if !name.is_empty() => name.to_string(),
+        _ => name_from_url(url),
     };
     let path = repo_path(cfg, &name);
     if path.exists() {
@@ -231,6 +233,17 @@ mod tests {
 
         assert_eq!(name, "custom");
         assert_eq!(repo_names(&env.cfg), ["custom"]);
+    }
+
+    #[test]
+    fn add_repo_treats_an_empty_name_as_unset() {
+        let env = test_env();
+        let origin = env.origin();
+
+        let name = add_repo(&env.cfg, &origin.to_string_lossy(), Some("")).unwrap();
+
+        assert_eq!(name, "origin");
+        assert_eq!(repo_names(&env.cfg), ["origin"]);
     }
 
     #[test]
