@@ -487,6 +487,9 @@ fn report(err: &CtxError, io: &mut Io) -> i32 {
 }
 
 pub fn main() -> i32 {
+    // A SIGINT mid-transfer must fail the git call (killing its process
+    // group) so cleanup paths run, rather than kill this process outright.
+    crate::git::install_interrupt_handler();
     let cli = Cli::parse();
     let (out, err) = (std::io::stdout(), std::io::stderr());
     let mut io = Io {

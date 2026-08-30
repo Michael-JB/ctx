@@ -1,5 +1,7 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 
 // A stalled transfer otherwise hangs forever: ssh sends no keepalives by
 // default, so a dead connection is never noticed, and git accepts an
@@ -97,46 +99,105 @@ fn spawn_error(args: &[&str], err: std::io::Error) -> GitError {
     }
 }
 
+// In-flight git process groups, so cancellation can end a transfer and its
+// ssh child instead of orphaning them (the asyncio version killed the group
+// on task cancellation; here quit and SIGINT do the equivalent).
+static INFLIGHT: Mutex<Vec<i32>> = Mutex::new(Vec::new());
+static INTERRUPTED: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc::new(AtomicBool::new(false)));
+
+/// Route SIGINT through the interrupted flag: in-flight git calls kill their
+/// transfers and fail, so cleanup paths run instead of the process dying
+/// mid-write with the transfer orphaned.
+pub fn install_interrupt_handler() {
+    let _ = signal_hook::flag::register(signal_hook::consts::SIGINT, INTERRUPTED.clone());
+}
+
+/// Kill every in-flight git call's process group (quit with a transfer running).
+pub fn kill_inflight() {
+    INTERRUPTED.store(true, Ordering::SeqCst);
+    for pgid in INFLIGHT.lock().expect("registry lock").iter() {
+        unsafe {
+            libc::killpg(*pgid, libc::SIGKILL);
+        }
+    }
+}
+
+fn drain(stream: Option<impl std::io::Read + Send + 'static>) -> impl FnOnce() -> String {
+    let handle = stream.map(|mut stream| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = stream.read_to_end(&mut buf);
+            buf
+        })
+    });
+    move || {
+        handle
+            .and_then(|handle| handle.join().ok())
+            .map(|buf| String::from_utf8_lossy(&buf).into_owned())
+            .unwrap_or_default()
+    }
+}
+
+fn run_command(mut cmd: Command, args: &[&str], quiet: bool) -> Result<String, GitError> {
+    use std::os::unix::process::CommandExt;
+    use wait_timeout::ChildExt;
+
+    cmd.stdout(Stdio::piped());
+    if quiet {
+        cmd.stderr(Stdio::piped());
+    }
+    // Own process group, so cancellation can kill git and its ssh child
+    // together, and a terminal SIGINT reaches this process alone.
+    cmd.process_group(0);
+    let mut child = cmd.spawn().map_err(|err| spawn_error(args, err))?;
+    let pgid = child.id() as i32;
+    INFLIGHT.lock().expect("registry lock").push(pgid);
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
+    let mut killed = false;
+    let status = loop {
+        if INTERRUPTED.load(Ordering::SeqCst) && !killed {
+            unsafe {
+                libc::killpg(pgid, libc::SIGKILL);
+            }
+            killed = true;
+        }
+        match child.wait_timeout(std::time::Duration::from_millis(50)) {
+            Ok(Some(status)) => break Ok(status),
+            Ok(None) => continue,
+            Err(err) => break Err(err),
+        }
+    };
+    INFLIGHT
+        .lock()
+        .expect("registry lock")
+        .retain(|p| *p != pgid);
+    let status = status.map_err(|err| spawn_error(args, err))?;
+    let stdout = stdout().trim().to_string();
+    if !status.success() {
+        return Err(GitError {
+            argv: argv(args),
+            code: status.code(),
+            stdout,
+            stderr: quiet.then(stderr),
+        });
+    }
+    Ok(stdout)
+}
+
 /// Run git, letting stderr (progress, errors) stream to the terminal.
 ///
 /// Every call gets the timeouts, not just the ones that reach a remote: they
 /// are inert for local work, and marking each remote call by hand is a thing
 /// to get wrong.
 pub fn git(args: &[&str], cwd: Option<&Path>) -> Result<String, GitError> {
-    let output = command(args, cwd)
-        .stdout(Stdio::piped())
-        .output()
-        .map_err(|err| spawn_error(args, err))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if !output.status.success() {
-        return Err(GitError {
-            argv: argv(args),
-            code: output.status.code(),
-            stdout,
-            stderr: None,
-        });
-    }
-    Ok(stdout)
+    run_command(command(args, cwd), args, false)
 }
 
 /// Like `git`, but quiet: stderr is captured into the error rather than
 /// streamed, for callers that are UIs which must not be written over.
 pub fn git_quiet(args: &[&str], cwd: Option<&Path>) -> Result<String, GitError> {
-    let output = command(args, cwd)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|err| spawn_error(args, err))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if !output.status.success() {
-        return Err(GitError {
-            argv: argv(args),
-            code: output.status.code(),
-            stdout,
-            stderr: Some(String::from_utf8_lossy(&output.stderr).into_owned()),
-        });
-    }
-    Ok(stdout)
+    run_command(command(args, cwd), args, true)
 }
 
 #[cfg(test)]
