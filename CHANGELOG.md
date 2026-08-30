@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/Michael-JB/ctx/compare/v2.0.0...v2.0.1) (2026-08-30)
+
+
+### Upgrade Notes
+
+* ensure ctx is reinstalled via 'cargo install ctx-tui' (or a GitHub release binary) and any Python install removed with 'uv tool uninstall ctx-tui'; contexts, repos, and config carry over unchanged ([14325e6](https://github.com/Michael-JB/ctx/commit/14325e6b71bc7fb323c1cf1b6069e868df67f0c0))
+
 ## [2.0.0](https://github.com/Michael-JB/ctx/compare/v1.0.4...v2.0.0) (2026-08-30)
 
 
