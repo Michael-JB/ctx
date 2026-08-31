@@ -1,6 +1,6 @@
 [package]
 name = "ctx-tui"
-version = "2.0.1"
+version = "2.0.2"
 edition = "2024"
 description = "Manage repo-scoped work contexts: fresh checkouts wrapped in terminal multiplexer sessions"
 license = "MIT"
