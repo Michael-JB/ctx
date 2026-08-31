@@ -52,6 +52,15 @@ pub fn last_active(ctx: &Context) -> SystemTime {
         .unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
+/// Whether a directory is a full clone, the only thing a context can be.
+///
+/// A `.git` directory means a full clone. A `.git` file marks a linked
+/// worktree (e.g. one an agent created next to a context); those are not
+/// contexts and nothing downstream can handle them.
+fn is_clone(path: &Path) -> bool {
+    path.join(".git").is_dir()
+}
+
 fn sorted_dirs(root: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(root) else {
         return Vec::new();
@@ -85,7 +94,7 @@ fn scan(root: &Path) -> Vec<Context> {
             if name.ends_with(DELETING_SUFFIX) {
                 continue;
             }
-            if ctx_dir.join(".git").exists() {
+            if is_clone(&ctx_dir) {
                 found.push(Context {
                     repo: repo.clone(),
                     name,
@@ -754,6 +763,18 @@ mod tests {
         let created = create(&env, "origin", "feat");
 
         assert_eq!(list_contexts(&env.cfg), vec![created]);
+    }
+
+    #[test]
+    fn list_contexts_ignores_agent_created_worktrees() {
+        // A `git worktree add` from inside a checkout lands a sibling
+        // directory whose `.git` is a file, not a clone; it is not a context.
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "task");
+        let phantom = env.cfg.contexts_dir.join("origin").join("phantom");
+        git(&["worktree", "add", &phantom.to_string_lossy()], &ctx.path);
+
+        assert_eq!(list_contexts(&env.cfg), vec![ctx]);
     }
 
     fn set_activity(ctx: &Context, when: i64) {
