@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/Michael-JB/ctx/compare/v2.0.1...v2.0.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* ignore agent-created worktrees in the context scan ([d6631e8](https://github.com/Michael-JB/ctx/commit/d6631e85be903704299757eeba89c2c09c6b5a84))
+
 ## [2.0.1](https://github.com/Michael-JB/ctx/compare/v2.0.0...v2.0.1) (2026-08-30)
 
 
