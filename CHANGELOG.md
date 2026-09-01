@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.3](https://github.com/Michael-JB/ctx/compare/v2.0.2...v2.0.3) (2026-09-01)
+
+
+### Documentation
+
+* gate ctx rm behind explicit instruction ([2f9b60b](https://github.com/Michael-JB/ctx/commit/2f9b60b9a745f43efe3135c2f4696e9fd597e532))
+* tell agents not to answer a seeded prompt themselves ([b999fe8](https://github.com/Michael-JB/ctx/commit/b999fe83fda9a296a013d5d245851fb597031e41))
+
 ## [2.0.2](https://github.com/Michael-JB/ctx/compare/v2.0.1...v2.0.2) (2026-08-31)
 
 
