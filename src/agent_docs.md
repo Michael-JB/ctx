@@ -16,7 +16,7 @@ the background:
 - Report the name so the user can jump in with `ctx open <name>`.
 - `-b <branch>` bases the context on a branch other than the default.
 
-Given a task, seed it into the session:
+Given a task, seed it into the context:
 
     ctx new <repo> <name> --detach --set prompt="investigate the flaky login test"
 
@@ -27,9 +27,9 @@ the task yourself.
 If `--set` is rejected, let the user know that seeding requires a builtin pane
 in their ctx layout, and create the context unseeded.
 
-Clean up after yourself: archive contexts you're done with (`ctx archive
-<name>`); `ctx rm <name>` deletes one permanently. `ctx --help` covers
-the rest.
+Clean up after yourself: archive contexts with `ctx archive <name>` when you're
+done. Permanently delete a context with `ctx rm <name>`; do this only when
+explicitly instructed. `ctx --help` covers the rest.
 
 ## Upgrading ctx
 
