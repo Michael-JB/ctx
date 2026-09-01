@@ -20,6 +20,10 @@ Given a task, seed it into the session:
 
     ctx new <repo> <name> --detach --set prompt="investigate the flaky login test"
 
+The seeded prompt is answered by the agent inside the new context, not by
+you. After creating the context, report its name and stop: do not work on
+the task yourself.
+
 If `--set` is rejected, let the user know that seeding requires a builtin pane
 in their ctx layout, and create the context unseeded.
 
