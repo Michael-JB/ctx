@@ -25,7 +25,7 @@ use crate::contexts::{self, Context};
 use crate::errors::Result as CtxResult;
 use crate::git::new_command;
 use crate::multiplexer::Multiplexer;
-use crate::{forge, repos, status};
+use crate::{forge, repos, status, update};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request {
@@ -238,6 +238,8 @@ pub enum Event {
     },
     ColumnDone(usize),
     Worker(WorkerDone),
+    /// A newer published release, if the update check found one.
+    Update(Option<String>),
     Redraw,
 }
 
@@ -261,6 +263,7 @@ pub struct CtxTui {
     // the popup closes (Textual stacked screens instead).
     pending_alerts: Vec<String>,
     workers: usize,
+    update: Option<String>,
     outcome: Option<Request>,
     quit: bool,
     // Panel rectangles from the last render, for mouse hit-testing.
@@ -317,6 +320,7 @@ impl CtxTui {
             modal: None,
             pending_alerts: Vec::new(),
             workers: 0,
+            update: None,
             outcome: None,
             quit: false,
             areas: HashMap::new(),
@@ -353,6 +357,17 @@ impl CtxTui {
         let intervals = self.poll_intervals();
         let now = Instant::now();
         self.poll_at = intervals.iter().map(|interval| now + *interval).collect();
+        // Tests stub curl explicitly; the suite must not reach crates.io.
+        #[cfg(not(test))]
+        self.check_update();
+    }
+
+    /// Ask crates.io for a newer release, off the event loop.
+    fn check_update(&mut self) {
+        let tx = self.tx.clone();
+        spawn_worker(move || {
+            let _ = tx.send(Event::Update(update::available()));
+        });
     }
 
     /// Repaint the panels from what is cheap to read; statuses fill in after.
@@ -561,6 +576,7 @@ impl CtxTui {
                 self.fetching.remove(&index);
             }
             Event::Worker(done) => self.handle_worker(done),
+            Event::Update(latest) => self.update = latest,
             Event::Redraw => {}
         }
     }
@@ -1531,7 +1547,7 @@ impl CtxTui {
             .border_style(Style::default().fg(border))
             .title(title);
         if panel == Panel::Contexts {
-            block = block.title_top(version_line().right_aligned());
+            block = block.title_top(self.version_line().right_aligned());
         }
         let inner = block.inner(area);
         block.render_widget(area, buffer);
@@ -1597,6 +1613,22 @@ impl CtxTui {
         .column_spacing(2)
         .row_highlight_style(highlight);
         ratatui::widgets::StatefulWidget::render(widget, inner, buffer, &mut table.view);
+    }
+
+    /// This build's version, with the install command when a newer release exists.
+    fn version_line(&self) -> Line<'static> {
+        let current = Span::styled(format!("v{}", update::CURRENT), Style::default().dim());
+        match &self.update {
+            Some(latest) => Line::from(vec![
+                current,
+                Span::styled(
+                    format!(" → v{latest}  cargo install {}", update::CRATE),
+                    Style::default().fg(Color::LightYellow).bold(),
+                ),
+                Span::raw(" "),
+            ]),
+            None => Line::from(vec![current, Span::raw(" ")]),
+        }
     }
 
     fn render_filter(&self, area: Rect, buffer: &mut ratatui::buffer::Buffer) {
@@ -2024,17 +2056,6 @@ fn theme_color(name: &str) -> Color {
 }
 
 /// A status vocabulary style ("bold bright_green") as a terminal style.
-/// This build's version, for the Contexts panel's top border.
-fn version_line() -> Line<'static> {
-    Line::from(vec![
-        Span::styled(
-            concat!("v", env!("CARGO_PKG_VERSION")),
-            Style::default().dim(),
-        ),
-        Span::raw(" "),
-    ])
-}
-
 fn status_style(name: &str) -> Style {
     let mut style = Style::default();
     for word in name.split_whitespace() {
@@ -3001,7 +3022,37 @@ mod tests {
         assert!(text.contains("NAME"));
         assert!(text.contains("one"));
         assert!(text.contains("Open PR"));
-        assert!(text.contains(concat!("v", env!("CARGO_PKG_VERSION"))));
+        assert!(text.contains(&format!("v{}", update::CURRENT)));
+        assert!(!text.contains("cargo install"));
+    }
+
+    #[test]
+    fn a_newer_release_shows_the_install_command() {
+        let (env, _origin) = registered();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.handle(Event::Update(Some("99.0.0".to_string())));
+        let text = render(&mut app);
+
+        assert!(text.contains(&format!(
+            "v{} → v99.0.0  cargo install ctx-tui",
+            update::CURRENT
+        )));
+    }
+
+    #[test]
+    fn the_update_check_reports_through_the_event_loop() {
+        let (env, _origin) = registered();
+        let _curl = env.fake_cli(
+            "curl",
+            "echo '{\"name\":\"ctx-tui\",\"vers\":\"99.0.0\",\"yanked\":false}'",
+        );
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.check_update();
+
+        assert!(app.drain_until(|app| app.update.is_some()));
+        assert_eq!(app.update.as_deref(), Some("99.0.0"));
     }
 
     #[test]

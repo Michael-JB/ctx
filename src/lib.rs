@@ -14,6 +14,7 @@ pub mod repos;
 pub mod shellrun;
 pub mod status;
 pub mod tui;
+pub mod update;
 
 #[cfg(test)]
 pub mod testutil;
