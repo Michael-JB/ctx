@@ -255,6 +255,7 @@ pub struct CtxTui {
     spinner_frame: usize,
     fetching: HashSet<usize>,
     poll_at: Vec<Instant>,
+    prefetch_at: Instant,
     filter: Option<Filter>,
     modal: Option<Modal>,
     // Alerts that arrived while a prompt or confirm was open; shown once
@@ -313,6 +314,7 @@ impl CtxTui {
             spinner_frame: 0,
             fetching: HashSet::new(),
             poll_at: vec![now; intervals],
+            prefetch_at: now,
             filter: None,
             modal: None,
             pending_alerts: Vec::new(),
@@ -350,9 +352,32 @@ impl CtxTui {
                 ..WorkerDone::default()
             }));
         });
+        self.prefetch_mirrors();
         let intervals = self.poll_intervals();
         let now = Instant::now();
         self.poll_at = intervals.iter().map(|interval| now + *interval).collect();
+    }
+
+    /// Refresh every mirror in the background, so creates land inside the
+    /// freshness window and skip their blocking fetch. Failures are dropped:
+    /// the create pays its own fetch and reports the error instead.
+    fn prefetch_mirrors(&mut self) {
+        if self.cfg.mirror_max_age <= 0.0 {
+            return;
+        }
+        self.prefetch_at = Instant::now() + Duration::from_secs_f64(self.cfg.mirror_max_age);
+        for name in repos::repo_names(&self.cfg) {
+            let cfg = self.cfg.clone();
+            let tx = self.tx.clone();
+            self.workers += 1;
+            spawn_worker(move || {
+                let _ = repos::update_repo(&cfg, &name);
+                let _ = tx.send(Event::Worker(WorkerDone {
+                    finished: true,
+                    ..WorkerDone::default()
+                }));
+            });
+        }
     }
 
     /// Repaint the panels from what is cheap to read; statuses fill in after.
@@ -586,6 +611,9 @@ impl CtxTui {
     fn handle_tick(&mut self) {
         if !self.busy.is_empty() {
             self.spinner_frame += 1;
+        }
+        if Instant::now() >= self.prefetch_at {
+            self.prefetch_mirrors();
         }
         // Background polling only runs with status columns configured,
         // like the original; a bare listing refreshes on demand.
@@ -2058,7 +2086,7 @@ mod tests {
     use super::*;
     use crate::config::StatusColumn;
     use crate::multiplexer::MultiplexerError;
-    use crate::testutil::{TestEnv, test_env};
+    use crate::testutil::{TestEnv, age_fetch_stamp, commit_file, git, test_env};
 
     #[derive(Default)]
     struct MuxState {
@@ -2245,6 +2273,48 @@ mod tests {
         assert!(
             app.drain_until(|app| app.slow_cells() == ["hi", "hi"]),
             "statuses never filled in"
+        );
+    }
+
+    #[test]
+    fn mount_prefetches_the_mirrors() {
+        let (env, origin) = registered();
+        commit_file(&origin, "new.txt", "x\n");
+        let cfg = Config {
+            mirror_max_age: 3600.0,
+            ..env.cfg.clone()
+        };
+
+        let mut app = app(&cfg, TestMux::stub());
+        app.drain_idle();
+
+        let mirror = repos::repo_path(&cfg, "origin");
+        assert_eq!(
+            git(&["rev-parse", "main"], &mirror),
+            git(&["rev-parse", "main"], &origin)
+        );
+    }
+
+    #[test]
+    fn ticks_refresh_stale_mirrors() {
+        let (env, origin) = registered();
+        let cfg = Config {
+            mirror_max_age: 3600.0,
+            ..env.cfg.clone()
+        };
+        let mut app = app(&cfg, TestMux::stub());
+        app.drain_idle();
+        commit_file(&origin, "new.txt", "x\n");
+        age_fetch_stamp(&cfg, "origin", Duration::from_secs(7200));
+        app.prefetch_at = Instant::now();
+
+        app.handle(Event::Tick);
+        app.drain_idle();
+
+        let mirror = repos::repo_path(&cfg, "origin");
+        assert_eq!(
+            git(&["rev-parse", "main"], &mirror),
+            git(&["rev-parse", "main"], &origin)
         );
     }
 

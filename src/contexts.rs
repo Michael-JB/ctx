@@ -503,6 +503,21 @@ mod tests {
     }
 
     #[test]
+    fn create_reuses_a_fresh_mirror_without_fetching() {
+        let (env, origin) = registered();
+        let cfg = Config {
+            mirror_max_age: 3600.0,
+            ..env.cfg.clone()
+        };
+        create_context(&cfg, "origin", "first", None).unwrap();
+        commit_file(&origin, "new.txt", "x\n");
+
+        let ctx = create_context(&cfg, "origin", "second", None).unwrap();
+
+        assert!(!ctx.path.join("new.txt").exists());
+    }
+
+    #[test]
     fn create_starts_a_branch_named_after_the_context() {
         let (env, _origin) = registered();
 

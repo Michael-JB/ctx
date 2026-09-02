@@ -131,6 +131,9 @@ pub struct Config {
     pub repos_dir: PathBuf,
     pub archive_dir: PathBuf,
     pub branch_prefix: String,
+    /// Seconds a repo mirror counts as fresh after a fetch; creates within
+    /// the window skip their blocking refresh. 0 fetches every time.
+    pub mirror_max_age: f64,
     pub multiplexer: MultiplexerKind,
     pub nerd_font: bool,
     pub layout: Node,
@@ -146,6 +149,7 @@ impl Default for Config {
             repos_dir: data.join("repos"),
             archive_dir: data.join("archive"),
             branch_prefix: String::new(),
+            mirror_max_age: 300.0,
             multiplexer: MultiplexerKind::Tmux,
             nerd_font: true,
             layout: default_layout(),
@@ -177,6 +181,15 @@ pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
     }
     if let Some(value) = data.get("branch_prefix") {
         cfg.branch_prefix = coerce_string(value);
+    }
+    if let Some(value) = data.get("mirror_max_age") {
+        match value {
+            Value::Integer(seconds) if *seconds >= 0 => cfg.mirror_max_age = *seconds as f64,
+            Value::Float(seconds) if *seconds >= 0.0 => cfg.mirror_max_age = *seconds,
+            _ => {
+                return config_err("mirror_max_age must be a non-negative number of seconds");
+            }
+        }
     }
     if let Some(value) = data.get("multiplexer") {
         let raw = coerce_string(value);
@@ -407,6 +420,22 @@ mod tests {
             load("branch_prefix = \"mb/\"").unwrap().branch_prefix,
             "mb/"
         );
+    }
+
+    #[test]
+    fn mirror_max_age_override() {
+        assert_eq!(load("mirror_max_age = 60").unwrap().mirror_max_age, 60.0);
+        assert_eq!(load("mirror_max_age = 0.5").unwrap().mirror_max_age, 0.5);
+    }
+
+    #[test]
+    fn mirror_max_age_rejects_negative_values() {
+        assert!(err("mirror_max_age = -1").contains("non-negative number"));
+    }
+
+    #[test]
+    fn mirror_max_age_rejects_non_numbers() {
+        assert!(err("mirror_max_age = \"60\"").contains("non-negative number"));
     }
 
     #[test]

@@ -109,6 +109,9 @@ contexts_dir = "~/.local/share/ctx/contexts"  # where checkouts live
 repos_dir = "~/.local/share/ctx/repos"        # internal storage for registered repos
 archive_dir = "~/.local/share/ctx/archive"    # where archived contexts go
 branch_prefix = ""                            # work branch prefix, e.g. "jane/"
+mirror_max_age = 300                          # seconds a repo's last fetch stays fresh; creates
+                                              # within the window skip their pre-clone refresh
+                                              # (the TUI refetches in the background), 0 always fetches
 multiplexer = "tmux"                          # or "zellij" (requires zellij >= 0.44)
 nerd_font = true                              # false swaps builtin glyphs for plain unicode
 ```

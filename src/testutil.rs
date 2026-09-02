@@ -149,9 +149,24 @@ pub fn test_env() -> TestEnv {
         contexts_dir: dir.path().join("contexts"),
         repos_dir: dir.path().join("repos"),
         archive_dir: dir.path().join("archive"),
+        // Freshness would turn a test's later fetches into silent no-ops;
+        // the tests covering it opt back in with a window of their own.
+        mirror_max_age: 0.0,
         ..Config::default()
     };
     TestEnv { cfg, dir }
+}
+
+/// Backdate a mirror's last-fetch stamp, making it stale for any freshness window.
+pub fn age_fetch_stamp(cfg: &Config, repo: &str, age: std::time::Duration) {
+    let stamp = crate::repos::repo_path(cfg, repo).join("FETCH_HEAD");
+    let times = std::fs::FileTimes::new().set_modified(std::time::SystemTime::now() - age);
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&stamp)
+        .expect("mirror has a fetch stamp")
+        .set_times(times)
+        .expect("backdate fetch stamp");
 }
 
 pub fn commit_file(repo: &Path, name: &str, content: &str) {

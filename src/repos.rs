@@ -1,4 +1,7 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Duration;
 
 use crate::config::Config;
 use crate::errors::{Result, msg};
@@ -147,9 +150,43 @@ pub fn set_default_repo(cfg: &Config, name: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+// One fetch per mirror at a time: a create landing mid-prefetch waits for
+// it and then finds the mirror fresh, instead of racing the ref update.
+static FETCH_LOCKS: LazyLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> =
+    LazyLock::new(Mutex::default);
+
+fn fetch_lock(path: &Path) -> Arc<Mutex<()>> {
+    FETCH_LOCKS
+        .lock()
+        .expect("fetch-lock registry")
+        .entry(path.to_path_buf())
+        .or_default()
+        .clone()
+}
+
+/// Time since the mirror's last fetch; None if it never fetched.
+///
+/// Git rewrites FETCH_HEAD on every fetch, even an up-to-date one, and a
+/// bare clone starts without it.
+fn fetch_age(path: &Path) -> Option<Duration> {
+    let modified = path.join("FETCH_HEAD").metadata().ok()?.modified().ok()?;
+    modified.elapsed().ok()
+}
+
 /// Refresh only the default branch; contexts fetch other branches from origin on demand.
+///
+/// A mirror fetched within the last `mirror_max_age` seconds is used as is,
+/// so creates close to a fetch (their own, or the TUI's background prefetch)
+/// skip the network roundtrip.
 pub fn update_repo(cfg: &Config, name: &str) -> Result<()> {
     let path = repo_path(cfg, name);
+    let lock = fetch_lock(&path);
+    let _fetching = lock.lock().expect("mirror fetch lock");
+    if cfg.mirror_max_age > 0.0
+        && fetch_age(&path).is_some_and(|age| age.as_secs_f64() <= cfg.mirror_max_age)
+    {
+        return Ok(());
+    }
     let branch = default_branch(cfg, name)?;
     // A branch unborn on both ends (empty repo) has nothing to fetch, and
     // fetching it would fail; the local check keeps the common case one roundtrip.
@@ -199,7 +236,9 @@ pub fn default_branch(cfg: &Config, name: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testutil::{commit_file, commit_lfs_file, git, lfs_available, test_env};
+    use crate::testutil::{
+        age_fetch_stamp, commit_file, commit_lfs_file, git, lfs_available, test_env,
+    };
 
     #[test]
     fn name_from_url_derives_the_repo_name() {
@@ -323,6 +362,71 @@ mod tests {
         update_repo(&env.cfg, "origin").unwrap();
 
         let mirror = repo_path(&env.cfg, "origin");
+        assert_eq!(
+            git(&["rev-parse", "main"], &mirror),
+            git(&["rev-parse", "main"], &origin)
+        );
+    }
+
+    #[test]
+    fn update_repo_skips_a_freshly_fetched_mirror() {
+        let env = test_env();
+        let origin = env.origin();
+        add_repo(&env.cfg, &origin.to_string_lossy(), None).unwrap();
+        let cfg = Config {
+            mirror_max_age: 3600.0,
+            ..env.cfg.clone()
+        };
+        update_repo(&cfg, "origin").unwrap();
+        commit_file(&origin, "new.txt", "x\n");
+
+        update_repo(&cfg, "origin").unwrap();
+
+        let mirror = repo_path(&cfg, "origin");
+        assert_ne!(
+            git(&["rev-parse", "main"], &mirror),
+            git(&["rev-parse", "main"], &origin),
+            "a fresh mirror must be used as is"
+        );
+    }
+
+    #[test]
+    fn update_repo_refreshes_a_stale_mirror() {
+        let env = test_env();
+        let origin = env.origin();
+        add_repo(&env.cfg, &origin.to_string_lossy(), None).unwrap();
+        let cfg = Config {
+            mirror_max_age: 3600.0,
+            ..env.cfg.clone()
+        };
+        update_repo(&cfg, "origin").unwrap();
+        commit_file(&origin, "new.txt", "x\n");
+        age_fetch_stamp(&cfg, "origin", Duration::from_secs(7200));
+
+        update_repo(&cfg, "origin").unwrap();
+
+        let mirror = repo_path(&cfg, "origin");
+        assert_eq!(
+            git(&["rev-parse", "main"], &mirror),
+            git(&["rev-parse", "main"], &origin)
+        );
+    }
+
+    #[test]
+    fn update_repo_fetches_a_never_fetched_mirror_despite_the_window() {
+        let env = test_env();
+        let origin = env.origin();
+        // add_repo clones without writing a fetch stamp.
+        add_repo(&env.cfg, &origin.to_string_lossy(), None).unwrap();
+        commit_file(&origin, "new.txt", "x\n");
+        let cfg = Config {
+            mirror_max_age: 3600.0,
+            ..env.cfg.clone()
+        };
+
+        update_repo(&cfg, "origin").unwrap();
+
+        let mirror = repo_path(&cfg, "origin");
         assert_eq!(
             git(&["rev-parse", "main"], &mirror),
             git(&["rev-parse", "main"], &origin)
