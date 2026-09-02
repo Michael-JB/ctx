@@ -52,7 +52,7 @@ answer using the concrete snippets under Configuration.
 Run `ctx` to manage contexts and repos interactively in the TUI (`?` lists the
 keybindings). The TUI is meant to be summoned from inside a multiplexer
 session: hit the picker key (see Instant picker) and it opens as a floating
-pane over the session you're in.
+pane over the session you're in. The Contexts panel shows the running version.
 
 You can also use `ctx` as a CLI:
 

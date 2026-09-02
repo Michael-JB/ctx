@@ -1526,10 +1526,13 @@ impl CtxTui {
             let frame = SPINNER_FRAMES[self.spinner_frame % SPINNER_FRAMES.len()];
             title = format!("{title} {frame}");
         }
-        let block = Block::bordered()
+        let mut block = Block::bordered()
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(border))
             .title(title);
+        if panel == Panel::Contexts {
+            block = block.title_top(version_line().right_aligned());
+        }
         let inner = block.inner(area);
         block.render_widget(area, buffer);
 
@@ -2021,6 +2024,17 @@ fn theme_color(name: &str) -> Color {
 }
 
 /// A status vocabulary style ("bold bright_green") as a terminal style.
+/// This build's version, for the Contexts panel's top border.
+fn version_line() -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            concat!("v", env!("CARGO_PKG_VERSION")),
+            Style::default().dim(),
+        ),
+        Span::raw(" "),
+    ])
+}
+
 fn status_style(name: &str) -> Style {
     let mut style = Style::default();
     for word in name.split_whitespace() {
@@ -2987,6 +3001,7 @@ mod tests {
         assert!(text.contains("NAME"));
         assert!(text.contains("one"));
         assert!(text.contains("Open PR"));
+        assert!(text.contains(concat!("v", env!("CARGO_PKG_VERSION"))));
     }
 
     #[test]
