@@ -240,6 +240,8 @@ pub enum Event {
     Worker(WorkerDone),
     /// A newer published release, if the update check found one.
     Update(Option<String>),
+    /// The install worker's result: the release now on disk, or the error.
+    Installed(Result<String, String>),
     Redraw,
 }
 
@@ -264,6 +266,7 @@ pub struct CtxTui {
     pending_alerts: Vec<String>,
     workers: usize,
     update: Option<String>,
+    installing: bool,
     outcome: Option<Request>,
     quit: bool,
     // Panel rectangles from the last render, for mouse hit-testing.
@@ -321,6 +324,7 @@ impl CtxTui {
             pending_alerts: Vec::new(),
             workers: 0,
             update: None,
+            installing: false,
             outcome: None,
             quit: false,
             areas: HashMap::new(),
@@ -515,7 +519,7 @@ impl CtxTui {
 
     /// Centrally disable mutating actions while a worker runs or a popup is open.
     fn allow_mutation(&self) -> bool {
-        self.busy.is_empty() && self.modal.is_none()
+        self.busy.is_empty() && !self.installing && self.modal.is_none()
     }
 
     /// Resolve the cursor's context from disk; reloads and yields None if stale.
@@ -577,6 +581,17 @@ impl CtxTui {
             }
             Event::Worker(done) => self.handle_worker(done),
             Event::Update(latest) => self.update = latest,
+            Event::Installed(result) => {
+                self.installing = false;
+                self.workers = self.workers.saturating_sub(1);
+                match result {
+                    Ok(version) => {
+                        self.update = None;
+                        self.alert(format!("Installed v{version}. Restart ctx to run it."));
+                    }
+                    Err(err) => self.alert(err),
+                }
+            }
             Event::Redraw => {}
         }
     }
@@ -600,7 +615,7 @@ impl CtxTui {
     }
 
     fn handle_tick(&mut self) {
-        if !self.busy.is_empty() {
+        if !self.busy.is_empty() || self.installing {
             self.spinner_frame += 1;
         }
         // Background polling only runs with status columns configured,
@@ -693,6 +708,7 @@ impl CtxTui {
             (Panel::Contexts, KeyCode::Char('o')) => self.action_open_pr(),
             (Panel::Contexts, KeyCode::Char('d')) if gated => self.action_archive(),
             (Panel::Contexts, KeyCode::Char('D')) if gated => self.action_delete(),
+            (Panel::Contexts, KeyCode::Char('U')) if gated => self.action_update(),
             (Panel::Repos, KeyCode::Char('a')) if gated => self.action_add_repo(),
             (Panel::Repos, KeyCode::Char('s')) if gated => self.action_set_default_repo(),
             (Panel::Repos, KeyCode::Char('d')) if gated => self.action_delete(),
@@ -1349,6 +1365,21 @@ impl CtxTui {
         });
     }
 
+    /// Install the flagged release; the binary on disk changes, the running
+    /// process does not, so the alert asks for a restart.
+    fn action_update(&mut self) {
+        let Some(latest) = self.update.clone() else {
+            return;
+        };
+        self.installing = true;
+        let tx = self.tx.clone();
+        self.workers += 1;
+        spawn_worker(move || {
+            let result = update::install(&latest).map(|()| latest);
+            let _ = tx.send(Event::Installed(result));
+        });
+    }
+
     // ------------------------------------------------------------------
     // Filter
 
@@ -1615,20 +1646,27 @@ impl CtxTui {
         ratatui::widgets::StatefulWidget::render(widget, inner, buffer, &mut table.view);
     }
 
-    /// This build's version, with the install command when a newer release exists.
+    /// This build's version, with the install command when a newer release
+    /// exists, and a spinner while that install runs.
     fn version_line(&self) -> Line<'static> {
         let current = Span::styled(format!("v{}", update::CURRENT), Style::default().dim());
-        match &self.update {
-            Some(latest) => Line::from(vec![
-                current,
-                Span::styled(
-                    format!(" → v{latest}  cargo install {}", update::CRATE),
-                    Style::default().fg(Color::LightYellow).bold(),
-                ),
-                Span::raw(" "),
-            ]),
-            None => Line::from(vec![current, Span::raw(" ")]),
-        }
+        let Some(latest) = &self.update else {
+            return Line::from(vec![current, Span::raw(" ")]);
+        };
+        let action = if self.installing {
+            let frame = SPINNER_FRAMES[self.spinner_frame % SPINNER_FRAMES.len()];
+            format!("installing {frame}")
+        } else {
+            format!("cargo install {}", update::CRATE)
+        };
+        Line::from(vec![
+            current,
+            Span::styled(
+                format!(" → v{latest}  {action}"),
+                Style::default().fg(Color::LightYellow).bold(),
+            ),
+            Span::raw(" "),
+        ])
     }
 
     fn render_filter(&self, area: Rect, buffer: &mut ratatui::buffer::Buffer) {
@@ -1645,8 +1683,8 @@ impl CtxTui {
     }
 
     fn render_footer(&self, area: Rect, buffer: &mut ratatui::buffer::Buffer) {
-        let bindings: &[(&str, &str)] = match self.panel {
-            Panel::Contexts => &[
+        let mut bindings: Vec<(&str, &str)> = match self.panel {
+            Panel::Contexts => vec![
                 ("space", "Open"),
                 ("o", "Open PR"),
                 ("d", "Archive"),
@@ -1657,7 +1695,7 @@ impl CtxTui {
                 ("q", "Quit"),
                 ("?", "Help"),
             ],
-            Panel::Repos => &[
+            Panel::Repos => vec![
                 ("a", "Add repo"),
                 ("s", "Set default"),
                 ("d", "Remove repo"),
@@ -1667,7 +1705,7 @@ impl CtxTui {
                 ("q", "Quit"),
                 ("?", "Help"),
             ],
-            Panel::Archived => &[
+            Panel::Archived => vec![
                 ("u", "Unarchive"),
                 ("d", "Delete"),
                 ("e", "Empty"),
@@ -1678,14 +1716,17 @@ impl CtxTui {
                 ("?", "Help"),
             ],
         };
+        if self.panel == Panel::Contexts && self.update.is_some() && !self.installing {
+            bindings.insert(4, ("U", "Update ctx"));
+        }
         let mut spans = Vec::new();
         for (key, label) in bindings {
             if !spans.is_empty() {
                 spans.push(Span::raw("  "));
             }
-            spans.push(Span::styled(*key, Style::default().bold()));
+            spans.push(Span::styled(key, Style::default().bold()));
             spans.push(Span::raw(" "));
-            spans.push(Span::styled(*label, Style::default().dim()));
+            spans.push(Span::styled(label, Style::default().dim()));
         }
         Paragraph::new(Line::from(spans)).render_widget(area, buffer);
     }
@@ -2003,6 +2044,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
             ("N", "new context from a base branch"),
             ("d", "archive context"),
             ("D", "permanently delete context"),
+            ("U", "install the flagged ctx release"),
         ],
         Panel::Repos => &[
             ("enter / n", "new context"),
@@ -3038,6 +3080,46 @@ mod tests {
             "v{} → v99.0.0  cargo install ctx-tui",
             update::CURRENT
         )));
+        assert!(text.contains("Update ctx"));
+    }
+
+    #[test]
+    fn shift_u_installs_the_flagged_release() {
+        let (env, _origin) = registered();
+        let _cargo = env.fake_cli("cargo", "exit 0");
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Char('U'));
+        assert!(!app.installing, "nothing to install without an update");
+
+        app.handle(Event::Update(Some("99.0.0".to_string())));
+        app.key(KeyCode::Char('U'));
+        assert!(app.installing);
+        assert!(!app.allow_mutation());
+        let text = render(&mut app);
+        assert!(text.contains("→ v99.0.0  installing"));
+        assert!(!text.contains("Update ctx"));
+        app.drain_idle();
+        assert!(!app.installing);
+
+        assert_eq!(app.update, None);
+        assert!(
+            matches!(&app.modal, Some(Modal::Alert { message }) if message.contains("Restart"))
+        );
+    }
+
+    #[test]
+    fn a_failed_install_keeps_the_update_flagged() {
+        let (env, _origin) = registered();
+        let _cargo = env.fake_cli("cargo", "echo boom >&2; exit 1");
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.handle(Event::Update(Some("99.0.0".to_string())));
+        app.key(KeyCode::Char('U'));
+        app.drain_idle();
+
+        assert_eq!(app.update.as_deref(), Some("99.0.0"));
+        assert!(matches!(&app.modal, Some(Modal::Alert { message }) if message.contains("boom")));
     }
 
     #[test]

@@ -56,6 +56,24 @@ pub fn available() -> Option<String> {
     (parse(&latest)? > parse(CURRENT)?).then_some(latest)
 }
 
+/// Install a published release over this binary with cargo.
+pub fn install(version: &str) -> Result<(), String> {
+    let output = new_command("cargo")
+        .args(["install", CRATE, "--version", version])
+        .output()
+        .map_err(|err| format!("cargo install failed: {err}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let reason = stderr
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("cargo install failed");
+    Err(format!("cargo install {CRATE} failed: {}", reason.trim()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +118,33 @@ mod tests {
         let _curl = env.fake_cli("curl", &format!("echo '{}'", entry("999.0.0", false)));
 
         assert_eq!(available().as_deref(), Some("999.0.0"));
+    }
+
+    #[test]
+    fn install_runs_cargo_for_the_release() {
+        let env = test_env();
+        let log = env.root().join("cargo.log");
+        let _cargo = env.fake_cli("cargo", &format!("echo \"$@\" > {}", log.display()));
+
+        assert_eq!(install("2.1.0"), Ok(()));
+        assert_eq!(
+            std::fs::read_to_string(log).unwrap().trim(),
+            "install ctx-tui --version 2.1.0"
+        );
+    }
+
+    #[test]
+    fn install_reports_the_last_stderr_line() {
+        let env = test_env();
+        let _cargo = env.fake_cli(
+            "cargo",
+            "echo 'Updating index' >&2; echo 'no such version' >&2; exit 101",
+        );
+
+        assert_eq!(
+            install("2.1.0"),
+            Err("cargo install ctx-tui failed: no such version".to_string())
+        );
     }
 
     #[test]

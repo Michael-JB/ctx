@@ -53,7 +53,7 @@ Run `ctx` to manage contexts and repos interactively in the TUI (`?` lists the
 keybindings). The TUI is meant to be summoned from inside a multiplexer
 session: hit the picker key (see Instant picker) and it opens as a floating
 pane over the session you're in. The Contexts panel shows the running version
-and flags a newer crates.io release with the command to install it.
+and flags a newer crates.io release; `U` installs it.
 
 You can also use `ctx` as a CLI:
 
