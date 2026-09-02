@@ -70,7 +70,8 @@ More detail:
 # List contexts with their repo, branch, and status:
 ctx list
 
-# Contexts branch off the up-to-date default branch. To base one on another branch:
+# Contexts branch off the default branch, as of the last create's background
+# refresh (creating never waits on the network). To base one on another branch:
 ctx new papaya-nvim follow-up -b other-base
 
 # Leave the name out to get a generated one (e.g. holy-tiger); the TUI's new-context

@@ -245,10 +245,8 @@ pub fn create_context(cfg: &Config, repo: &str, name: &str, base: Option<&str>) 
     let path = context_path(cfg, repo, name);
 
     let (base, fetch_base) = match base {
-        None => {
-            repos::update_repo(cfg, repo)?;
-            (repos::default_branch(cfg, repo)?, false)
-        }
+        // The mirror is used as is; the detached refresh below keeps it moving.
+        None => (repos::default_branch(cfg, repo)?, false),
         // The mirror only carries the default branch; fetch the base into the context.
         Some(base) => (base.to_string(), true),
     };
@@ -312,6 +310,9 @@ pub fn create_context(cfg: &Config, repo: &str, name: &str, base: Option<&str>) 
         }
         return Err(err);
     }
+    // Refresh the mirror off the critical path: creates never wait on the
+    // network, at the price of a base as old as the repo's last refresh.
+    repos::spawn_refresh(repo);
     Ok(ctx)
 }
 
@@ -503,6 +504,48 @@ mod tests {
     }
 
     #[test]
+    fn create_uses_the_mirror_as_is() {
+        let (env, origin) = registered();
+        commit_file(&origin, "new.txt", "x\n");
+
+        let ctx = create(&env, "origin", "feat");
+
+        assert!(!ctx.path.join("new.txt").exists());
+    }
+
+    #[test]
+    fn create_spawns_a_detached_mirror_refresh() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (env, _origin) = registered();
+        let marker = env.root().join("refresh-args");
+        let stub = env.root().join("ctx-stub");
+        std::fs::write(
+            &stub,
+            format!("#!/bin/sh\necho \"$@\" > {}\n", marker.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let _bin = crate::testutil::push_env("CTX_BIN", &stub.to_string_lossy());
+
+        create(&env, "origin", "feat");
+
+        // The refresh is a detached process; poll for its arguments.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let args = loop {
+            match std::fs::read_to_string(&marker) {
+                Ok(text) if !text.trim().is_empty() => break text,
+                _ => assert!(
+                    std::time::Instant::now() < deadline,
+                    "refresh never spawned"
+                ),
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        assert_eq!(args.trim(), "builtin refresh origin");
+    }
+
+    #[test]
     fn create_starts_a_branch_named_after_the_context() {
         let (env, _origin) = registered();
 
@@ -657,16 +700,6 @@ mod tests {
             git(&["remote", "get-url", "origin"], &ctx.path),
             origin.to_string_lossy()
         );
-    }
-
-    #[test]
-    fn create_includes_the_latest_origin_commits() {
-        let (env, origin) = registered();
-        commit_file(&origin, "new.txt", "x\n");
-
-        let ctx = create(&env, "origin", "feat");
-
-        assert!(ctx.path.join("new.txt").exists());
     }
 
     #[test]

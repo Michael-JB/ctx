@@ -102,6 +102,8 @@ enum BuiltinCommands {
     /// Adapters for Claude Code.
     #[command(subcommand)]
     Claude(ClaudeCommands),
+    /// Fetch a repo mirror's default branch; creates spawn this detached.
+    Refresh { repo: String },
 }
 
 #[derive(Subcommand)]
@@ -491,6 +493,9 @@ fn dispatch(cli: Cli, deps: &Deps, io: &mut Io) -> Result<i32> {
                 ClaudeCommands::Trust => claude_trust::trust(&cwd),
             }
         }
+        Commands::Builtin(BuiltinCommands::Refresh { repo }) => {
+            repos::update_repo(&deps.cfg, &repo)?;
+        }
         Commands::Repo(command) => return cmd_repo(deps, io, &command),
     }
     Ok(0)
@@ -551,7 +556,7 @@ mod tests {
     use super::*;
     use crate::contexts::Context;
     use crate::multiplexer::MultiplexerError;
-    use crate::testutil::{TestEnv, commit_file, test_env};
+    use crate::testutil::{TestEnv, commit_file, git, test_env};
 
     /// Spy double: canned exists() answers plus a record of open/kill calls.
     #[derive(Default)]
@@ -673,6 +678,22 @@ mod tests {
 
     fn create(deps: &Deps, name: &str) -> Context {
         contexts::create_context(&deps.cfg, "origin", name, None).unwrap()
+    }
+
+    #[test]
+    fn builtin_refresh_updates_the_mirror() {
+        let (env, deps, _mux) = registered();
+        let origin = env.root().join("origin");
+        commit_file(&origin, "new.txt", "x\n");
+
+        let run = invoke(&["builtin", "refresh", "origin"], &deps);
+
+        assert_eq!(run.code, 0, "{}", run.err);
+        let mirror = repos::repo_path(&deps.cfg, "origin");
+        assert_eq!(
+            git(&["rev-parse", "main"], &mirror),
+            git(&["rev-parse", "main"], &origin)
+        );
     }
 
     #[test]

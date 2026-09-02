@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use crate::config::Config;
 use crate::errors::{Result, msg};
-use crate::git::{git, git_quiet};
+use crate::git::{git, git_quiet, new_command};
 
 pub fn repo_path(cfg: &Config, name: &str) -> PathBuf {
     cfg.repos_dir.join(format!("{name}.git"))
@@ -180,6 +181,43 @@ pub fn update_repo(cfg: &Config, name: &str) -> Result<()> {
         Some(&path),
     )?;
     fetch_lfs(&path, &branch)
+}
+
+/// The running ctx binary, for re-invoking a builtin.
+#[cfg(not(test))]
+fn ctx_exe() -> PathBuf {
+    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ctx"))
+}
+
+/// Under tests, current_exe is the test harness, which must never be
+/// re-invoked (it would read the builtin's arguments as test filters);
+/// tests stub the binary via CTX_BIN or get an inert default.
+#[cfg(test)]
+fn ctx_exe() -> PathBuf {
+    crate::testutil::get_env("CTX_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/usr/bin/true"))
+}
+
+/// Refresh the mirror in a detached child, so the next create finds it
+/// newer without this one ever waiting on the network.
+///
+/// sh backgrounds the refresh and exits: reaping sh leaves no zombie, and
+/// the orphaned refresh survives ctx exec'ing into the multiplexer. Its own
+/// process group keeps terminal signals away. Failures stay silent; the
+/// mirror simply stays where it was.
+pub fn spawn_refresh(name: &str) {
+    use std::os::unix::process::CommandExt;
+
+    let mut cmd = new_command("sh");
+    cmd.args(["-c", r#""$0" builtin refresh "$1" >/dev/null 2>&1 &"#])
+        .arg(ctx_exe())
+        .arg(name)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0);
+    let _ = cmd.status();
 }
 
 pub fn repo_url(cfg: &Config, name: &str) -> Result<String> {
