@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.4](https://github.com/Michael-JB/ctx/compare/v2.0.3...v2.0.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* show monitoring while the agent waits on background work ([51e3f11](https://github.com/Michael-JB/ctx/commit/51e3f1119f9cfa2ad9d8ac66ab6d45efbcd43d12))
+
+
+### Documentation
+
+* name the agent states in the agent docs and website ([4c959e1](https://github.com/Michael-JB/ctx/commit/4c959e15d8639bfe68d9de232e6c3b495846c4a1))
+
+
+### Upgrade Notes
+
+* ensure Claude Code is 2.1.145 or newer; its Stop hook payload carries the background tasks and crons that the monitoring state is read from, and older versions keep showing idle ([51e3f11](https://github.com/Michael-JB/ctx/commit/51e3f1119f9cfa2ad9d8ac66ab6d45efbcd43d12))
+
 ## [2.0.3](https://github.com/Michael-JB/ctx/compare/v2.0.2...v2.0.3) (2026-09-01)
 
 
