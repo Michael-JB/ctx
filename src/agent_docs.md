@@ -31,6 +31,11 @@ Clean up after yourself: archive contexts with `ctx archive <name>` when you're
 done. Permanently delete a context with `ctx rm <name>`; do this only when
 explicitly instructed. `ctx --help` covers the rest.
 
+`ctx list` may include an agent column: `working` (mid-turn), `monitoring`
+(waiting on background work it started; it resumes by itself), `blocked`
+(waiting on the user), or `idle` (waiting for instructions). Only idle
+contexts are free; a monitoring one is still on its task.
+
 ## Upgrading ctx
 
 1. Capture the installed version: `ctx --version`.

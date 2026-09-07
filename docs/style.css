@@ -10,6 +10,7 @@
   --yellow: #ffc777;
   --red: #ff757f;
   --magenta: #c099ff;
+  --cyan: #86e1fc;
 }
 
 * {
@@ -146,6 +147,7 @@ code {
 .s-yellow { color: var(--yellow); }
 .s-red { color: var(--red); }
 .s-magenta { color: var(--magenta); }
+.s-cyan { color: var(--cyan); }
 .s-dim { color: var(--fg-dim); }
 
 /* Sections */
