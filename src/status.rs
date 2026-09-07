@@ -96,7 +96,7 @@ pub fn command_status(ctx: &Context, command: &str) -> Option<String> {
 
 /// The `agent` built-in: the checkout's agent-status file.
 ///
-/// Agent harness hooks write a word (e.g. working/blocked/idle) to
+/// Agent harness hooks write a word (working, monitoring, blocked, idle) to
 /// `.git/agent-status`, rewriting it only when the state changes, so the
 /// file's mtime is the state's start; active states show their age from it.
 /// A file untouched for an hour is stale — the agent likely died without

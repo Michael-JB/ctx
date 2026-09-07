@@ -8,23 +8,28 @@ use std::path::Path;
 
 use serde_json::Value;
 
-// Tools that watch or sleep rather than act.
-const MONITORING_TOOLS: &[&str] = &["Monitor", "ScheduleWakeup"];
-
 fn state(payload: &serde_json::Map<String, Value>) -> Option<&'static str> {
     match payload.get("hook_event_name").and_then(Value::as_str) {
-        Some("UserPromptSubmit") => Some("working"),
-        Some("PreToolUse") => {
-            let tool = payload.get("tool_name").and_then(Value::as_str);
-            match tool {
-                Some(tool) if MONITORING_TOOLS.contains(&tool) => Some("monitoring"),
-                _ => Some("working"),
-            }
-        }
+        Some("UserPromptSubmit" | "PreToolUse") => Some("working"),
         Some("Notification") => Some("blocked"),
+        Some("Stop") if awaits_background_work(payload) => Some("monitoring"),
         Some("Stop") => Some("idle"),
         _ => None,
     }
+}
+
+/// Whether the turn ended with work Claude resumes on its own: a background
+/// task still in flight (a shell command, a monitor, a subagent) or a
+/// scheduled wakeup. Claude Code lists only running and pending tasks, so any
+/// entry means the agent is waiting on them, not on the user.
+fn awaits_background_work(payload: &serde_json::Map<String, Value>) -> bool {
+    let pending = |key: &str| {
+        payload
+            .get(key)
+            .and_then(Value::as_array)
+            .is_some_and(|entries| !entries.is_empty())
+    };
+    pending("background_tasks") || pending("session_crons")
 }
 
 /// Apply one hook event (the JSON Claude Code pipes to hooks) in `cwd`.
@@ -81,21 +86,72 @@ mod tests {
         std::fs::read_to_string(checkout.join(".git").join("agent-status")).unwrap()
     }
 
+    fn stop_event(background_tasks: &str, session_crons: &str) -> String {
+        format!(
+            "{{\"hook_event_name\": \"Stop\", \"background_tasks\": {background_tasks}, \
+             \"session_crons\": {session_crons}}}"
+        )
+    }
+
     #[test]
     fn events_map_to_states() {
         for (payload, state) in [
             (event("UserPromptSubmit"), "working"),
             (tool_event("PreToolUse", "Bash"), "working"),
-            (tool_event("PreToolUse", "Monitor"), "monitoring"),
-            (tool_event("PreToolUse", "ScheduleWakeup"), "monitoring"),
+            (tool_event("PreToolUse", "Monitor"), "working"),
             (event("Notification"), "blocked"),
             (event("Stop"), "idle"),
+            (stop_event("[]", "[]"), "idle"),
         ] {
             let (_dir, checkout) = checkout();
 
             handle(&payload, &checkout);
 
             assert_eq!(status_of(&checkout), format!("{state}\n"));
+        }
+    }
+
+    #[test]
+    fn stopping_with_background_work_pending_is_monitoring() {
+        for (payload, state) in [
+            (
+                stop_event(
+                    r#"[{"id": "b1", "type": "shell", "status": "running"}]"#,
+                    "[]",
+                ),
+                "monitoring",
+            ),
+            (
+                stop_event(
+                    r#"[{"id": "a1", "type": "subagent", "status": "running"}]"#,
+                    "[]",
+                ),
+                "monitoring",
+            ),
+            (
+                stop_event(
+                    r#"[{"id": "a2", "type": "subagent", "status": "pending"}]"#,
+                    "[]",
+                ),
+                "monitoring",
+            ),
+            (
+                stop_event(
+                    "[]",
+                    r#"[{"id": "c1", "schedule": "57 18 * * *", "recurring": false}]"#,
+                ),
+                "monitoring",
+            ),
+        ] {
+            let (_dir, checkout) = checkout();
+
+            handle(&payload, &checkout);
+
+            assert_eq!(
+                status_of(&checkout),
+                format!("{state}\n"),
+                "payload: {payload}"
+            );
         }
     }
 
