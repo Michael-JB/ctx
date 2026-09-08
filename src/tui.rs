@@ -184,6 +184,12 @@ enum ConfirmKind {
     DeleteArchived(Context),
     RemoveRepo(String),
     EmptyArchive,
+    Overwrite {
+        existing: Context,
+        repo: String,
+        name: String,
+        base: Option<String>,
+    },
 }
 
 enum Modal {
@@ -1009,9 +1015,50 @@ impl CtxTui {
         }
     }
 
-    /// Create in the background if we can stay running, else exit to the CLI.
+    /// Ask before a new context takes a name that is still in use.
     fn create(&mut self, repo: String, name: String, base: Option<String>) {
+        let Ok(existing) = contexts::find_any(&self.cfg, &name) else {
+            self.create_over(None, repo, name, base);
+            return;
+        };
+        let state = if contexts::is_archived(&self.cfg, &existing) {
+            "archived "
+        } else {
+            ""
+        };
+        self.modal = Some(Modal::Confirm {
+            message: format!(
+                "'{name}' is already used by {state}{}. Overwrite it?",
+                existing.qualified()
+            ),
+            confirm_label: "Overwrite",
+            selected: 0,
+            kind: ConfirmKind::Overwrite {
+                existing,
+                repo,
+                name,
+                base,
+            },
+        });
+    }
+
+    /// Create in the background if we can stay running, else exit to the CLI.
+    /// `replace` is deleted first so the new context can take its name.
+    fn create_over(
+        &mut self,
+        replace: Option<Context>,
+        repo: String,
+        name: String,
+        base: Option<String>,
+    ) {
         if !self.mux.can_open_in_place() {
+            if let Some(existing) = replace
+                && let Err(err) =
+                    teardown(&self.cfg, self.mux.as_ref(), &existing, Teardown::Delete)
+            {
+                self.alert(err.to_string());
+                return;
+            }
             self.outcome = Some(Request::New { repo, name, base });
             self.quit = true;
             return;
@@ -1023,6 +1070,18 @@ impl CtxTui {
         let exit_on_open = self.exit_on_open;
         self.workers += 1;
         spawn_worker(move || {
+            if let Some(existing) = replace
+                && let Err(err) = teardown(&cfg, mux.as_ref(), &existing, Teardown::Delete)
+            {
+                let _ = tx.send(Event::Worker(WorkerDone {
+                    reload: true,
+                    finish_busy: true,
+                    alert: Some(err.to_string()),
+                    finished: true,
+                    ..WorkerDone::default()
+                }));
+                return;
+            }
             let ctx = match contexts::create_context(&cfg, &repo, &name, base.as_deref()) {
                 Err(err) => {
                     let _ = tx.send(Event::Worker(WorkerDone {
@@ -1265,6 +1324,12 @@ impl CtxTui {
                     }));
                 });
             }
+            ConfirmKind::Overwrite {
+                existing,
+                repo,
+                name,
+                base,
+            } => self.create_over(Some(existing), repo, name, base),
             ConfirmKind::EmptyArchive => {
                 self.start_busy(Panel::Archived);
                 let cfg = self.cfg.clone();
@@ -2577,6 +2642,72 @@ mod tests {
 
         assert!(!ctx.path.exists());
         assert!(contexts::find_context(&env.cfg, "one").is_err());
+    }
+
+    /// Open the name prompt and submit `name` in place of the pre-fill.
+    fn submit_new_name(app: &mut CtxTui, name: &str) {
+        app.key(KeyCode::Char('n'));
+        app.key(KeyCode::Backspace);
+        for c in name.chars() {
+            app.key(KeyCode::Char(c));
+        }
+        app.key(KeyCode::Enter);
+    }
+
+    #[test]
+    fn new_with_a_taken_name_asks_before_overwriting() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "one");
+        let marker = ctx.path.join("marker");
+        std::fs::write(&marker, "").unwrap();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        submit_new_name(&mut app, "one");
+        assert!(matches!(app.modal, Some(Modal::Confirm { .. })));
+        app.key(KeyCode::Esc);
+        app.drain_idle();
+
+        assert!(marker.exists(), "cancelling must keep the old checkout");
+    }
+
+    #[test]
+    fn overwriting_a_live_context_recreates_it_fresh() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "one");
+        let marker = ctx.path.join("marker");
+        std::fs::write(&marker, "").unwrap();
+        let mux = TestMux::recording(None);
+        let mut app = app(&env.cfg, mux.clone());
+
+        submit_new_name(&mut app, "one");
+        app.key(KeyCode::Enter);
+        app.drain_idle();
+
+        assert!(!marker.exists(), "the old checkout must be deleted");
+        assert!(contexts::find_context(&env.cfg, "one").is_ok());
+        assert!(
+            mux.calls()
+                .contains(&("kill".to_string(), "one".to_string()))
+        );
+        assert!(
+            mux.calls()
+                .contains(&("open".to_string(), "one".to_string()))
+        );
+    }
+
+    #[test]
+    fn overwriting_an_archived_name_deletes_the_archive() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "one");
+        contexts::archive_context(&env.cfg, &ctx).unwrap();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        submit_new_name(&mut app, "one");
+        app.key(KeyCode::Enter);
+        app.drain_idle();
+
+        assert!(contexts::find_archived(&env.cfg, "one").is_err());
+        assert!(contexts::find_context(&env.cfg, "one").is_ok());
     }
 
     #[test]
