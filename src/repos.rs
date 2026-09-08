@@ -172,15 +172,32 @@ pub fn update_repo(cfg: &Config, name: &str) -> Result<()> {
     {
         return Ok(());
     }
+    // A refresh may run while a create clones the mirror, so the head only
+    // moves once everything it needs is in place: fetch into a staging ref,
+    // complete the LFS store for it, then publish with one atomic ref update.
+    // A clone thus sees the old head or the new one, never a half-fetched one.
+    // gc stays off here since it would delete files under a running clone;
+    // creates run it before they clone. Packing every fetch keeps loose
+    // objects from piling up, so that gc is rarely needed.
+    let staging = format!("refs/ctx/incoming/{branch}");
     git_quiet(
         &[
+            "-c",
+            "gc.auto=0",
+            "-c",
+            "fetch.unpackLimit=1",
             "fetch",
             "origin",
-            &format!("+refs/heads/{branch}:refs/heads/{branch}"),
+            &format!("+refs/heads/{branch}:{staging}"),
         ],
         Some(&path),
     )?;
-    fetch_lfs(&path, &branch)
+    fetch_lfs(&path, &staging)?;
+    git_quiet(
+        &["update-ref", &format!("refs/heads/{branch}"), &staging],
+        Some(&path),
+    )?;
+    Ok(())
 }
 
 /// The running ctx binary, for re-invoking a builtin.
@@ -364,6 +381,24 @@ mod tests {
         assert_eq!(
             git(&["rev-parse", "main"], &mirror),
             git(&["rev-parse", "main"], &origin)
+        );
+    }
+
+    #[test]
+    fn update_repo_packs_what_it_fetches() {
+        let env = test_env();
+        let origin = env.origin();
+        add_repo(&env.cfg, &origin.to_string_lossy(), None).unwrap();
+        commit_file(&origin, "new.txt", "x\n");
+        let mirror = repo_path(&env.cfg, "origin");
+        let loose_before = git(&["count-objects"], &mirror);
+
+        update_repo(&env.cfg, "origin").unwrap();
+
+        assert_eq!(
+            git(&["count-objects"], &mirror),
+            loose_before,
+            "fetched objects must land in a pack, not loose"
         );
     }
 
