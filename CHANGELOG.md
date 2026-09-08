@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/Michael-JB/ctx/compare/v2.1.0...v2.2.0) (2026-09-08)
+
+
+### Features
+
+* ask to overwrite when a new context reuses a taken name ([755e3af](https://github.com/Michael-JB/ctx/commit/755e3af9acc97bf3ecf3b2e6ed50f1145b7bdb36))
+
 ## [2.1.0](https://github.com/Michael-JB/ctx/compare/v2.0.4...v2.1.0) (2026-09-08)
 
 
