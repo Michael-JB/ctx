@@ -261,6 +261,14 @@ pub fn create_context(cfg: &Config, repo: &str, name: &str, base: Option<&str>) 
         path: path.clone(),
     };
     let checkout = || -> Result<()> {
+        // Refreshes never gc the mirror, since deleting files under a running
+        // clone would break it; the create does it here instead, before its
+        // own clone, and in the foreground so no gc outlives it. Maintenance
+        // must not stand in the way of the create: a failure is ignored.
+        let _ = git_quiet(
+            &["-c", "gc.autoDetach=false", "gc", "--auto"],
+            Some(&mirror),
+        );
         git_quiet(
             &["clone", &mirror.to_string_lossy(), &path.to_string_lossy()],
             None,
