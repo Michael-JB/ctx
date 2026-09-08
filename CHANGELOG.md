@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/Michael-JB/ctx/compare/v2.0.4...v2.1.0) (2026-09-08)
+
+
+### Features
+
+* show the version in the TUI ([2ba49bf](https://github.com/Michael-JB/ctx/commit/2ba49bfe5ae9b3badacc6d11cecfd7e01418816f))
+
 ## [2.0.4](https://github.com/Michael-JB/ctx/compare/v2.0.3...v2.0.4) (2026-09-07)
 
 
