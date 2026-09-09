@@ -438,15 +438,29 @@ pub fn unpushed_commits(ctx: &Context) -> Result<Vec<String>> {
     Ok(out.lines().map(str::to_string).collect())
 }
 
-pub fn remove_context(ctx: &Context) -> Result<()> {
+/// Take a context off its name with one rename; the returned corpse is
+/// hidden from listings and costs `finish_removal` (or the startup sweep)
+/// the actual delete.
+///
+/// A checkout can hold millions of files (virtualenvs, build output), so
+/// the delete takes long where the rename is instant.
+pub fn stage_removal(ctx: &Context) -> Result<PathBuf> {
     let name = ctx.path.file_name().unwrap_or_default().to_string_lossy();
     let doomed = ctx.path.with_file_name(format!("{name}{DELETING_SUFFIX}"));
     if doomed.exists() {
         let _ = std::fs::remove_dir_all(&doomed);
     }
     std::fs::rename(&ctx.path, &doomed)?;
-    std::fs::remove_dir_all(&doomed)?;
+    Ok(doomed)
+}
+
+pub fn finish_removal(doomed: &Path) -> Result<()> {
+    std::fs::remove_dir_all(doomed)?;
     Ok(())
+}
+
+pub fn remove_context(ctx: &Context) -> Result<()> {
+    finish_removal(&stage_removal(ctx)?)
 }
 
 /// Finish removals that a crash or kill interrupted mid-delete.
@@ -468,12 +482,16 @@ pub fn sweep_deleting(cfg: &Config) {
     }
 }
 
+/// Rename every archived context away, see `stage_removal`.
+pub fn stage_empty_archive(cfg: &Config) -> Result<Vec<PathBuf>> {
+    list_archived(cfg).iter().map(stage_removal).collect()
+}
+
 /// Permanently delete every archived context.
 pub fn empty_archive(cfg: &Config) -> Result<()> {
-    for ctx in list_archived(cfg) {
-        remove_context(&ctx)?;
-    }
-    Ok(())
+    stage_empty_archive(cfg)?
+        .iter()
+        .try_for_each(|doomed| finish_removal(doomed))
 }
 
 #[cfg(test)]
@@ -1074,6 +1092,19 @@ mod tests {
             create_context(&env.cfg, "origin", "feat.deleting", None).expect_err("must reject");
 
         assert!(err.to_string().contains(".deleting"));
+    }
+
+    #[test]
+    fn staged_removal_hides_the_context_until_finished() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "one");
+
+        let doomed = stage_removal(&ctx).unwrap();
+
+        assert!(doomed.is_dir());
+        assert_eq!(list_contexts(&env.cfg), vec![]);
+        finish_removal(&doomed).unwrap();
+        assert!(!doomed.exists());
     }
 
     #[test]
