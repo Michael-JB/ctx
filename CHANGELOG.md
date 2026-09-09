@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/Michael-JB/ctx/compare/v2.2.0...v2.2.1) (2026-09-09)
+
+
+### Performance Improvements
+
+* return from deletes once the checkout is renamed away ([ec335e8](https://github.com/Michael-JB/ctx/commit/ec335e839fd727c1bf06b11642527e18d5a897a5))
+
 ## [2.2.0](https://github.com/Michael-JB/ctx/compare/v2.1.0...v2.2.0) (2026-09-08)
 
 
