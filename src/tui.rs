@@ -6,6 +6,7 @@
 //! runs on worker threads that only ever report back as events.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
@@ -278,6 +279,25 @@ fn spawn_worker<F: FnOnce() + Send + 'static>(f: F) {
     #[cfg(test)]
     let f = crate::testutil::propagate_env(f);
     std::thread::spawn(f);
+}
+
+/// Report a removal done as soon as the checkouts are renamed away, then
+/// delete them without holding the busy state. An early quit leaves the
+/// rest to the startup sweep.
+fn report_staged(tx: &Sender<Event>, staged: CtxResult<Vec<PathBuf>>) {
+    let alert = staged.as_ref().err().map(|err| err.to_string());
+    let _ = tx.send(Event::Worker(WorkerDone {
+        reload: true,
+        finish_busy: true,
+        alert,
+        finished: true,
+        ..WorkerDone::default()
+    }));
+    for doomed in staged.unwrap_or_default() {
+        spawn_worker(move || {
+            let _ = contexts::finish_removal(&doomed);
+        });
+    }
 }
 
 // Scoped fetch threads carry the calling test's env stubs along.
@@ -1294,16 +1314,8 @@ impl CtxTui {
                 let tx = self.tx.clone();
                 self.workers += 1;
                 spawn_worker(move || {
-                    let alert = contexts::remove_context(&ctx)
-                        .err()
-                        .map(|err| err.to_string());
-                    let _ = tx.send(Event::Worker(WorkerDone {
-                        reload: true,
-                        finish_busy: true,
-                        alert,
-                        finished: true,
-                        ..WorkerDone::default()
-                    }));
+                    let staged = contexts::stage_removal(&ctx).map(|doomed| vec![doomed]);
+                    report_staged(&tx, staged);
                 });
             }
             ConfirmKind::RemoveRepo(name) => {
@@ -1335,18 +1347,7 @@ impl CtxTui {
                 let cfg = self.cfg.clone();
                 let tx = self.tx.clone();
                 self.workers += 1;
-                spawn_worker(move || {
-                    let alert = contexts::empty_archive(&cfg)
-                        .err()
-                        .map(|err| err.to_string());
-                    let _ = tx.send(Event::Worker(WorkerDone {
-                        reload: true,
-                        finish_busy: true,
-                        alert,
-                        finished: true,
-                        ..WorkerDone::default()
-                    }));
-                });
+                spawn_worker(move || report_staged(&tx, contexts::stage_empty_archive(&cfg)));
             }
         }
     }
@@ -1366,16 +1367,8 @@ impl CtxTui {
         let tx = self.tx.clone();
         self.workers += 1;
         spawn_worker(move || {
-            let alert = teardown(&cfg, mux.as_ref(), &ctx, mode)
-                .err()
-                .map(|err| err.to_string());
-            let _ = tx.send(Event::Worker(WorkerDone {
-                reload: true,
-                finish_busy: true,
-                alert,
-                finished: true,
-                ..WorkerDone::default()
-            }));
+            let staged = teardown(&cfg, mux.as_ref(), &ctx, mode).map(Vec::from_iter);
+            report_staged(&tx, staged);
         });
     }
 
@@ -1909,7 +1902,13 @@ enum Teardown {
     Delete,
 }
 
-fn teardown(cfg: &Config, mux: &dyn Multiplexer, ctx: &Context, mode: Teardown) -> CtxResult<()> {
+/// Tear a context down; a delete yields the renamed checkout still to reclaim.
+fn teardown(
+    cfg: &Config,
+    mux: &dyn Multiplexer,
+    ctx: &Context,
+    mode: Teardown,
+) -> CtxResult<Option<PathBuf>> {
     if mux.exists(ctx) && mux.is_current(ctx) {
         // Killing our own session takes the TUI (and the client) down with
         // it, so land the client elsewhere first.
@@ -1919,8 +1918,8 @@ fn teardown(cfg: &Config, mux: &dyn Multiplexer, ctx: &Context, mode: Teardown) 
     // kill is guaranteed to run. Kill even when the removal fails half-way;
     // the startup sweep finishes the removal.
     let removed = match mode {
-        Teardown::Archive => contexts::archive_context(cfg, ctx).map(|_| ()),
-        Teardown::Delete => contexts::remove_context(ctx),
+        Teardown::Archive => contexts::archive_context(cfg, ctx).map(|_| None),
+        Teardown::Delete => contexts::stage_removal(ctx).map(Some),
     };
     if mux.exists(ctx) {
         mux.kill(ctx)?;
