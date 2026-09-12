@@ -394,8 +394,8 @@ impl CtxTui {
         let blanks = 1 + self.cfg.status.len();
         self.contexts.clear();
         let mut ctxs = contexts::list_contexts(&self.cfg);
-        // Pin the attached context on top: recency is keyed on git activity,
-        // so a busy background session often outranks the one being viewed.
+        // Pin the attached context on top: switching sessions with the
+        // multiplexer's own keys leaves no mark, so recency alone may miss it.
         let current = ctxs.iter().position(|c| self.mux.is_current(c));
         if let Some(index) = current {
             let ctx = ctxs.remove(index);

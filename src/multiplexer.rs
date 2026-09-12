@@ -85,13 +85,104 @@ pub trait Multiplexer: Send + Sync {
     fn kill(&self, ctx: &Context) -> Result<(), MultiplexerError>;
 }
 
+/// Records every open on the context, which is what listings order by.
+struct MarkOpened<M>(M);
+
+impl<M: Multiplexer> Multiplexer for MarkOpened<M> {
+    fn can_open_in_place(&self) -> bool {
+        self.0.can_open_in_place()
+    }
+
+    fn exists(&self, ctx: &Context) -> bool {
+        self.0.exists(ctx)
+    }
+
+    fn is_current(&self, ctx: &Context) -> bool {
+        self.0.is_current(ctx)
+    }
+
+    fn create(
+        &self,
+        ctx: &Context,
+        values: Option<&HashMap<String, String>>,
+    ) -> Result<(), MultiplexerError> {
+        self.0.create(ctx, values)
+    }
+
+    fn open(
+        &self,
+        ctx: &Context,
+        values: Option<&HashMap<String, String>>,
+    ) -> Result<(), MultiplexerError> {
+        // Before, not after: a terminal-takeover attach only returns on detach.
+        crate::contexts::mark_opened(ctx);
+        self.0.open(ctx, values)
+    }
+
+    fn kill(&self, ctx: &Context) -> Result<(), MultiplexerError> {
+        self.0.kill(ctx)
+    }
+}
+
 pub fn get_multiplexer(kind: MultiplexerKind, layout: Node) -> std::sync::Arc<dyn Multiplexer> {
     match kind {
-        MultiplexerKind::Tmux => {
-            std::sync::Arc::new(crate::multiplexers::tmux::TmuxMultiplexer::new(layout))
+        MultiplexerKind::Tmux => std::sync::Arc::new(MarkOpened(
+            crate::multiplexers::tmux::TmuxMultiplexer::new(layout),
+        )),
+        MultiplexerKind::Zellij => std::sync::Arc::new(MarkOpened(
+            crate::multiplexers::zellij::ZellijMultiplexer::new(layout),
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    struct Inert;
+
+    impl Multiplexer for Inert {
+        fn can_open_in_place(&self) -> bool {
+            true
         }
-        MultiplexerKind::Zellij => {
-            std::sync::Arc::new(crate::multiplexers::zellij::ZellijMultiplexer::new(layout))
+        fn exists(&self, _ctx: &Context) -> bool {
+            false
         }
+        fn is_current(&self, _ctx: &Context) -> bool {
+            false
+        }
+        fn create(
+            &self,
+            _ctx: &Context,
+            _values: Option<&HashMap<String, String>>,
+        ) -> Result<(), MultiplexerError> {
+            Ok(())
+        }
+        fn open(
+            &self,
+            _ctx: &Context,
+            _values: Option<&HashMap<String, String>>,
+        ) -> Result<(), MultiplexerError> {
+            Ok(())
+        }
+        fn kill(&self, _ctx: &Context) -> Result<(), MultiplexerError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn open_marks_the_context_as_opened() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+        let ctx = Context {
+            repo: "repo".into(),
+            name: "a".into(),
+            path: PathBuf::from(dir.path()),
+        };
+
+        MarkOpened(Inert).open(&ctx, None).unwrap();
+
+        assert!(ctx.path.join(".git").join("ctx-opened").exists());
     }
 }
