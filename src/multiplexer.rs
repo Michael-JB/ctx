@@ -50,6 +50,14 @@ pub(crate) fn env_truthy(key: &str) -> bool {
     env_var(key).is_some_and(|value| !value.is_empty())
 }
 
+/// Keep the invoking agent's child markers out of a command that may start
+/// the multiplexer server.
+pub(crate) fn drop_agent_child_vars(cmd: &mut std::process::Command) {
+    for key in crate::builtins::AGENT_CHILD_VARS {
+        cmd.env_remove(key);
+    }
+}
+
 pub trait Multiplexer: Send + Sync {
     /// Whether open() returns control instead of taking over the terminal.
     fn can_open_in_place(&self) -> bool;

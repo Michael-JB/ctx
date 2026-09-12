@@ -6,7 +6,7 @@ use super::CmdError;
 use crate::contexts::Context;
 use crate::git::new_command;
 use crate::layout::{Node, Pane, SplitDirection, resolve_layout};
-use crate::multiplexer::{Multiplexer, MultiplexerError, env_truthy};
+use crate::multiplexer::{Multiplexer, MultiplexerError, drop_agent_child_vars, env_truthy};
 use crate::shellrun::via_shell;
 
 fn session_name(ctx: &Context) -> String {
@@ -24,7 +24,9 @@ fn tmux(args: &[&str]) -> Result<String, CmdError> {
             .map(str::to_string)
             .collect()
     };
-    let output = new_command("tmux")
+    let mut cmd = new_command("tmux");
+    drop_agent_child_vars(&mut cmd);
+    let output = cmd
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -357,6 +359,29 @@ mod tests {
             .filter(|call| call[0] == "kill-session")
             .collect();
         assert_eq!(kills, vec![vec!["kill-session", "-t", "=s"]]);
+    }
+
+    #[test]
+    fn create_hides_the_invoking_agents_child_markers() {
+        let env = test_env();
+        let env_log = env.root().join("tmux-env.log");
+        let (_log, _guard) = stub_tmux(
+            &env,
+            &format!(
+                "[ \"$1\" = has-session ] && exit 1\n\
+                 [ \"$1\" = new-session ] && {{ printenv | grep '^CLAUDE_CODE_CHILD_SESSION' >> {}; true; }}",
+                env_log.display()
+            ),
+        );
+        let _tmux = push_env("TMUX", "/tmp/tmux-1/default,1,0");
+        let _child = push_env("CLAUDE_CODE_CHILD_SESSION", "1");
+        let mux = TmuxMultiplexer::new(Node::Pane(Pane::default()));
+
+        mux.create(&ctx("repo", "a"), Some(&HashMap::new()))
+            .unwrap();
+
+        let leaked = std::fs::read_to_string(&env_log).unwrap_or_default();
+        assert_eq!(leaked.trim(), "");
     }
 
     #[test]
