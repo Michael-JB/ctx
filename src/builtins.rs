@@ -35,6 +35,17 @@ fn claude(args: Option<&str>, values: Option<&HashMap<String, String>>) -> Strin
 
 pub const PANE_BUILTINS: &[&str] = &["claude"];
 
+/// Variables an agent sets on every command it runs to mark it as its
+/// child. They are scoped to that one command, but a multiplexer server
+/// started by it outlives it and would hand them to every pane, so every
+/// agent opened in the context later would run as a child too.
+pub const AGENT_CHILD_VARS: &[&str] = &[
+    // Claude Code: a child session persists no transcript.
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_CHILD_SESSION",
+];
+
 /// The values a builtin consumes at context creation.
 pub fn builtin_keys(name: &str) -> &'static [&'static str] {
     match name {

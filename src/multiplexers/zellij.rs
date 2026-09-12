@@ -8,7 +8,9 @@ use sha2::{Digest, Sha256};
 use crate::contexts::Context;
 use crate::git::new_command;
 use crate::layout::{Node, SplitDirection, resolve_layout};
-use crate::multiplexer::{Multiplexer, MultiplexerError, env_truthy, env_var};
+use crate::multiplexer::{
+    Multiplexer, MultiplexerError, drop_agent_child_vars, env_truthy, env_var,
+};
 use crate::shellrun::via_shell;
 
 // macOS caps sockaddr_un paths at 104 bytes including the terminator, and
@@ -129,6 +131,14 @@ fn env_without_zellij() -> Vec<(String, String)> {
     env.into_iter().collect()
 }
 
+/// A zellij invocation that may start the server.
+fn server_command() -> std::process::Command {
+    let mut cmd = std::process::Command::new("zellij");
+    cmd.env_clear().envs(env_without_zellij());
+    drop_agent_child_vars(&mut cmd);
+    cmd
+}
+
 /// Run a zellij invocation that must succeed, folding its own error text
 /// (stderr, else stdout) into `message` on failure.
 fn run_zellij(mut cmd: std::process::Command, message: String) -> Result<(), MultiplexerError> {
@@ -221,8 +231,7 @@ impl Multiplexer for ZellijMultiplexer {
         }
         let session = session_name(ctx);
         let layout_file = self.write_layout_file(ctx, values)?;
-        let mut cmd = std::process::Command::new("zellij");
-        cmd.env_clear().envs(env_without_zellij());
+        let mut cmd = server_command();
         cmd.args([
             "--layout",
             &layout_file,
@@ -263,7 +272,7 @@ impl Multiplexer for ZellijMultiplexer {
             new_command("zellij").args(["attach", &session]).exec()
         } else {
             let layout_file = self.write_layout_file(ctx, values)?;
-            new_command("zellij")
+            server_command()
                 .args([
                     "--session",
                     &session,
@@ -439,6 +448,26 @@ mod tests {
         assert_eq!(args[2..], ["attach", "--create-background", "repo--a"]);
         // With the session env visible, zellij would open the layout as new
         // tabs of the current session instead of creating one.
+        let leaked = std::fs::read_to_string(&env_log).unwrap_or_default();
+        assert_eq!(leaked.trim(), "");
+    }
+
+    #[test]
+    fn create_hides_the_invoking_agents_child_markers() {
+        let env = test_env();
+        let env_log = env.root().join("zellij-env.log");
+        let script = format!(
+            "case \"$*\" in *--create-background*) printenv | grep '^CLAUDE_CODE_CHILD_SESSION' >> {} || true;; esac\n\
+             exit 0",
+            env_log.display()
+        );
+        let _guard = env.fake_cli("zellij", &script);
+        let _child = push_env("CLAUDE_CODE_CHILD_SESSION", "1");
+        let mux = ZellijMultiplexer::new(Node::Pane(Pane::default()));
+
+        mux.create(&ctx("repo", "a"), Some(&HashMap::new()))
+            .unwrap();
+
         let leaked = std::fs::read_to_string(&env_log).unwrap_or_default();
         assert_eq!(leaked.trim(), "");
     }
