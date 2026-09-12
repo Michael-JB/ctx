@@ -1584,12 +1584,13 @@ impl CtxTui {
             let frame = SPINNER_FRAMES[self.spinner_frame % SPINNER_FRAMES.len()];
             title = format!("{title} {frame}");
         }
+        let border = Style::default().fg(border);
         let mut block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(border))
+            .border_style(border)
             .title(title);
         if panel == Panel::Contexts {
-            block = block.title_top(version_line().right_aligned());
+            block = block.title_top(version_line(border).right_aligned());
         }
         let inner = block.inner(area);
         block.render_widget(area, buffer);
@@ -2087,14 +2088,16 @@ fn theme_color(name: &str) -> Color {
     }
 }
 
-/// This build's version, for the Contexts panel's top border.
-fn version_line() -> Line<'static> {
+/// This build's version, for the Contexts panel's top border. A segment of
+/// border trails it so the text sits one cell in from the corner while the
+/// frame stays continuous.
+fn version_line(border: Style) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             concat!("v", env!("CARGO_PKG_VERSION")),
             Style::default().dim(),
         ),
-        Span::raw(" "),
+        Span::styled(BorderType::Rounded.to_border_set().horizontal_top, border),
     ])
 }
 
