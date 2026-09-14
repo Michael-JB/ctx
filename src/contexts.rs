@@ -34,22 +34,20 @@ fn mtime(path: &Path) -> Option<SystemTime> {
         .ok()
 }
 
-/// Proxy for the last interaction: the latest git activity in the checkout.
-///
-/// `.git/logs/HEAD` is appended to on commits, checkouts, and resets;
-/// `.git/index` is rewritten by staging and status refreshes. Neither sees
-/// plain file edits, but agent-driven work touches git constantly.
-pub fn last_active(ctx: &Context) -> SystemTime {
-    let candidates = [
-        ctx.path.join(".git").join("logs").join("HEAD"),
-        ctx.path.join(".git").join("index"),
-    ];
-    candidates
-        .iter()
-        .filter_map(|path| mtime(path))
-        .max()
-        .or_else(|| mtime(&ctx.path))
-        .unwrap_or(SystemTime::UNIX_EPOCH)
+fn opened_marker(ctx: &Context) -> PathBuf {
+    ctx.path.join(".git").join("ctx-opened")
+}
+
+/// Record the user opening the context; the marker's mtime is the timestamp.
+pub fn mark_opened(ctx: &Context) {
+    // Listing order is not worth failing an open over.
+    let _ = std::fs::File::create(opened_marker(ctx))
+        .and_then(|file| file.set_modified(SystemTime::now()));
+}
+
+/// When the user last opened the context, if ever.
+fn last_opened(ctx: &Context) -> Option<SystemTime> {
+    mtime(&opened_marker(ctx))
 }
 
 /// Whether a directory is a full clone, the only thing a context can be.
@@ -70,7 +68,8 @@ fn sorted_dirs(root: &Path) -> Vec<PathBuf> {
     paths
 }
 
-/// Contexts under a <root>/<repo>/<name> tree, most recently active first.
+/// Contexts under a <root>/<repo>/<name> tree, most recently opened first;
+/// never-opened ones follow by name.
 fn scan(root: &Path) -> Vec<Context> {
     if !root.is_dir() {
         return Vec::new();
@@ -103,15 +102,15 @@ fn scan(root: &Path) -> Vec<Context> {
             }
         }
     }
-    let mut keyed: Vec<(SystemTime, String, Context)> = found
+    let mut keyed: Vec<(Option<SystemTime>, String, Context)> = found
         .into_iter()
-        .map(|ctx| (last_active(&ctx), ctx.qualified(), ctx))
+        .map(|ctx| (last_opened(&ctx), ctx.qualified(), ctx))
         .collect();
     keyed.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     keyed.into_iter().map(|(_, _, ctx)| ctx).collect()
 }
 
-/// All contexts, most recently active first.
+/// All contexts, most recently opened first.
 pub fn list_contexts(cfg: &Config) -> Vec<Context> {
     scan(&cfg.contexts_dir)
 }
@@ -795,48 +794,31 @@ mod tests {
         assert_eq!(list_contexts(&env.cfg), vec![ctx]);
     }
 
-    fn set_activity(ctx: &Context, when: i64) {
-        for rel in [".git/logs/HEAD", ".git/index"] {
-            set_mtime(&ctx.path.join(rel), when);
-        }
-    }
-
-    fn set_mtime(path: &Path, when: i64) {
-        let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
-        file.set_times(
-            std::fs::FileTimes::new()
-                .set_accessed(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(when as u64))
-                .set_modified(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(when as u64)),
-        )
-        .unwrap();
+    fn set_opened(ctx: &Context, when: u64) {
+        mark_opened(ctx);
+        let file = std::fs::File::open(opened_marker(ctx)).unwrap();
+        file.set_modified(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(when))
+            .unwrap();
     }
 
     #[test]
-    fn list_contexts_sorts_most_recently_active_first() {
+    fn list_contexts_sorts_last_opened_first_then_unopened_by_name() {
         let (env, _origin) = registered();
         let older = create(&env, "origin", "older");
         let newer = create(&env, "origin", "newer");
-        set_activity(&older, 1_000);
-        set_activity(&newer, 2_000);
+        let b = create(&env, "origin", "b");
+        let a = create(&env, "origin", "a");
+        set_opened(&older, 1_000);
+        set_opened(&newer, 2_000);
 
-        assert_eq!(list_contexts(&env.cfg), vec![newer.clone(), older.clone()]);
+        assert_eq!(
+            list_contexts(&env.cfg),
+            vec![newer.clone(), older.clone(), a.clone(), b.clone()]
+        );
 
-        set_activity(&older, 3_000);
+        mark_opened(&older);
 
-        assert_eq!(list_contexts(&env.cfg), vec![older, newer]);
-    }
-
-    #[test]
-    fn index_activity_alone_counts_as_recency() {
-        let (env, _origin) = registered();
-        let quiet = create(&env, "origin", "quiet");
-        let staged = create(&env, "origin", "staged");
-        set_activity(&quiet, 1_000);
-        set_activity(&staged, 1_000);
-
-        set_mtime(&staged.path.join(".git").join("index"), 2_000);
-
-        assert_eq!(list_contexts(&env.cfg), vec![staged, quiet]);
+        assert_eq!(list_contexts(&env.cfg), vec![older, newer, a, b]);
     }
 
     #[test]

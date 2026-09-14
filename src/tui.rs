@@ -394,8 +394,8 @@ impl CtxTui {
         let blanks = 1 + self.cfg.status.len();
         self.contexts.clear();
         let mut ctxs = contexts::list_contexts(&self.cfg);
-        // Pin the attached context on top: recency is keyed on git activity,
-        // so a busy background session often outranks the one being viewed.
+        // Pin the attached context on top: switching sessions with the
+        // multiplexer's own keys leaves no mark, so recency alone may miss it.
         let current = ctxs.iter().position(|c| self.mux.is_current(c));
         if let Some(index) = current {
             let ctx = ctxs.remove(index);
@@ -2197,7 +2197,7 @@ mod tests {
             Ok(())
         }
 
-        fn open(
+        fn attach(
             &self,
             ctx: &Context,
             _values: Option<&HashMap<String, String>>,
@@ -2444,6 +2444,27 @@ mod tests {
             app.contexts.cursor, 1,
             "the cursor must start on the next context"
         );
+    }
+
+    #[test]
+    fn opening_a_context_moves_it_to_the_top() {
+        let (env, _origin) = registered();
+        for name in ["one", "two"] {
+            create(&env, "origin", name);
+        }
+        let mut app = app(&env.cfg, TestMux::stub());
+        let two = contexts::find_context(&env.cfg, "two").unwrap();
+
+        app.mux.open(&two, None).unwrap();
+        app.reload();
+
+        let rows: Vec<_> = app
+            .contexts
+            .rows
+            .iter()
+            .map(|row| row.key.as_str())
+            .collect();
+        assert_eq!(rows, ["two", "one"]);
     }
 
     #[test]

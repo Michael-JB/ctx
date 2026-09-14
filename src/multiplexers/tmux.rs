@@ -183,7 +183,7 @@ impl Multiplexer for TmuxMultiplexer {
         Ok(())
     }
 
-    fn open(
+    fn attach(
         &self,
         ctx: &Context,
         values: Option<&HashMap<String, String>>,

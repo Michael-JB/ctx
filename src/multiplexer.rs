@@ -79,6 +79,17 @@ pub trait Multiplexer: Send + Sync {
         &self,
         ctx: &Context,
         values: Option<&HashMap<String, String>>,
+    ) -> Result<(), MultiplexerError> {
+        // Before, not after: a terminal-takeover attach only returns on detach.
+        crate::contexts::mark_opened(ctx);
+        self.attach(ctx, values)
+    }
+
+    /// open() proper; the backend's part, without the bookkeeping.
+    fn attach(
+        &self,
+        ctx: &Context,
+        values: Option<&HashMap<String, String>>,
     ) -> Result<(), MultiplexerError>;
 
     /// Tear down the context's session.

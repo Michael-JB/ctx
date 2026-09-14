@@ -598,7 +598,7 @@ mod tests {
             Ok(())
         }
 
-        fn open(
+        fn attach(
             &self,
             ctx: &Context,
             values: Option<&HashMap<String, String>>,
