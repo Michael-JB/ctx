@@ -233,7 +233,7 @@ impl Multiplexer for ZellijMultiplexer {
         run_zellij(cmd, format!("zellij could not create '{session}'"))
     }
 
-    fn open(
+    fn attach(
         &self,
         ctx: &Context,
         values: Option<&HashMap<String, String>>,
