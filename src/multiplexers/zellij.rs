@@ -461,7 +461,8 @@ mod tests {
         let script_path =
             &content[args_start..content[args_start..].find('"').unwrap() + args_start];
         let script = std::fs::read_to_string(script_path).unwrap();
-        assert!(script.contains("ctx builtin claude trust; exec claude '\"'\"'explore x'\"'\"'"));
+        let command = crate::builtins::builtin_command("claude", None, Some(&values));
+        assert!(script.contains(&command));
     }
 
     #[test]
