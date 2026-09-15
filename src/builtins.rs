@@ -25,29 +25,13 @@ fn claude(args: Option<&str>, values: Option<&HashMap<String, String>>) -> Strin
         }
     }
     // Pre-trust the checkout so the session doesn't stop at the trust dialog.
-    // Drop the markers Claude Code sets on the commands it runs: a session
-    // created from within an agent's tool call inherited them, and a claude
-    // seeing them runs as a child session that persists no transcript.
     // Run through `sh` so the composed line parses the same everywhere: the
     // shell that ends up reading it may not speak POSIX quoting (fish).
     format!(
         "sh -c {}",
-        quote(&format!(
-            "ctx builtin claude trust; unset {}; exec {command}",
-            CHILD_MARKERS.join(" ")
-        ))
+        quote(&format!("ctx builtin claude trust; exec {command}"))
     )
 }
-
-// XXX: Undocumented Claude Code internals, like the trust seeding; they may
-// change with any release. Remove once Claude Code stops treating a process
-// that merely inherits its environment as a child session, or offers a
-// documented way to launch a fresh session from one.
-const CHILD_MARKERS: &[&str] = &[
-    "CLAUDECODE",
-    "CLAUDE_CODE_ENTRYPOINT",
-    "CLAUDE_CODE_CHILD_SESSION",
-];
 
 pub const PANE_BUILTINS: &[&str] = &["claude"];
 
