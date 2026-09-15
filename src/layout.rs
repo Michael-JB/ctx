@@ -374,8 +374,7 @@ mod tests {
         assert_eq!(accepted_keys(&pane("claude")), HashSet::new());
     }
 
-    // What the claude builtin runs before exec'ing claude.
-    const PRELUDE: &str = "ctx builtin claude trust; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_CHILD_SESSION";
+    const TRUST: &str = "ctx builtin claude trust";
 
     fn values(pairs: &[(&str, &str)]) -> HashMap<String, String> {
         pairs
@@ -402,7 +401,7 @@ mod tests {
         let quoted_prompt = r#"'"'"'explore the bug'"'"'"#;
         assert_eq!(
             node,
-            focused_pane(&format!("sh -c '{PRELUDE}; exec claude {quoted_prompt}'"))
+            focused_pane(&format!("sh -c '{TRUST}; exec claude {quoted_prompt}'"))
         );
     }
 
@@ -410,7 +409,7 @@ mod tests {
     fn resolve_claude_without_a_prompt() {
         let node = resolve_layout(&builtin_pane("claude", None, false), Some(&values(&[])));
 
-        assert_eq!(node, pane(&format!("sh -c '{PRELUDE}; exec claude'")));
+        assert_eq!(node, pane(&format!("sh -c '{TRUST}; exec claude'")));
     }
 
     #[test]
@@ -422,7 +421,7 @@ mod tests {
 
         assert_eq!(
             node,
-            pane(&format!("sh -c '{PRELUDE}; exec claude --model opus'"))
+            pane(&format!("sh -c '{TRUST}; exec claude --model opus'"))
         );
     }
 
@@ -432,7 +431,7 @@ mod tests {
 
         assert_eq!(
             node,
-            pane(&format!("sh -c '{PRELUDE}; exec claude --continue'"))
+            pane(&format!("sh -c '{TRUST}; exec claude --continue'"))
         );
     }
 
@@ -443,7 +442,7 @@ mod tests {
         assert_eq!(
             node,
             pane(&format!(
-                "sh -c '{PRELUDE}; exec claude --model opus --continue'"
+                "sh -c '{TRUST}; exec claude --model opus --continue'"
             ))
         );
     }
@@ -463,7 +462,7 @@ mod tests {
                 direction: SplitDirection::Column,
                 panes: vec![
                     pane("nvim"),
-                    pane(&format!("sh -c '{PRELUDE}; exec claude x'"))
+                    pane(&format!("sh -c '{TRUST}; exec claude x'"))
                 ],
             })
         );

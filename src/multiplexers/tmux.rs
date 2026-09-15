@@ -299,8 +299,7 @@ mod tests {
         let launcher = shlex::split(new_sessions[0].last().unwrap()).unwrap();
         assert_eq!(launcher[0], "sh");
         let script = std::fs::read_to_string(&launcher[1]).unwrap();
-        let command = crate::builtins::builtin_command("claude", None, Some(&values));
-        assert!(script.contains(&format!("exec {command} <&9 9<&-")));
+        assert!(script.contains("exec sh -c 'ctx builtin claude trust; exec claude hi' <&9 9<&-"));
     }
 
     #[test]
