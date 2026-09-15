@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.3.0](https://github.com/Michael-JB/ctx/compare/v2.2.1...v2.3.0) (2026-09-15)
+
+
+### Features
+
+* order contexts by when they were last opened ([65f770b](https://github.com/Michael-JB/ctx/commit/65f770bcc98479d7419fbe1115f94ed2d1350ec9))
+
+
+### Bug Fixes
+
+* keep transcripts of claude sessions in contexts an agent created ([77310b3](https://github.com/Michael-JB/ctx/commit/77310b39fdb16078cf1c1b94f25b2cc43c8945cf))
+
+
+### Reverts
+
+* keep transcripts of claude sessions in contexts an agent created ([b141662](https://github.com/Michael-JB/ctx/commit/b1416628ce883e422b33839fdcdfc717a1b3a208))
+
 ## [2.2.1](https://github.com/Michael-JB/ctx/compare/v2.2.0...v2.2.1) (2026-09-09)
 
 
