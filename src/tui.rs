@@ -267,6 +267,8 @@ pub struct CtxTui {
     // Alerts that arrived while a prompt or confirm was open; shown once
     // the popup closes (Textual stacked screens instead).
     pending_alerts: Vec<String>,
+    // The mirror refresh started by the last name prompt, keyed by repo.
+    prefetch: Option<(String, repos::Refresh)>,
     workers: usize,
     outcome: Option<Request>,
     quit: bool,
@@ -342,6 +344,7 @@ impl CtxTui {
             filter: None,
             modal: None,
             pending_alerts: Vec::new(),
+            prefetch: None,
             workers: 0,
             outcome: None,
             quit: false,
@@ -975,8 +978,40 @@ impl CtxTui {
     fn action_new(&mut self) {
         match self.repo_for_new() {
             None => self.alert("no repos registered; press a to add one"),
-            Some(repo) => self.name_prompt(repo),
+            Some(repo) => {
+                // Only a create running in this process can collect the
+                // refresh; one that exits to the CLI fetches for itself.
+                if self.mux.can_open_in_place() {
+                    self.prefetch(&repo);
+                }
+                self.name_prompt(repo);
+            }
         }
+    }
+
+    /// Refresh the mirror while the name is typed, so the fetch overlaps the
+    /// typing instead of following it. A refresh still running is reused:
+    /// two fetches into one mirror would trip over each other's ref locks.
+    fn prefetch(&mut self, repo: &str) {
+        if let Some((current, refresh)) = &self.prefetch
+            && current == repo
+            && refresh.is_pending()
+        {
+            return;
+        }
+        let refresh = repos::Refresh::default();
+        self.prefetch = Some((repo.to_string(), refresh.clone()));
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        let repo = repo.to_string();
+        self.workers += 1;
+        spawn_worker(move || {
+            refresh.finish(repos::update_repo(&cfg, &repo));
+            let _ = tx.send(Event::Worker(WorkerDone {
+                finished: true,
+                ..WorkerDone::default()
+            }));
+        });
     }
 
     fn action_new_from_base(&mut self) {
@@ -1083,6 +1118,10 @@ impl CtxTui {
             self.quit = true;
             return;
         }
+        let refresh = match &self.prefetch {
+            Some((current, refresh)) if base.is_none() && *current == repo => Some(refresh.clone()),
+            _ => None,
+        };
         self.start_busy(Panel::Contexts);
         let cfg = self.cfg.clone();
         let mux = self.mux.clone();
@@ -1102,7 +1141,13 @@ impl CtxTui {
                 }));
                 return;
             }
-            let ctx = match contexts::create_context(&cfg, &repo, &name, base.as_deref()) {
+            let ctx = match contexts::create_context_with(
+                &cfg,
+                &repo,
+                &name,
+                base.as_deref(),
+                refresh.as_ref(),
+            ) {
                 Err(err) => {
                     let _ = tx.send(Event::Worker(WorkerDone {
                         finish_busy: true,
@@ -2139,7 +2184,7 @@ mod tests {
     use super::*;
     use crate::config::StatusColumn;
     use crate::multiplexer::MultiplexerError;
-    use crate::testutil::{TestEnv, test_env};
+    use crate::testutil::{TestEnv, commit_file, test_env};
 
     #[derive(Default)]
     struct MuxState {
@@ -2675,6 +2720,64 @@ mod tests {
             app.key(KeyCode::Char(c));
         }
         app.key(KeyCode::Enter);
+    }
+
+    #[test]
+    fn opening_the_name_prompt_refreshes_the_mirror() {
+        let (env, origin) = registered();
+        commit_file(&origin, "new.txt", "x\n");
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Char('n'));
+        app.drain_idle();
+
+        let mirror = repos::repo_path(&env.cfg, "origin");
+        assert_eq!(
+            crate::testutil::git(&["rev-parse", "main"], &mirror),
+            crate::testutil::git(&["rev-parse", "main"], &origin)
+        );
+        let (_, refresh) = app
+            .prefetch
+            .as_ref()
+            .expect("the refresh is kept for the create");
+        assert!(refresh.wait().is_ok());
+    }
+
+    #[test]
+    fn a_pending_refresh_is_reused_by_the_next_prompt() {
+        let (env, _origin) = registered();
+        let mut app = app(&env.cfg, TestMux::stub());
+        app.drain_idle();
+        let pending = repos::Refresh::default();
+        app.prefetch = Some(("origin".to_string(), pending.clone()));
+
+        app.key(KeyCode::Char('n'));
+
+        assert_eq!(app.workers, 0, "no second fetch may start");
+        let (_, refresh) = app.prefetch.as_ref().unwrap();
+        assert!(refresh.is_pending());
+        // Unblock any waiter before the app is dropped.
+        pending.finish(Ok(()));
+    }
+
+    #[test]
+    fn a_failed_refresh_fails_the_create() {
+        let (env, _origin) = registered();
+        let mut app = app(&env.cfg, TestMux::stub());
+        let refresh = repos::Refresh::default();
+        app.prefetch = Some(("origin".to_string(), refresh.clone()));
+
+        // The prompt reuses the pending refresh, which then fails mid-typing.
+        app.key(KeyCode::Char('n'));
+        refresh.finish(crate::errors::msg("fetch failed"));
+        app.keys(&[KeyCode::Backspace, KeyCode::Char('o'), KeyCode::Enter]);
+        app.drain_idle();
+
+        assert!(
+            matches!(&app.modal, Some(Modal::Alert { message }) if message == "fetch failed"),
+            "the refresh error must reach the user"
+        );
+        assert!(contexts::find_context(&env.cfg, "o").is_err());
     }
 
     #[test]
