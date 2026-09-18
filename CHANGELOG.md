@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.1](https://github.com/Michael-JB/ctx/compare/v2.3.0...v2.3.1) (2026-09-18)
+
+
+### Performance Improvements
+
+* new contexts from the TUI open sooner ([44080ec](https://github.com/Michael-JB/ctx/commit/44080ec58efffcb1d83086ce008b67598aeb4fe4))
+
 ## [2.3.0](https://github.com/Michael-JB/ctx/compare/v2.2.1...v2.3.0) (2026-09-15)
 
 
