@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 
 use crate::config::Config;
-use crate::errors::{Result, msg};
+use crate::errors::{CtxError, Result, msg};
 use crate::git::{git, git_quiet};
 
 pub fn repo_path(cfg: &Config, name: &str) -> PathBuf {
@@ -180,6 +181,26 @@ pub fn update_repo(cfg: &Config, name: &str) -> Result<()> {
         Some(&path),
     )?;
     fetch_lfs(&path, &branch)
+}
+
+/// The outcome of a mirror refresh running on another thread, for callers
+/// that start the fetch early and collect it later.
+#[derive(Clone, Default)]
+pub struct Refresh(Arc<OnceLock<std::result::Result<(), String>>>);
+
+impl Refresh {
+    pub fn finish(&self, result: Result<()>) {
+        let _ = self.0.set(result.map_err(|err| err.to_string()));
+    }
+
+    pub fn is_pending(&self) -> bool {
+        self.0.get().is_none()
+    }
+
+    /// Block until the refresh has finished.
+    pub fn wait(&self) -> Result<()> {
+        self.0.wait().clone().map_err(CtxError::Msg)
+    }
 }
 
 pub fn repo_url(cfg: &Config, name: &str) -> Result<String> {

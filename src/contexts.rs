@@ -230,6 +230,18 @@ fn random_name_from(cfg: &Config, adjectives: &[&str], animals: &[&str]) -> Resu
 }
 
 pub fn create_context(cfg: &Config, repo: &str, name: &str, base: Option<&str>) -> Result<Context> {
+    create_context_with(cfg, repo, name, base, None)
+}
+
+/// Like `create_context`, but a mirror refresh already under way is awaited
+/// in place of fetching here (it is only consulted when no base is given).
+pub fn create_context_with(
+    cfg: &Config,
+    repo: &str,
+    name: &str,
+    base: Option<&str>,
+    refresh: Option<&repos::Refresh>,
+) -> Result<Context> {
     // Spaces are welcome in context names but not in branch names; dash them
     // out. Anything else unfit for a branch is rejected, not rewritten.
     let branch = format!("{}{}", cfg.branch_prefix, name.replace(' ', "-"));
@@ -245,7 +257,10 @@ pub fn create_context(cfg: &Config, repo: &str, name: &str, base: Option<&str>) 
 
     let (base, fetch_base) = match base {
         None => {
-            repos::update_repo(cfg, repo)?;
+            match refresh {
+                Some(refresh) => refresh.wait()?,
+                None => repos::update_repo(cfg, repo)?,
+            }
             (repos::default_branch(cfg, repo)?, false)
         }
         // The mirror only carries the default branch; fetch the base into the context.
@@ -684,6 +699,31 @@ mod tests {
         let ctx = create(&env, "origin", "feat");
 
         assert!(ctx.path.join("new.txt").exists());
+    }
+
+    #[test]
+    fn create_with_a_finished_refresh_does_not_fetch() {
+        let (env, origin) = registered();
+        commit_file(&origin, "new.txt", "x\n");
+        let refresh = repos::Refresh::default();
+        refresh.finish(Ok(()));
+
+        let ctx = create_context_with(&env.cfg, "origin", "feat", None, Some(&refresh)).unwrap();
+
+        assert!(!ctx.path.join("new.txt").exists());
+    }
+
+    #[test]
+    fn create_reports_a_failed_refresh() {
+        let (env, _origin) = registered();
+        let refresh = repos::Refresh::default();
+        refresh.finish(msg("boom"));
+
+        let err = create_context_with(&env.cfg, "origin", "feat", None, Some(&refresh))
+            .expect_err("a failed refresh must fail the create");
+
+        assert_eq!(err.to_string(), "boom");
+        assert!(!context_path(&env.cfg, "origin", "feat").exists());
     }
 
     #[test]
