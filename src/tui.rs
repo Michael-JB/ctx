@@ -178,6 +178,7 @@ enum PromptKind {
     NewName { repo: String },
     NewBase { repo: String, name: String },
     AddRepo,
+    Rename { ctx: Context },
 }
 
 enum ConfirmKind {
@@ -724,6 +725,9 @@ impl CtxTui {
             (Panel::Contexts, KeyCode::Char('o')) => self.action_open_pr(),
             (Panel::Contexts, KeyCode::Char('d')) if gated => self.action_archive(),
             (Panel::Contexts, KeyCode::Char('D')) if gated => self.action_delete(),
+            (Panel::Contexts | Panel::Archived, KeyCode::Char('r')) if gated => {
+                self.action_rename()
+            }
             (Panel::Repos, KeyCode::Char('a')) if gated => self.action_add_repo(),
             (Panel::Repos, KeyCode::Char('s')) if gated => self.action_set_default_repo(),
             (Panel::Repos, KeyCode::Char('d')) if gated => self.action_delete(),
@@ -1067,6 +1071,19 @@ impl CtxTui {
                 });
             }
             PromptKind::NewBase { repo, name } => self.create(repo, name, Some(value)),
+            PromptKind::Rename { ctx } => {
+                // Accepting the old name unchanged is a cancel.
+                if value == ctx.name {
+                    return;
+                }
+                let panel = if contexts::is_archived(&self.cfg, &ctx) {
+                    Panel::Archived
+                } else {
+                    Panel::Contexts
+                };
+                self.start_busy(panel);
+                self.teardown_worker(ctx, Teardown::Rename(value));
+            }
             PromptKind::AddRepo => {
                 self.start_busy(Panel::Repos);
                 let cfg = self.cfg.clone();
@@ -1415,6 +1432,27 @@ impl CtxTui {
         }
     }
 
+    /// Prompt for the hovered context's new name, live or archived.
+    fn action_rename(&mut self) {
+        let ctx = match self.panel {
+            Panel::Contexts => self.selected_context(),
+            Panel::Archived => self.selected_archived(),
+            Panel::Repos => None,
+        };
+        let Some(ctx) = ctx else {
+            return;
+        };
+        // Editable, cursor at the end: renames are mostly a tweak of the
+        // old name, so it must not vanish on the first keystroke.
+        self.modal = Some(Modal::Prompt {
+            title: format!("Rename {}", ctx.qualified()),
+            placeholder: "name",
+            input: Input::new(ctx.name.clone()),
+            replace_on_type: false,
+            kind: PromptKind::Rename { ctx },
+        });
+    }
+
     /// Archive the selected context straight away; it is cheap to undo.
     fn action_archive(&mut self) {
         let Some(ctx) = self.selected_context() else {
@@ -1742,6 +1780,7 @@ impl CtxTui {
                 ("o", "Open PR"),
                 ("d", "Archive"),
                 ("D", "Delete"),
+                ("r", "Rename"),
                 ("n", "New context"),
                 ("/", "Filter"),
                 ("R", "Refresh"),
@@ -1761,6 +1800,7 @@ impl CtxTui {
             Panel::Archived => &[
                 ("u", "Unarchive"),
                 ("d", "Delete"),
+                ("r", "Rename"),
                 ("e", "Empty"),
                 ("n", "New context"),
                 ("/", "Filter"),
@@ -1965,9 +2005,11 @@ impl CtxTui {
 enum Teardown {
     Archive,
     Delete,
+    Rename(String),
 }
 
-/// Tear a context down; a delete yields the renamed checkout still to reclaim.
+/// Move a context out from under its session and kill the session; a
+/// delete yields the renamed-away checkout still to reclaim.
 fn teardown(
     cfg: &Config,
     mux: &dyn Multiplexer,
@@ -1985,6 +2027,7 @@ fn teardown(
     let removed = match mode {
         Teardown::Archive => contexts::archive_context(cfg, ctx).map(|_| None),
         Teardown::Delete => contexts::stage_removal(ctx).map(Some),
+        Teardown::Rename(name) => contexts::rename_context(cfg, ctx, &name).map(|_| None),
     };
     if mux.exists(ctx) {
         mux.kill(ctx)?;
@@ -2100,6 +2143,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
             ("N", "new context from a base branch"),
             ("d", "archive context"),
             ("D", "permanently delete context"),
+            ("r", "rename context"),
         ],
         Panel::Repos => &[
             ("enter / n", "new context"),
@@ -2114,6 +2158,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
             ("n", "new context"),
             ("N", "new context from a base branch"),
             ("d / D", "permanently delete context"),
+            ("r", "rename context"),
             ("e", "empty the archive"),
         ],
     };
@@ -2864,6 +2909,166 @@ mod tests {
         assert!(contexts::find_context(&env.cfg, "one").is_ok());
     }
 
+    /// Open the rename prompt, clear the old name, and submit `name`.
+    fn submit_rename(app: &mut CtxTui, name: &str) {
+        app.key(KeyCode::Char('r'));
+        // ctrl+u: the cursor sits at the end, so this clears the whole field.
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char('u'),
+            KeyModifiers::CONTROL,
+        )));
+        for c in name.chars() {
+            app.key(KeyCode::Char(c));
+        }
+        app.key(KeyCode::Enter);
+    }
+
+    #[test]
+    fn rename_prompt_prefills_the_current_name() {
+        let (env, _origin) = registered();
+        create(&env, "origin", "one");
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Char('r'));
+
+        match &app.modal {
+            Some(Modal::Prompt { title, input, .. }) => {
+                assert_eq!(title, "Rename origin/one");
+                assert_eq!(input.value(), "one");
+                assert_eq!(input.cursor(), 3, "the cursor must sit at the end");
+            }
+            _ => panic!("expected the rename prompt"),
+        }
+    }
+
+    #[test]
+    fn typing_in_the_rename_prompt_edits_the_old_name() {
+        let (env, _origin) = registered();
+        create(&env, "origin", "one");
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.keys(&[
+            KeyCode::Char('r'),
+            KeyCode::Char('-'),
+            KeyCode::Char('2'),
+            KeyCode::Enter,
+        ]);
+        app.drain_idle();
+
+        assert!(contexts::find_context(&env.cfg, "one-2").is_ok());
+    }
+
+    #[test]
+    fn renaming_moves_the_context_and_kills_its_session() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "one");
+        let mux = TestMux::recording(None);
+        let mut app = app(&env.cfg, mux.clone());
+
+        submit_rename(&mut app, "two");
+        app.drain_idle();
+
+        assert!(!ctx.path.exists());
+        let renamed = contexts::find_context(&env.cfg, "two").unwrap();
+        assert_eq!(contexts::current_branch(&renamed), "one");
+        assert_eq!(mux.calls(), [("kill".to_string(), "one".to_string())]);
+        assert_eq!(app.contexts.selected_key(), Some("two"));
+        assert!(app.busy.is_empty());
+    }
+
+    #[test]
+    fn renaming_the_current_context_switches_away_then_kills() {
+        let (env, _origin) = registered();
+        for name in ["one", "two"] {
+            create(&env, "origin", name);
+        }
+        let mux = TestMux::recording(Some("one"));
+        let mut app = app(&env.cfg, mux.clone());
+        app.key(KeyCode::Char('k'));
+        assert_eq!(app.contexts.selected_key(), Some("one"));
+
+        submit_rename(&mut app, "three");
+        app.drain_idle();
+
+        assert_eq!(
+            mux.calls(),
+            [
+                ("open".to_string(), "two".to_string()),
+                ("kill".to_string(), "one".to_string()),
+            ]
+        );
+        assert_eq!(
+            mux.state.lock().unwrap().path_present_at_kill,
+            Some(false),
+            "the move must come before the kill"
+        );
+        assert!(contexts::find_context(&env.cfg, "three").is_ok());
+    }
+
+    #[test]
+    fn renaming_an_archived_context_keeps_it_archived() {
+        let (env, _origin) = registered();
+        contexts::archive_context(&env.cfg, &create(&env, "origin", "one")).unwrap();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.panel = Panel::Archived;
+        submit_rename(&mut app, "two");
+        app.drain_idle();
+
+        assert!(contexts::find_archived(&env.cfg, "two").is_ok());
+        assert!(contexts::list_contexts(&env.cfg).is_empty());
+        assert_eq!(app.archived.selected_key(), Some("two"));
+    }
+
+    #[test]
+    fn accepting_the_prefilled_name_renames_nothing() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "one");
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Char('r'));
+        app.key(KeyCode::Enter);
+        app.drain_idle();
+
+        assert!(app.modal.is_none());
+        assert!(app.busy.is_empty());
+        assert!(ctx.path.exists());
+    }
+
+    #[test]
+    fn renaming_onto_a_taken_name_alerts() {
+        let (env, _origin) = registered();
+        for name in ["one", "two"] {
+            create(&env, "origin", name);
+        }
+        let mut app = app(&env.cfg, TestMux::stub());
+        assert_eq!(app.contexts.selected_key(), Some("one"));
+
+        submit_rename(&mut app, "two");
+        app.drain_idle();
+
+        assert!(
+            matches!(&app.modal, Some(Modal::Alert { message }) if message.contains("already used")),
+            "the clash must reach the user"
+        );
+        assert!(contexts::find_context(&env.cfg, "one").is_ok());
+    }
+
+    #[test]
+    fn rename_key_is_inert_on_the_repos_panel() {
+        let (env, _origin) = registered();
+        create(&env, "origin", "one");
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.panel = Panel::Repos;
+        app.key(KeyCode::Char('r'));
+
+        assert!(
+            app.modal.is_none(),
+            "r must not reload or prompt off the context panels"
+        );
+    }
+
     #[test]
     fn startup_sweeps_interrupted_deletions() {
         let (env, _origin) = registered();
@@ -3315,6 +3520,7 @@ mod tests {
 
         assert!(text.contains("Keybindings (contexts)"));
         assert!(text.contains("open the PR in the browser"));
+        assert!(text.contains("rename context"));
         app.key(KeyCode::Esc);
         assert!(app.modal.is_none());
     }
