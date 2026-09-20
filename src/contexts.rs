@@ -427,6 +427,30 @@ pub fn unarchive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
     })
 }
 
+/// Give a context, live or archived, a new name.
+///
+/// The new name must pass the create rules, so a renamed context could
+/// have been created as such.
+pub fn rename_context(cfg: &Config, ctx: &Context, name: &str) -> Result<Context> {
+    check_name(name, &branch_for(cfg, name))?;
+    if name == ctx.name {
+        return msg(format!("'{}' already has that name", ctx.qualified()));
+    }
+    check_name_free(cfg, name, None)?;
+    // Same parent directory, so a plain rename; it must not replace a
+    // (non-clone) directory already there, as renaming onto an empty one would.
+    let dest = ctx.path.with_file_name(name);
+    if dest.exists() {
+        return msg(format!("'{}' already exists", dest.display()));
+    }
+    std::fs::rename(&ctx.path, &dest)?;
+    Ok(Context {
+        repo: ctx.repo.clone(),
+        name: name.to_string(),
+        path: dest,
+    })
+}
+
 /// The checkout's branch, read from `.git/HEAD` to spare a subprocess.
 ///
 /// Anything but a symbolic ref to a branch (e.g. a detached HEAD's raw
@@ -1027,6 +1051,88 @@ mod tests {
         assert!(err.to_string().contains("already used by origin/feat"));
         assert!(live.path.exists());
         assert!(clash.exists());
+    }
+
+    #[test]
+    fn rename_moves_the_checkout_and_keeps_the_branch() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "feat");
+
+        let renamed = rename_context(&env.cfg, &ctx, "better").unwrap();
+
+        assert_eq!(
+            renamed.path,
+            env.cfg.contexts_dir.join("origin").join("better")
+        );
+        assert_eq!(current_branch(&renamed), "feat");
+        assert!(!ctx.path.exists());
+        assert_eq!(list_contexts(&env.cfg), vec![renamed]);
+    }
+
+    #[test]
+    fn rename_keeps_an_archived_context_archived() {
+        let (env, _origin) = registered();
+        let archived = archive_context(&env.cfg, &create(&env, "origin", "feat")).unwrap();
+
+        let renamed = rename_context(&env.cfg, &archived, "better").unwrap();
+
+        assert_eq!(
+            renamed.path,
+            env.cfg.archive_dir.join("origin").join("better")
+        );
+        assert_eq!(list_archived(&env.cfg), vec![renamed]);
+        assert_eq!(list_contexts(&env.cfg), vec![]);
+    }
+
+    #[test]
+    fn rename_rejects_a_taken_name() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "feat");
+        create(&env, "origin", "live");
+        archive_context(&env.cfg, &create(&env, "origin", "cold")).unwrap();
+
+        let err = rename_context(&env.cfg, &ctx, "live").expect_err("must reject");
+        assert!(err.to_string().contains("already used by origin/live"));
+        let err = rename_context(&env.cfg, &ctx, "cold").expect_err("must reject");
+        assert!(
+            err.to_string()
+                .contains("already used by archived origin/cold")
+        );
+        assert!(ctx.path.exists());
+    }
+
+    #[test]
+    fn rename_rejects_the_current_name() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "feat");
+
+        let err = rename_context(&env.cfg, &ctx, "feat").expect_err("must reject");
+
+        assert!(err.to_string().contains("already has that name"));
+    }
+
+    #[test]
+    fn rename_rejects_names_unfit_for_contexts() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "feat");
+
+        for name in ["", "a/b", "-x", "feat~1", "x.deleting"] {
+            rename_context(&env.cfg, &ctx, name).expect_err("must reject");
+        }
+        assert_eq!(list_contexts(&env.cfg), vec![ctx]);
+    }
+
+    #[test]
+    fn rename_refuses_to_replace_a_directory_in_the_way() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "feat");
+        let squatter = ctx.path.with_file_name("better");
+        std::fs::create_dir(&squatter).unwrap();
+
+        let err = rename_context(&env.cfg, &ctx, "better").expect_err("must reject");
+
+        assert!(err.to_string().contains("already exists"));
+        assert!(ctx.path.exists());
     }
 
     #[test]
