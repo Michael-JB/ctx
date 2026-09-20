@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/Michael-JB/ctx/compare/v2.5.0...v2.6.0) (2026-09-20)
+
+
+### Features
+
+* show how long ago each context was archived instead of its branch ([4d4aaee](https://github.com/Michael-JB/ctx/commit/4d4aaee0e51631a6eb1e2b41b93b463e50304616))
+
 ## [2.5.0](https://github.com/Michael-JB/ctx/compare/v2.4.0...v2.5.0) (2026-09-20)
 
 
