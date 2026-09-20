@@ -245,6 +245,8 @@ pub enum Event {
     },
     ColumnDone(usize),
     Worker(WorkerDone),
+    /// A newer release than this build exists, by version.
+    Update(String),
     Redraw,
 }
 
@@ -270,6 +272,8 @@ pub struct CtxTui {
     // The mirror refresh started by the last name prompt, keyed by repo.
     prefetch: Option<(String, repos::Refresh)>,
     workers: usize,
+    // The newer release the version line points at, once one is known.
+    update: Option<String>,
     outcome: Option<Request>,
     quit: bool,
     // Panel rectangles from the last render, for mouse hit-testing.
@@ -346,6 +350,7 @@ impl CtxTui {
             pending_alerts: Vec::new(),
             prefetch: None,
             workers: 0,
+            update: None,
             outcome: None,
             quit: false,
             areas: HashMap::new(),
@@ -382,6 +387,18 @@ impl CtxTui {
         let intervals = self.poll_intervals();
         let now = Instant::now();
         self.poll_at = intervals.iter().map(|interval| now + *interval).collect();
+    }
+
+    /// Find out off the event loop whether a newer release exists; the
+    /// version line marks it once known. Not a counted worker: quitting
+    /// must not wait on the network.
+    pub fn check_for_update(&self) {
+        let tx = self.tx.clone();
+        spawn_worker(move || {
+            if let Some(version) = crate::update::available_update() {
+                let _ = tx.send(Event::Update(version));
+            }
+        });
     }
 
     /// Repaint the panels from what is cheap to read; statuses fill in after.
@@ -590,6 +607,7 @@ impl CtxTui {
                 self.fetching.remove(&index);
             }
             Event::Worker(done) => self.handle_worker(done),
+            Event::Update(version) => self.update = Some(version),
             Event::Redraw => {}
         }
     }
@@ -1635,7 +1653,8 @@ impl CtxTui {
             .border_style(border)
             .title(title);
         if panel == Panel::Contexts {
-            block = block.title_top(version_line(border).right_aligned());
+            let update = self.update.as_deref();
+            block = block.title_top(version_line(border, update).right_aligned());
         }
         let inner = block.inner(area);
         block.render_widget(area, buffer);
@@ -2133,17 +2152,26 @@ fn theme_color(name: &str) -> Color {
     }
 }
 
-/// This build's version, for the Contexts panel's top border. A segment of
-/// border trails it so the text sits one cell in from the corner while the
-/// frame stays continuous.
-fn version_line(border: Style) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(
-            concat!("v", env!("CARGO_PKG_VERSION")),
-            Style::default().dim(),
-        ),
-        Span::styled(BorderType::Rounded.to_border_set().horizontal_top, border),
-    ])
+/// This build's version, for the Contexts panel's top border, with the
+/// newer release after it when one is known. A segment of border trails it
+/// so the text sits one cell in from the corner while the frame stays
+/// continuous.
+fn version_line(border: Style, update: Option<&str>) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        concat!("v", env!("CARGO_PKG_VERSION")),
+        Style::default().dim(),
+    )];
+    if let Some(version) = update {
+        spans.push(Span::styled(
+            format!(" (v{version} available)"),
+            Style::default().fg(Color::LightYellow),
+        ));
+    }
+    spans.push(Span::styled(
+        BorderType::Rounded.to_border_set().horizontal_top,
+        border,
+    ));
+    Line::from(spans)
 }
 
 /// A status vocabulary style ("bold bright_green") as a terminal style.
@@ -3259,6 +3287,22 @@ mod tests {
         assert!(text.contains("one"));
         assert!(text.contains("Open PR"));
         assert!(text.contains(concat!("v", env!("CARGO_PKG_VERSION"))));
+        assert!(!text.contains("available"));
+    }
+
+    #[test]
+    fn a_known_newer_release_marks_the_version_line() {
+        let (env, _origin) = registered();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.handle(Event::Update("9.9.9".to_string()));
+        let text = render(&mut app);
+
+        assert!(text.contains(concat!(
+            "v",
+            env!("CARGO_PKG_VERSION"),
+            " (v9.9.9 available)"
+        )));
     }
 
     #[test]
