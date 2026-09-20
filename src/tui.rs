@@ -693,7 +693,7 @@ impl CtxTui {
                 table.move_cursor(table.cursor as isize - table.page.max(1) as isize);
             }
             KeyCode::Char('q') => self.quit = true,
-            KeyCode::Char('r') => self.reload(),
+            KeyCode::Char('R') => self.reload(),
             KeyCode::Char('?') => {
                 self.modal = Some(Modal::Help { panel: self.panel });
             }
@@ -741,12 +741,12 @@ impl CtxTui {
             return;
         };
         match modal {
-            // q and r stay live under popups, like the app-level bindings
+            // q and R stay live under popups, like the app-level bindings
             // that kept firing beneath Textual's modal screens.
             Modal::Alert { message } => match key.code {
                 KeyCode::Esc | KeyCode::Enter => {}
                 KeyCode::Char('q') => self.quit = true,
-                KeyCode::Char('r') => {
+                KeyCode::Char('R') => {
                     self.reload();
                     self.modal = Some(Modal::Alert { message });
                 }
@@ -755,7 +755,7 @@ impl CtxTui {
             Modal::Help { panel } => match key.code {
                 KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?') => {}
                 KeyCode::Char('q') => self.quit = true,
-                KeyCode::Char('r') => {
+                KeyCode::Char('R') => {
                     self.reload();
                     self.modal = Some(Modal::Help { panel });
                 }
@@ -822,7 +822,7 @@ impl CtxTui {
             } => match key.code {
                 KeyCode::Esc => {}
                 KeyCode::Char('q') => self.quit = true,
-                KeyCode::Char('r') => {
+                KeyCode::Char('R') => {
                     self.reload();
                     self.modal = Some(Modal::Confirm {
                         message,
@@ -1744,7 +1744,7 @@ impl CtxTui {
                 ("D", "Delete"),
                 ("n", "New context"),
                 ("/", "Filter"),
-                ("r", "Refresh"),
+                ("R", "Refresh"),
                 ("q", "Quit"),
                 ("?", "Help"),
             ],
@@ -1754,7 +1754,7 @@ impl CtxTui {
                 ("d", "Remove repo"),
                 ("n", "New context"),
                 ("/", "Filter"),
-                ("r", "Refresh"),
+                ("R", "Refresh"),
                 ("q", "Quit"),
                 ("?", "Help"),
             ],
@@ -1764,7 +1764,7 @@ impl CtxTui {
                 ("e", "Empty"),
                 ("n", "New context"),
                 ("/", "Filter"),
-                ("r", "Refresh"),
+                ("R", "Refresh"),
                 ("q", "Quit"),
                 ("?", "Help"),
             ],
@@ -2123,7 +2123,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
         ("h / l / ← / → / tab / shift-tab", "switch panel"),
         ("1 / 2 / 3", "jump to panel"),
         ("/", "fuzzy filter by repo and name"),
-        ("r", "refresh"),
+        ("R", "refresh"),
         ("?", "this help"),
         ("q / ctrl+c", "quit"),
     ];
@@ -3197,16 +3197,16 @@ mod tests {
     }
 
     #[test]
-    fn q_and_r_stay_live_under_popups() {
+    fn q_and_shift_r_stay_live_under_popups() {
         let (env, _origin) = registered();
         create(&env, "origin", "one");
         let mut app = app(&env.cfg, TestMux::stub());
 
         app.key(KeyCode::Char('?'));
-        app.key(KeyCode::Char('r'));
+        app.key(KeyCode::Char('R'));
         assert!(
             matches!(app.modal, Some(Modal::Help { .. })),
-            "r must keep the popup"
+            "R must keep the popup"
         );
 
         app.key(KeyCode::Char('q'));
