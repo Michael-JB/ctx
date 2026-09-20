@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.0](https://github.com/Michael-JB/ctx/compare/v2.4.0...v2.5.0) (2026-09-20)
+
+
+### Features
+
+* refresh the TUI with R instead of r ([d629ab9](https://github.com/Michael-JB/ctx/commit/d629ab916601a0f7356b9e31b4f516ac4e5c5fd1))
+* rename contexts from the TUI and CLI ([4aafbb5](https://github.com/Michael-JB/ctx/commit/4aafbb563f8e4aa308700c0e5bf981b9fe9145ca))
+
 ## [2.4.0](https://github.com/Michael-JB/ctx/compare/v2.3.1...v2.4.0) (2026-09-20)
 
 
