@@ -84,9 +84,9 @@ fn sorted_dirs(root: &Path) -> Vec<PathBuf> {
     paths
 }
 
-/// Contexts under a <root>/<repo>/<name> tree, most recently opened first;
-/// never-opened ones follow by name.
-fn scan(root: &Path) -> Vec<Context> {
+/// Contexts under a <root>/<repo>/<name> tree, latest `recency` first;
+/// ones without a recency follow by name.
+fn scan(root: &Path, recency: fn(&Context) -> Option<SystemTime>) -> Vec<Context> {
     if !root.is_dir() {
         return Vec::new();
     }
@@ -120,7 +120,7 @@ fn scan(root: &Path) -> Vec<Context> {
     }
     let mut keyed: Vec<(Option<SystemTime>, String, Context)> = found
         .into_iter()
-        .map(|ctx| (last_opened(&ctx), ctx.qualified(), ctx))
+        .map(|ctx| (recency(&ctx), ctx.qualified(), ctx))
         .collect();
     keyed.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     keyed.into_iter().map(|(_, _, ctx)| ctx).collect()
@@ -128,7 +128,7 @@ fn scan(root: &Path) -> Vec<Context> {
 
 /// All contexts, most recently opened first.
 pub fn list_contexts(cfg: &Config) -> Vec<Context> {
-    scan(&cfg.contexts_dir)
+    scan(&cfg.contexts_dir, last_opened)
 }
 
 /// Resolve a context name; names are globally unique.
@@ -354,9 +354,9 @@ pub fn archive_path(cfg: &Config, repo: &str, name: &str) -> PathBuf {
     cfg.archive_dir.join(repo).join(name)
 }
 
-/// All archived contexts, most recently active first.
+/// All archived contexts, most recently archived first.
 pub fn list_archived(cfg: &Config) -> Vec<Context> {
-    scan(&cfg.archive_dir)
+    scan(&cfg.archive_dir, archived_at)
 }
 
 /// Resolve an archived context by name.
@@ -890,11 +890,15 @@ mod tests {
         assert_eq!(list_contexts(&env.cfg), vec![ctx]);
     }
 
-    fn set_opened(ctx: &Context, when: u64) {
-        mark_opened(ctx);
-        let file = std::fs::File::open(opened_marker(ctx)).unwrap();
+    fn set_mtime(path: &Path, when: u64) {
+        let file = std::fs::File::open(path).unwrap();
         file.set_modified(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(when))
             .unwrap();
+    }
+
+    fn set_opened(ctx: &Context, when: u64) {
+        mark_opened(ctx);
+        set_mtime(&opened_marker(ctx), when);
     }
 
     #[test]
@@ -991,6 +995,20 @@ mod tests {
         let archived = archive_context(&env.cfg, &ctx).unwrap();
 
         assert!(archived_at(&archived).is_some_and(|at| at >= before));
+    }
+
+    #[test]
+    fn list_archived_sorts_most_recently_archived_first() {
+        let (env, _origin) = registered();
+        let older = archive_context(&env.cfg, &create(&env, "origin", "older")).unwrap();
+        let newer = archive_context(&env.cfg, &create(&env, "origin", "newer")).unwrap();
+        let unstamped = archive_context(&env.cfg, &create(&env, "origin", "a")).unwrap();
+        set_mtime(&archived_marker(&older), 1_000);
+        set_mtime(&archived_marker(&newer), 2_000);
+        // Archives predating the stamp carry none and sort last, by name.
+        std::fs::remove_file(archived_marker(&unstamped)).unwrap();
+
+        assert_eq!(list_archived(&env.cfg), vec![newer, older, unstamped]);
     }
 
     #[test]
