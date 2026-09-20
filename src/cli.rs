@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::io::Write;
+use std::time::SystemTime;
 
 use clap::{Parser, Subcommand};
 
 use crate::config::{Config, ConfigError, load_config};
 use crate::contexts;
+use crate::dates;
 use crate::errors::{CtxError, Result, msg};
 use crate::layout::accepted_keys;
 use crate::multiplexer::{Multiplexer, get_multiplexer};
@@ -239,7 +241,7 @@ fn cmd_list(deps: &Deps, io: &mut Io, archived: bool) -> Result<()> {
     let mut header = vec![
         "NAME".to_string(),
         "REPO".to_string(),
-        "BRANCH".to_string(),
+        if archived { "ARCHIVED" } else { "BRANCH" }.to_string(),
         "STATUS".to_string(),
     ];
     header.extend(deps.cfg.status.iter().map(|s| s.name.to_uppercase()));
@@ -251,7 +253,13 @@ fn cmd_list(deps: &Deps, io: &mut Io, archived: bool) -> Result<()> {
         let mut row = vec![
             ctx.name.clone(),
             ctx.repo.clone(),
-            contexts::current_branch(ctx),
+            if archived {
+                contexts::archived_at(ctx)
+                    .map(|at| dates::relative_time(at, SystemTime::now()))
+                    .unwrap_or_default()
+            } else {
+                contexts::current_branch(ctx)
+            },
         ];
         row.extend(cells);
         rows.push(row);
@@ -1204,8 +1212,8 @@ mod tests {
         let lines: Vec<&str> = run.out.lines().collect();
         let header: Vec<&str> = lines[0].split_whitespace().collect();
         let row: Vec<&str> = lines[1].split_whitespace().collect();
-        assert_eq!(header, ["NAME", "REPO", "BRANCH", "STATUS"]);
-        assert_eq!(&row[..2], ["cold", "origin"]);
+        assert_eq!(header, ["NAME", "REPO", "ARCHIVED", "STATUS"]);
+        assert_eq!(&row[..4], ["cold", "origin", "Just", "now"]);
     }
 
     #[test]
