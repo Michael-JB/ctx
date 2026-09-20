@@ -5,6 +5,7 @@ pub mod claude_trust;
 pub mod cli;
 pub mod config;
 pub mod contexts;
+pub mod dates;
 pub mod errors;
 pub mod forge;
 pub mod git;
