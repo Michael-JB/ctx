@@ -79,6 +79,8 @@ enum Commands {
     },
     /// Restore an archived context.
     Unarchive { name: String },
+    /// Rename a context, archived or not.
+    Rename { name: String, new_name: String },
     /// Manage contexts and repos interactively.
     Tui {
         /// Exit the TUI after opening a context.
@@ -368,6 +370,22 @@ fn cmd_unarchive(deps: &Deps, io: &mut Io, name: &str) -> Result<()> {
     Ok(())
 }
 
+fn cmd_rename(deps: &Deps, io: &mut Io, name: &str, new_name: &str) -> Result<()> {
+    let ctx = contexts::find_any(&deps.cfg, name)?;
+    let renamed = contexts::rename_context(&deps.cfg, &ctx, new_name)?;
+    // Kill last: killing our own session takes this process down with it.
+    if deps.mux.exists(&ctx) {
+        deps.mux.kill(&ctx)?;
+    }
+    writeln!(
+        io.out,
+        "renamed {} to {}",
+        ctx.qualified(),
+        renamed.qualified()
+    )?;
+    Ok(())
+}
+
 fn cmd_tui(deps: &Deps, io: &mut Io, exit_on_open: bool) -> Result<()> {
     // When the multiplexer can open sessions in place (e.g. inside tmux),
     // the TUI handles everything itself and exits with no request. The
@@ -473,6 +491,7 @@ fn dispatch(cli: Cli, deps: &Deps, io: &mut Io) -> Result<i32> {
         Commands::Rm { names, force } => return cmd_rm(deps, io, &names, force),
         Commands::Archive { names, empty } => return cmd_archive(deps, io, &names, empty),
         Commands::Unarchive { name } => cmd_unarchive(deps, io, &name)?,
+        Commands::Rename { name, new_name } => cmd_rename(deps, io, &name, &new_name)?,
         Commands::Tui { exit_on_open } => cmd_tui(deps, io, exit_on_open)?,
         Commands::AgentDocs => {
             write!(io.out, "{}", include_str!("agent_docs.md"))?;
@@ -1239,6 +1258,77 @@ mod tests {
 
         assert_eq!(run.code, 1);
         assert!(run.err.contains("no archived context 'feat'"));
+    }
+
+    #[test]
+    fn rename_moves_the_context_and_kills_its_session() {
+        let (_env, deps, mux) = registered();
+        let ctx = create(&deps, "feat");
+        mux.state().running.push("origin/feat".to_string());
+
+        let run = invoke(&["rename", "feat", "better"], &deps);
+
+        assert_eq!(run.code, 0);
+        assert!(run.out.contains("renamed origin/feat to origin/better"));
+        assert_eq!(mux.state().killed, ["origin/feat"]);
+        assert!(!ctx.path.exists());
+        assert_eq!(
+            contexts::current_branch(&contexts::find_context(&deps.cfg, "better").unwrap()),
+            "feat"
+        );
+    }
+
+    #[test]
+    fn rename_of_the_current_context_moves_before_the_kill() {
+        let (_env, deps, mux) = registered();
+        let ctx = create(&deps, "feat");
+        {
+            let mut state = mux.state();
+            state.running.push("origin/feat".to_string());
+            state.current = Some("origin/feat".to_string());
+        }
+
+        let run = invoke(&["rename", "feat", "better"], &deps);
+
+        assert_eq!(run.code, 0);
+        assert!(!ctx.path.exists());
+        assert_eq!(mux.state().path_present_at_kill, Some(false));
+    }
+
+    #[test]
+    fn rename_works_on_archived_contexts() {
+        let (_env, deps, _mux) = registered();
+        contexts::archive_context(&deps.cfg, &create(&deps, "feat")).unwrap();
+
+        let run = invoke(&["rename", "feat", "better"], &deps);
+
+        assert_eq!(run.code, 0);
+        assert!(contexts::find_archived(&deps.cfg, "better").is_ok());
+        assert!(contexts::list_contexts(&deps.cfg).is_empty());
+    }
+
+    #[test]
+    fn rename_rejects_a_taken_name() {
+        let (_env, deps, _mux) = registered();
+        let ctx = create(&deps, "feat");
+        create(&deps, "other");
+
+        let run = invoke(&["rename", "feat", "other"], &deps);
+
+        assert_eq!(run.code, 1);
+        assert!(run.err.contains("already used by origin/other"));
+        assert!(ctx.path.exists());
+    }
+
+    #[test]
+    fn rename_rejects_an_unknown_context() {
+        let env = test_env();
+        let (deps, _mux) = deps_for(&env);
+
+        let run = invoke(&["rename", "feat", "better"], &deps);
+
+        assert_eq!(run.code, 1);
+        assert!(run.err.contains("no context 'feat'"));
     }
 
     #[test]
