@@ -97,6 +97,9 @@ ctx unarchive my-cool-feature
 # List archived contexts, or empty the whole archive:
 ctx list --archived
 ctx archive --empty
+
+# Rename a context, archived or not:
+ctx rename my-cool-feature better-name
 ```
 
 ## Configuration
