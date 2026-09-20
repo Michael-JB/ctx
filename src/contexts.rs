@@ -50,6 +50,22 @@ fn last_opened(ctx: &Context) -> Option<SystemTime> {
     mtime(&opened_marker(ctx))
 }
 
+fn archived_marker(ctx: &Context) -> PathBuf {
+    ctx.path.join(".git").join("ctx-archived")
+}
+
+/// Record the context being archived; the marker's mtime is the timestamp.
+fn mark_archived(ctx: &Context) {
+    // The date is informational; not worth failing the archive over.
+    let _ = std::fs::File::create(archived_marker(ctx))
+        .and_then(|file| file.set_modified(SystemTime::now()));
+}
+
+/// When the context was archived, if known.
+pub fn archived_at(ctx: &Context) -> Option<SystemTime> {
+    mtime(&archived_marker(ctx))
+}
+
 /// Whether a directory is a full clone, the only thing a context can be.
 ///
 /// A `.git` directory means a full clone. A `.git` file marks a linked
@@ -405,11 +421,13 @@ pub fn archive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
         std::fs::create_dir_all(parent)?;
     }
     move_dir(&ctx.path, &dest)?;
-    Ok(Context {
+    let archived = Context {
         repo: ctx.repo.clone(),
         name: ctx.name.clone(),
         path: dest,
-    })
+    };
+    mark_archived(&archived);
+    Ok(archived)
 }
 
 /// Move an archived checkout back among the live contexts.
@@ -420,11 +438,14 @@ pub fn unarchive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
         std::fs::create_dir_all(parent)?;
     }
     move_dir(&ctx.path, &dest)?;
-    Ok(Context {
+    let restored = Context {
         repo: ctx.repo.clone(),
         name: ctx.name.clone(),
         path: dest,
-    })
+    };
+    // Only archived contexts carry a stamp.
+    let _ = std::fs::remove_file(archived_marker(&restored));
+    Ok(restored)
 }
 
 /// Give a context, live or archived, a new name.
@@ -961,6 +982,18 @@ mod tests {
     }
 
     #[test]
+    fn archive_stamps_when_it_happened() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "feat");
+        assert_eq!(archived_at(&ctx), None);
+
+        let before = SystemTime::now();
+        let archived = archive_context(&env.cfg, &ctx).unwrap();
+
+        assert!(archived_at(&archived).is_some_and(|at| at >= before));
+    }
+
+    #[test]
     fn archive_keeps_the_context_name_reserved() {
         let (env, _origin) = registered();
         let archived = archive_context(&env.cfg, &create(&env, "origin", "feat")).unwrap();
@@ -1029,6 +1062,8 @@ mod tests {
         let archived = archive_context(&env.cfg, &created).unwrap();
 
         let restored = unarchive_context(&env.cfg, &archived).unwrap();
+
+        assert_eq!(archived_at(&restored), None);
 
         assert_eq!(restored, created);
         assert_eq!(list_contexts(&env.cfg), vec![created]);
