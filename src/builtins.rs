@@ -5,6 +5,7 @@
 //! behind the builtin's name.
 
 use std::collections::HashMap;
+use std::path::Path;
 
 use crate::shellrun::quote;
 
@@ -34,6 +35,12 @@ fn claude(args: Option<&str>, values: Option<&HashMap<String, String>>) -> Strin
 }
 
 pub const PANE_BUILTINS: &[&str] = &["claude"];
+
+/// Bring along what the builtins keep about a checkout outside of it, keyed
+/// by its path, after the checkout moved from `from` to `to`.
+pub fn checkout_moved(from: &Path, to: &Path) {
+    crate::claude_transcripts::relocate(from, to);
+}
 
 /// The values a builtin consumes at context creation.
 pub fn builtin_keys(name: &str) -> &'static [&'static str] {
