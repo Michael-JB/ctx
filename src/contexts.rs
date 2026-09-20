@@ -147,6 +147,13 @@ fn check_name_free(cfg: &Config, name: &str, exclude: Option<&Path>) -> Result<(
     Ok(())
 }
 
+/// The branch a context of this name works on.
+fn branch_for(cfg: &Config, name: &str) -> String {
+    // Spaces are welcome in context names but not in branch names; dash them
+    // out. Anything else unfit for a branch is rejected, not rewritten.
+    format!("{}{}", cfg.branch_prefix, name.replace(' ', "-"))
+}
+
 /// Reject names that break the paths, branches, or commands they feed.
 fn check_name(name: &str, branch: &str) -> Result<()> {
     if name.trim().is_empty() {
@@ -242,9 +249,7 @@ pub fn create_context_with(
     base: Option<&str>,
     refresh: Option<&repos::Refresh>,
 ) -> Result<Context> {
-    // Spaces are welcome in context names but not in branch names; dash them
-    // out. Anything else unfit for a branch is rejected, not rewritten.
-    let branch = format!("{}{}", cfg.branch_prefix, name.replace(' ', "-"));
+    let branch = branch_for(cfg, name);
     check_name(name, &branch)?;
     let mirror = repos::repo_path(cfg, repo);
     if !mirror.exists() {
