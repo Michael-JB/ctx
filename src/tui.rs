@@ -745,6 +745,7 @@ impl CtxTui {
         let gated = self.allow_mutation();
         match (self.panel, key.code) {
             (Panel::Contexts, KeyCode::Char(' ')) if gated => self.action_open(),
+            (Panel::Archived, KeyCode::Char(' ')) if gated => self.open_archived(),
             (Panel::Contexts, KeyCode::Char('o')) => self.action_open_pr(),
             (Panel::Contexts, KeyCode::Char('d')) if gated => self.action_archive(),
             (Panel::Contexts, KeyCode::Char('D')) if gated => self.action_delete(),
@@ -1268,7 +1269,7 @@ impl CtxTui {
         self.unarchive_worker(ctx, false);
     }
 
-    /// Enter on an archived context: unarchive it and open its session.
+    /// Enter / space on an archived context: unarchive it and open its session.
     fn open_archived(&mut self) {
         let Some(ctx) = self.selected_archived() else {
             return;
@@ -1822,6 +1823,7 @@ impl CtxTui {
                 ("?", "Help"),
             ],
             Panel::Archived => &[
+                ("space", "Unarchive + open"),
                 ("u", "Unarchive"),
                 ("d", "Delete"),
                 ("r", "Rename"),
@@ -2177,7 +2179,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
             ("d", "remove repo"),
         ],
         Panel::Archived => &[
-            ("enter", "unarchive and open context"),
+            ("enter / space", "unarchive and open context"),
             ("u", "unarchive context"),
             ("n", "new context"),
             ("N", "new context from a base branch"),
@@ -2944,6 +2946,21 @@ mod tests {
             mux.calls()
                 .contains(&("open".to_string(), "one".to_string()))
         );
+    }
+
+    #[test]
+    fn space_on_an_archived_context_unarchives_and_opens_it() {
+        let (env, _origin) = registered();
+        contexts::archive_context(&env.cfg, &create(&env, "origin", "one")).unwrap();
+        let mux = TestMux::recording(None);
+        let mut app = app(&env.cfg, mux.clone());
+
+        app.panel = Panel::Archived;
+        app.key(KeyCode::Char(' '));
+        app.drain_idle();
+
+        assert!(contexts::find_context(&env.cfg, "one").is_ok());
+        assert_eq!(mux.calls(), [("open".to_string(), "one".to_string())]);
     }
 
     #[test]
