@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Margin, Rect};
@@ -23,6 +23,7 @@ use tui_input::backend::crossterm::EventHandler;
 
 use crate::config::Config;
 use crate::contexts::{self, Context};
+use crate::dates;
 use crate::errors::Result as CtxResult;
 use crate::git::new_command;
 use crate::multiplexer::Multiplexer;
@@ -81,9 +82,13 @@ impl Panel {
 }
 
 /// One table cell: text plus the status vocabulary's style word, if any.
+///
+/// A cell may instead hold a moment, worded as "how long ago" at draw time
+/// so it stays current between refreshes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CellValue {
     text: String,
+    since: Option<SystemTime>,
     style: Option<&'static str>,
 }
 
@@ -91,7 +96,7 @@ impl CellValue {
     fn plain(text: impl Into<String>) -> CellValue {
         CellValue {
             text: text.into(),
-            style: None,
+            ..CellValue::default()
         }
     }
 
@@ -99,6 +104,21 @@ impl CellValue {
         CellValue {
             text: text.into(),
             style,
+            ..CellValue::default()
+        }
+    }
+
+    fn since(at: SystemTime) -> CellValue {
+        CellValue {
+            since: Some(at),
+            ..CellValue::default()
+        }
+    }
+
+    fn text_at(&self, now: SystemTime) -> String {
+        match self.since {
+            Some(at) => dates::relative_time(at, now),
+            None => self.text.clone(),
         }
     }
 }
@@ -340,7 +360,7 @@ impl CtxTui {
             archived: PanelTable::new(vec![
                 "NAME".to_string(),
                 "REPO".to_string(),
-                "BRANCH".to_string(),
+                "ARCHIVED".to_string(),
             ]),
             busy: HashSet::new(),
             spinner_frame: 0,
@@ -458,7 +478,10 @@ impl CtxTui {
                 vec![
                     CellValue::plain(&ctx.name),
                     CellValue::plain(&ctx.repo),
-                    CellValue::plain(contexts::current_branch(&ctx)),
+                    // Blank for archives predating the stamp.
+                    contexts::archived_at(&ctx)
+                        .map(CellValue::since)
+                        .unwrap_or_default(),
                 ],
             );
         }
@@ -1701,13 +1724,14 @@ impl CtxTui {
         // One header line inside the borders; the rest is a page of rows.
         table.page = inner.height.saturating_sub(1).max(1) as usize;
         let columns = table.headers.len();
+        let now = SystemTime::now();
         let mut widths = vec![0usize; columns];
         for (index, header) in table.headers.iter().enumerate() {
             widths[index] = header.chars().count();
         }
         for row in &table.rows {
             for (index, cell) in row.cells.iter().enumerate() {
-                widths[index] = widths[index].max(cell.text.chars().count());
+                widths[index] = widths[index].max(cell.text_at(now).chars().count());
             }
         }
         let foreground = theme_color(&theme.foreground);
@@ -1731,7 +1755,7 @@ impl CtxTui {
                     if let Some(name) = cell.style {
                         style = style.patch(status_style(name));
                     }
-                    TableCell::from(cell.text.clone()).style(style)
+                    TableCell::from(cell.text_at(now)).style(style)
                 }))
             })
             .collect();
@@ -2739,6 +2763,34 @@ mod tests {
         app.drain_idle();
 
         assert!(contexts::find_archived(&env.cfg, "one").is_ok());
+    }
+
+    #[test]
+    fn archived_panel_shows_how_long_ago_it_was_archived() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "one");
+        contexts::archive_context(&env.cfg, &ctx).unwrap();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        let text = render(&mut app);
+
+        assert!(text.contains("ARCHIVED"));
+        assert!(text.contains("Just now"));
+    }
+
+    #[test]
+    fn the_archived_cell_keeps_up_with_the_clock_between_refreshes() {
+        let (env, _origin) = registered();
+        let archived = contexts::archive_context(&env.cfg, &create(&env, "origin", "one")).unwrap();
+        let mut app = app(&env.cfg, TestMux::stub());
+        let stamp = contexts::archived_at(&archived).unwrap();
+        let cell = &mut app.archived.rows[0].cells[2];
+        assert_eq!(*cell, CellValue::since(stamp));
+        *cell = CellValue::since(stamp - Duration::from_secs(60 * 60));
+
+        let text = render(&mut app);
+
+        assert!(text.contains("1 hour ago"), "{text}");
     }
 
     #[test]
