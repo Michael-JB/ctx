@@ -444,6 +444,11 @@ pub fn rename_context(cfg: &Config, ctx: &Context, name: &str) -> Result<Context
         return msg(format!("'{}' already exists", dest.display()));
     }
     std::fs::rename(&ctx.path, &dest)?;
+    // Agents key their per-checkout state by the live path, archived or not.
+    crate::builtins::checkout_moved(
+        &context_path(cfg, &ctx.repo, &ctx.name),
+        &context_path(cfg, &ctx.repo, name),
+    );
     Ok(Context {
         repo: ctx.repo.clone(),
         name: name.to_string(),
@@ -540,6 +545,7 @@ pub fn empty_archive(cfg: &Config) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::claude_transcripts::{project_key, resolved};
     use crate::testutil::{TestEnv, commit_file, commit_lfs_file, git, lfs_available, test_env};
 
     fn registered() -> (TestEnv, PathBuf) {
@@ -1120,6 +1126,46 @@ mod tests {
             rename_context(&env.cfg, &ctx, name).expect_err("must reject");
         }
         assert_eq!(list_contexts(&env.cfg), vec![ctx]);
+    }
+
+    #[test]
+    fn rename_carries_the_agent_state_along() {
+        // Claude Code keeps a checkout's transcripts under a directory named
+        // after its path; a rename must move it or `--continue` finds nothing.
+        let (env, _origin) = registered();
+        let claude_dir = env.root().join("claude");
+        let _config_dir =
+            crate::testutil::push_env("CLAUDE_CONFIG_DIR", &claude_dir.to_string_lossy());
+        let ctx = create(&env, "origin", "feat");
+        let projects = claude_dir.join("projects");
+        let old = projects.join(project_key(&resolved(&ctx.path)));
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("s.jsonl"), "{}\n").unwrap();
+
+        let renamed = rename_context(&env.cfg, &ctx, "better").unwrap();
+
+        let new = projects.join(project_key(&resolved(&renamed.path)));
+        assert!(new.join("s.jsonl").exists());
+        assert!(!old.exists());
+    }
+
+    #[test]
+    fn rename_of_an_archived_context_relocates_by_its_live_path() {
+        let (env, _origin) = registered();
+        let claude_dir = env.root().join("claude");
+        let _config_dir =
+            crate::testutil::push_env("CLAUDE_CONFIG_DIR", &claude_dir.to_string_lossy());
+        let live = create(&env, "origin", "feat");
+        let archived = archive_context(&env.cfg, &live).unwrap();
+        let projects = claude_dir.join("projects");
+        let old = projects.join(project_key(&resolved(&live.path)));
+        std::fs::create_dir_all(&old).unwrap();
+
+        rename_context(&env.cfg, &archived, "better").unwrap();
+
+        let restored = context_path(&env.cfg, "origin", "better");
+        assert!(projects.join(project_key(&resolved(&restored))).is_dir());
+        assert!(!old.exists());
     }
 
     #[test]
