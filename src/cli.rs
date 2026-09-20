@@ -373,6 +373,7 @@ fn cmd_tui(deps: &Deps, io: &mut Io, exit_on_open: bool) -> Result<()> {
     // the TUI handles everything itself and exits with no request. The
     // requests below are the fallback for terminal-takeover attaches.
     let app = crate::tui::CtxTui::new(deps.cfg.clone(), deps.mux.clone(), exit_on_open);
+    app.check_for_update();
     match app.run()? {
         Some(crate::tui::Request::Open { name }) => {
             let ctx = contexts::find_context(&deps.cfg, &name)?;
