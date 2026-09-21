@@ -3107,7 +3107,8 @@ mod tests {
     #[test]
     fn renaming_onto_a_taken_name_alerts() {
         let (env, _origin) = registered();
-        for name in ["one", "two"] {
+        // Latest creation lists first.
+        for name in ["two", "one"] {
             create(&env, "origin", name);
         }
         let mut app = app(&env.cfg, TestMux::stub());
