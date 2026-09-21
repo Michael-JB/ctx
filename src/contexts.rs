@@ -38,15 +38,15 @@ fn touched_marker(ctx: &Context) -> PathBuf {
     ctx.path.join(".git").join("ctx-touched")
 }
 
-/// Record the context being brought into play; the marker's mtime is the
-/// timestamp.
+/// Record the context being brought into play, by creation or by opening;
+/// the marker's mtime is the timestamp.
 pub fn touch(ctx: &Context) {
-    // Listing order is not worth failing an open over.
+    // Listing order is not worth failing the operation over.
     let _ = std::fs::File::create(touched_marker(ctx))
         .and_then(|file| file.set_modified(SystemTime::now()));
 }
 
-/// When the user last opened the context, if ever.
+/// When the context was last created or opened, if known.
 fn last_touched(ctx: &Context) -> Option<SystemTime> {
     mtime(&touched_marker(ctx))
 }
@@ -127,7 +127,7 @@ fn scan(root: &Path, recency: fn(&Context) -> Option<SystemTime>) -> Vec<Context
     keyed.into_iter().map(|(_, _, ctx)| ctx).collect()
 }
 
-/// All contexts, most recently opened first.
+/// All contexts, most recently touched first.
 pub fn list_contexts(cfg: &Config) -> Vec<Context> {
     scan(&cfg.contexts_dir, last_touched)
 }
@@ -348,6 +348,7 @@ pub fn create_context_with(
         }
         return Err(err);
     }
+    touch(&ctx);
     Ok(ctx)
 }
 
@@ -898,12 +899,11 @@ mod tests {
     }
 
     fn set_touched(ctx: &Context, when: u64) {
-        touch(ctx);
         set_mtime(&touched_marker(ctx), when);
     }
 
     #[test]
-    fn list_contexts_sorts_last_touched_first_then_untouched_by_name() {
+    fn list_contexts_sorts_last_touched_first_then_by_name() {
         let (env, _origin) = registered();
         let older = create(&env, "origin", "older");
         let newer = create(&env, "origin", "newer");
@@ -911,15 +911,27 @@ mod tests {
         let a = create(&env, "origin", "a");
         set_touched(&older, 1_000);
         set_touched(&newer, 2_000);
+        set_touched(&b, 3_000);
+        set_touched(&a, 3_000);
 
         assert_eq!(
             list_contexts(&env.cfg),
-            vec![newer.clone(), older.clone(), a.clone(), b.clone()]
+            vec![a.clone(), b.clone(), newer.clone(), older.clone()]
         );
 
         touch(&older);
 
-        assert_eq!(list_contexts(&env.cfg), vec![older, newer, a, b]);
+        assert_eq!(list_contexts(&env.cfg), vec![older, a, b, newer]);
+    }
+
+    #[test]
+    fn creating_a_context_counts_as_touching_it() {
+        let (env, _origin) = registered();
+        let old = create(&env, "origin", "old");
+        set_touched(&old, 1_000);
+        let fresh = create(&env, "origin", "fresh");
+
+        assert_eq!(list_contexts(&env.cfg), vec![fresh, old]);
     }
 
     #[test]
