@@ -5,13 +5,11 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
 
 use crate::config::{Config, StatusColumn};
-use crate::contexts::Context;
+use crate::contexts::{self, Context};
 use crate::errors::{Result, msg};
 use crate::git::new_command;
 
 const TIMEOUT: Duration = Duration::from_secs(2);
-
-const AGENT_STALE_SECONDS: f64 = 3600.0;
 
 const GITHUB_QUERY: &str = "
 query($owner: String!, $repo: String!, $branch: String!) {
@@ -99,20 +97,21 @@ pub fn command_status(ctx: &Context, command: &str) -> Option<String> {
 /// Agent harness hooks write a word (working, monitoring, blocked, idle) to
 /// `.git/agent-status`, rewriting it only when the state changes, so the
 /// file's mtime is the state's start; active states show their age from it.
-/// A file untouched for an hour is stale — the agent likely died without
-/// its hooks firing — and reads as no status.
+/// In a stale context the file speaks for an agent that is gone (a hard
+/// kill skips the hooks) and reads as no status.
 pub fn agent_status(ctx: &Context) -> Option<String> {
+    let now = SystemTime::now();
+    if contexts::is_stale(ctx, now) {
+        return None;
+    }
     let path = ctx.path.join(".git").join("agent-status");
     let mtime = std::fs::metadata(&path)
         .and_then(|meta| meta.modified())
         .ok()?;
-    let age = SystemTime::now()
+    let age = now
         .duration_since(mtime)
         .unwrap_or(Duration::ZERO)
         .as_secs_f64();
-    if age > AGENT_STALE_SECONDS {
-        return None;
-    }
     let text = std::fs::read_to_string(&path).ok()?;
     let word = text.trim().lines().next()?.trim().to_string();
     if word.is_empty() {
@@ -629,11 +628,15 @@ mod tests {
     }
 
     #[test]
-    fn agent_status_ignores_stale_files() {
+    fn agent_status_is_empty_in_a_stale_context() {
         let (_env, ctx) = context();
         let path = ctx.path.join(".git").join("agent-status");
         std::fs::write(&path, "working\n").unwrap();
-        set_mtime_secs_ago(&path, 4000);
+        set_mtime_secs_ago(&path, 2 * 86_400);
+
+        assert_eq!(agent_status(&ctx), Some("working 2d0h".to_string()));
+
+        contexts::backdate_touch(&ctx, Duration::from_secs(2 * 86_400));
 
         assert_eq!(agent_status(&ctx), None);
     }
