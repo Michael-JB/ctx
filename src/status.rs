@@ -132,8 +132,10 @@ fn elapsed(seconds: f64) -> String {
         format!("{whole}s")
     } else if whole < 3600 {
         format!("{}m", whole / 60)
-    } else {
+    } else if whole < 86_400 {
         format!("{}h{}m", whole / 3600, whole % 3600 / 60)
+    } else {
+        format!("{}d{}h", whole / 86_400, whole % 86_400 / 3600)
     }
 }
 
@@ -616,6 +618,7 @@ mod tests {
         assert_eq!(elapsed(99.0), "1m");
         assert_eq!(elapsed(300.0), "5m");
         assert_eq!(elapsed(3900.0), "1h5m");
+        assert_eq!(elapsed(90_000.0), "1d1h");
     }
 
     #[test]
