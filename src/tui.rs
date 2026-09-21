@@ -127,6 +127,8 @@ impl CellValue {
 struct TableRow {
     key: String,
     cells: Vec<CellValue>,
+    // Painted dimmed, to let rows of current interest stand out.
+    dim: bool,
 }
 
 /// A panel's table: keyed rows plus a cursor, ratatui-agnostic for tests.
@@ -155,11 +157,13 @@ impl PanelTable {
         self.cursor = 0;
     }
 
-    fn add_row(&mut self, key: impl Into<String>, cells: Vec<CellValue>) {
+    fn add_row(&mut self, key: impl Into<String>, cells: Vec<CellValue>) -> &mut TableRow {
         self.rows.push(TableRow {
             key: key.into(),
             cells,
+            dim: false,
         });
+        self.rows.last_mut().expect("just pushed")
     }
 
     fn row_count(&self) -> usize {
@@ -433,6 +437,7 @@ impl CtxTui {
             self.panel = filter.target;
         }
         let blanks = 1 + self.cfg.status.len();
+        let now = SystemTime::now();
         self.contexts.clear();
         let mut ctxs = contexts::list_contexts(&self.cfg);
         // Pin the attached context on top: switching sessions with the
@@ -450,7 +455,8 @@ impl CtxTui {
                 CellValue::plain(contexts::current_branch(ctx)),
             ];
             cells.extend(std::iter::repeat_with(CellValue::default).take(blanks));
-            self.contexts.add_row(&ctx.name, cells);
+            let attached = current.is_some() && index == 0;
+            self.contexts.add_row(&ctx.name, cells).dim = !attached && contexts::is_stale(ctx, now);
         }
         // Land the cursor on the most recent other context: the common reason
         // to open the TUI is switching away, not reopening the same session.
@@ -1751,6 +1757,11 @@ impl CtxTui {
             .rows
             .iter()
             .map(|row| {
+                let base = if row.dim {
+                    base.add_modifier(Modifier::DIM)
+                } else {
+                    base
+                };
                 Row::new(row.cells.iter().map(|cell| {
                     let mut style = base;
                     if let Some(name) = cell.style {
@@ -2609,6 +2620,24 @@ mod tests {
             .map(|row| row.key.as_str())
             .collect();
         assert_eq!(rows, ["two", "one"]);
+    }
+
+    #[test]
+    fn contexts_untouched_for_a_day_are_dimmed() {
+        let (env, _origin) = registered();
+        let stale = create(&env, "origin", "stale");
+        create(&env, "origin", "fresh");
+        contexts::backdate_touch(&stale, Duration::from_secs(2 * 86_400));
+
+        let app = app(&env.cfg, TestMux::stub());
+
+        let dim: Vec<_> = app
+            .contexts
+            .rows
+            .iter()
+            .map(|row| (row.key.as_str(), row.dim))
+            .collect();
+        assert_eq!(dim, [("fresh", false), ("stale", true)]);
     }
 
     #[test]

@@ -51,6 +51,19 @@ fn last_touched(ctx: &Context) -> Option<SystemTime> {
     mtime(&touched_marker(ctx))
 }
 
+/// Whether the context has gone a day or more untouched.
+pub fn is_stale(ctx: &Context, now: SystemTime) -> bool {
+    const STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+    last_touched(ctx).is_none_or(|at| now.duration_since(at).unwrap_or_default() >= STALE_AFTER)
+}
+
+/// Move the context's last touch `ago` into the past.
+#[cfg(test)]
+pub fn backdate_touch(ctx: &Context, ago: std::time::Duration) {
+    let file = std::fs::File::open(touched_marker(ctx)).unwrap();
+    file.set_modified(SystemTime::now() - ago).unwrap();
+}
+
 fn archived_marker(ctx: &Context) -> PathBuf {
     ctx.path.join(".git").join("ctx-archived")
 }
@@ -932,6 +945,20 @@ mod tests {
         let fresh = create(&env, "origin", "fresh");
 
         assert_eq!(list_contexts(&env.cfg), vec![fresh, old]);
+    }
+
+    #[test]
+    fn is_stale_after_a_day_untouched() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "feat");
+        let now = SystemTime::now();
+        let day = std::time::Duration::from_secs(86_400);
+
+        assert!(!is_stale(&ctx, now), "just created");
+        backdate_touch(&ctx, day - std::time::Duration::from_secs(60));
+        assert!(!is_stale(&ctx, now));
+        backdate_touch(&ctx, day + std::time::Duration::from_secs(60));
+        assert!(is_stale(&ctx, now));
     }
 
     #[test]
