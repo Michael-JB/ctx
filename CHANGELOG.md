@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.8.0](https://github.com/Michael-JB/ctx/compare/v2.7.0...v2.8.0) (2026-09-21)
+
+
+### Features
+
+* dim contexts untouched for a day ([e8fef08](https://github.com/Michael-JB/ctx/commit/e8fef0886ecc54d342868b095d668c0a857b334c))
+
+
+### Bug Fixes
+
+* blank agent status once its context is stale, not after an hour ([577df1c](https://github.com/Michael-JB/ctx/commit/577df1c4321a65f53e86da73764cbd2a94762831))
+* rank contexts by creation as well as opening ([311a74f](https://github.com/Michael-JB/ctx/commit/311a74f90aa226f83a8f369b1a6ee185b4412e1e))
+
 ## [2.7.0](https://github.com/Michael-JB/ctx/compare/v2.6.0...v2.7.0) (2026-09-21)
 
 
