@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.0](https://github.com/Michael-JB/ctx/compare/v2.6.0...v2.7.0) (2026-09-21)
+
+
+### Features
+
+* make space unarchive and open in the archived panel, like enter ([81a720f](https://github.com/Michael-JB/ctx/commit/81a720fc813db2982a208695e2e0f9a0d8556fc6))
+
 ## [2.6.0](https://github.com/Michael-JB/ctx/compare/v2.5.0...v2.6.0) (2026-09-20)
 
 
