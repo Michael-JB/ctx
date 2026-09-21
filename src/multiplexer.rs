@@ -81,7 +81,7 @@ pub trait Multiplexer: Send + Sync {
         values: Option<&HashMap<String, String>>,
     ) -> Result<(), MultiplexerError> {
         // Before, not after: a terminal-takeover attach only returns on detach.
-        crate::contexts::mark_opened(ctx);
+        crate::contexts::touch(ctx);
         self.attach(ctx, values)
     }
 

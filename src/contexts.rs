@@ -34,20 +34,21 @@ fn mtime(path: &Path) -> Option<SystemTime> {
         .ok()
 }
 
-fn opened_marker(ctx: &Context) -> PathBuf {
-    ctx.path.join(".git").join("ctx-opened")
+fn touched_marker(ctx: &Context) -> PathBuf {
+    ctx.path.join(".git").join("ctx-touched")
 }
 
-/// Record the user opening the context; the marker's mtime is the timestamp.
-pub fn mark_opened(ctx: &Context) {
+/// Record the context being brought into play; the marker's mtime is the
+/// timestamp.
+pub fn touch(ctx: &Context) {
     // Listing order is not worth failing an open over.
-    let _ = std::fs::File::create(opened_marker(ctx))
+    let _ = std::fs::File::create(touched_marker(ctx))
         .and_then(|file| file.set_modified(SystemTime::now()));
 }
 
 /// When the user last opened the context, if ever.
-fn last_opened(ctx: &Context) -> Option<SystemTime> {
-    mtime(&opened_marker(ctx))
+fn last_touched(ctx: &Context) -> Option<SystemTime> {
+    mtime(&touched_marker(ctx))
 }
 
 fn archived_marker(ctx: &Context) -> PathBuf {
@@ -128,7 +129,7 @@ fn scan(root: &Path, recency: fn(&Context) -> Option<SystemTime>) -> Vec<Context
 
 /// All contexts, most recently opened first.
 pub fn list_contexts(cfg: &Config) -> Vec<Context> {
-    scan(&cfg.contexts_dir, last_opened)
+    scan(&cfg.contexts_dir, last_touched)
 }
 
 /// Resolve a context name; names are globally unique.
@@ -896,27 +897,27 @@ mod tests {
             .unwrap();
     }
 
-    fn set_opened(ctx: &Context, when: u64) {
-        mark_opened(ctx);
-        set_mtime(&opened_marker(ctx), when);
+    fn set_touched(ctx: &Context, when: u64) {
+        touch(ctx);
+        set_mtime(&touched_marker(ctx), when);
     }
 
     #[test]
-    fn list_contexts_sorts_last_opened_first_then_unopened_by_name() {
+    fn list_contexts_sorts_last_touched_first_then_untouched_by_name() {
         let (env, _origin) = registered();
         let older = create(&env, "origin", "older");
         let newer = create(&env, "origin", "newer");
         let b = create(&env, "origin", "b");
         let a = create(&env, "origin", "a");
-        set_opened(&older, 1_000);
-        set_opened(&newer, 2_000);
+        set_touched(&older, 1_000);
+        set_touched(&newer, 2_000);
 
         assert_eq!(
             list_contexts(&env.cfg),
             vec![newer.clone(), older.clone(), a.clone(), b.clone()]
         );
 
-        mark_opened(&older);
+        touch(&older);
 
         assert_eq!(list_contexts(&env.cfg), vec![older, newer, a, b]);
     }
