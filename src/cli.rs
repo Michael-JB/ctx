@@ -425,12 +425,20 @@ fn cmd_repo(deps: &Deps, io: &mut Io, command: &RepoCommands) -> Result<i32> {
     match command {
         RepoCommands::Add { url, name } => {
             writeln!(io.out, "cloning {url}")?;
-            let registered = repos::add_repo(&deps.cfg, url, name.as_deref())?;
+            let registered = match repos::add_repo(&deps.cfg, url, name.as_deref()) {
+                Err(err) if repos::needs_credentials(&err) => {
+                    let (username, password) = crate::git::fill_credentials(url)?;
+                    let url = repos::with_credentials(url, &username, &password);
+                    repos::add_repo(&deps.cfg, &url, name.as_deref())?
+                }
+                result => result?,
+            };
             writeln!(io.out, "registered '{registered}'")?;
         }
         RepoCommands::List => {
             for name in repos::repo_names(&deps.cfg) {
-                writeln!(io.out, "{name}\t{}", repos::repo_url(&deps.cfg, &name)?)?;
+                let url = repos::repo_url(&deps.cfg, &name)?;
+                writeln!(io.out, "{name}\t{}", repos::display_url(&url))?;
             }
         }
         RepoCommands::Default { name, clear } => {
@@ -1350,6 +1358,60 @@ mod tests {
 
         assert_eq!(run.code, 0);
         assert!(run.out.contains("registered 'origin'"));
+    }
+
+    #[test]
+    fn repo_add_asks_for_credentials_an_https_clone_needs() {
+        let env = test_env();
+        let origin = env.origin();
+        let _git = env.https_git(&origin);
+        let askpass = env.root().join("askpass");
+        std::fs::write(&askpass, "#!/bin/sh\necho s3cret\n").unwrap();
+        std::fs::set_permissions(
+            &askpass,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+        let _askpass = crate::testutil::push_env("GIT_ASKPASS", &askpass.to_string_lossy());
+        let (deps, _mux) = deps_for(&env);
+
+        let run = invoke(&["repo", "add", "https://git@example.com/proj"], &deps);
+
+        assert_eq!(run.code, 0, "{}", run.err);
+        assert!(run.out.contains("registered 'proj'"));
+        assert_eq!(repos::repo_names(&env.cfg), ["proj"]);
+    }
+
+    #[test]
+    fn repo_add_reports_a_clone_that_stays_unauthenticated() {
+        let env = test_env();
+        let origin = env.origin();
+        let _git = env.https_git(&origin);
+        let _prompt = crate::testutil::push_env("GIT_TERMINAL_PROMPT", "0");
+        let _askpass = crate::testutil::push_env("GIT_ASKPASS", "");
+        let (deps, _mux) = deps_for(&env);
+
+        let run = invoke(&["repo", "add", "https://git@example.com/proj"], &deps);
+
+        assert_ne!(run.code, 0);
+        assert!(run.err.contains("terminal prompts disabled"), "{}", run.err);
+        assert_eq!(repos::repo_names(&env.cfg), Vec::<String>::new());
+    }
+
+    #[test]
+    fn repo_list_hides_passwords() {
+        let env = test_env();
+        let origin = env.origin();
+        let _git = env.https_git(&origin);
+        let (deps, _mux) = deps_for(&env);
+        invoke(
+            &["repo", "add", "https://git:s3cret@example.com/proj"],
+            &deps,
+        );
+
+        let run = invoke(&["repo", "list"], &deps);
+
+        assert!(!run.out.contains("s3cret"), "{}", run.out);
     }
 
     #[test]
