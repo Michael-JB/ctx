@@ -55,7 +55,7 @@ fn command_with(
     args: &[&str],
     cwd: Option<&Path>,
     ssh_configured: bool,
-    prompt_configured: bool,
+    keep_prompt: bool,
 ) -> Command {
     let mut cmd = new_command("git");
     cmd.args(STALL_CONFIG)
@@ -65,7 +65,7 @@ fn command_with(
         cmd.env("GIT_SSH_COMMAND", SSH_COMMAND);
     }
     // A prompt would block on a terminal the caller may not be showing.
-    if !prompt_configured {
+    if !keep_prompt {
         cmd.env("GIT_TERMINAL_PROMPT", "0");
     }
     cmd
@@ -78,6 +78,58 @@ fn command(args: &[&str], cwd: Option<&Path>) -> Command {
         std::env::var_os("GIT_SSH_COMMAND").is_some(),
         std::env::var_os("GIT_TERMINAL_PROMPT").is_some(),
     )
+}
+
+/// Ask git for the credentials of `url` the way it would itself: its
+/// helpers first, then a prompt on the terminal (or askpass).
+pub fn fill_credentials(url: &str) -> Result<(String, String), GitError> {
+    use std::io::Write;
+
+    let args = ["credential", "fill"];
+    let mut cmd = command_with(
+        &args,
+        None,
+        std::env::var_os("GIT_SSH_COMMAND").is_some(),
+        true,
+    );
+    // The prompt itself goes to the tty, so stderr only ever carries errors.
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd.spawn().map_err(|err| spawn_error(&args, err))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = write!(stdin, "url={url}\n\n");
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|err| spawn_error(&args, err))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let field = |name: &str| {
+        stdout
+            .lines()
+            .find_map(|line| line.strip_prefix(name)?.strip_prefix('='))
+            .map(str::to_string)
+    };
+    match (
+        output.status.success(),
+        field("username"),
+        field("password"),
+    ) {
+        (true, Some(username), Some(password)) => Ok((username, password)),
+        _ => {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            Err(GitError {
+                argv: argv(&args),
+                code: output.status.code(),
+                stdout: String::new(),
+                stderr: Some(if stderr.is_empty() {
+                    format!("no credentials for {url}")
+                } else {
+                    stderr
+                }),
+            })
+        }
+    }
 }
 
 fn argv(args: &[&str]) -> Vec<String> {
@@ -239,6 +291,43 @@ mod tests {
 
         assert_eq!(env_of(&cmd, "GIT_SSH_COMMAND"), None);
         assert_eq!(env_of(&cmd, "GIT_TERMINAL_PROMPT"), None);
+    }
+
+    #[test]
+    fn fill_credentials_takes_what_git_prompts_for() {
+        // The prompt lands in askpass, which reports the field it was asked for.
+        let env = test_env();
+        let askpass = env.root().join("askpass");
+        std::fs::write(
+            &askpass,
+            "#!/bin/sh\ncase \"$1\" in Username*) echo alice;; *) echo 's3cret';; esac\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(
+            &askpass,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+        let _askpass = crate::testutil::push_env("GIT_ASKPASS", &askpass.to_string_lossy());
+
+        assert_eq!(
+            fill_credentials("https://example.com/proj").unwrap(),
+            ("alice".to_string(), "s3cret".to_string())
+        );
+        assert_eq!(
+            fill_credentials("https://git@example.com/proj").unwrap(),
+            ("git".to_string(), "s3cret".to_string())
+        );
+    }
+
+    #[test]
+    fn fill_credentials_fails_without_a_prompt() {
+        let _prompt = crate::testutil::push_env("GIT_TERMINAL_PROMPT", "0");
+        let _askpass = crate::testutil::push_env("GIT_ASKPASS", "");
+
+        let err = fill_credentials("https://example.com/proj").expect_err("nothing to fill from");
+
+        assert!(err.to_string().contains("terminal prompts disabled"));
     }
 
     #[test]
