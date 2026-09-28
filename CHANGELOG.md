@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.9.0](https://github.com/Michael-JB/ctx/compare/v2.8.0...v2.9.0) (2026-09-28)
+
+
+### Features
+
+* ask for the credentials an https repo needs ([8894a15](https://github.com/Michael-JB/ctx/commit/8894a156cfa5439d1cfbe8b94885a4650ed358b9))
+* ask for the name when adding a repo in the TUI ([441eaec](https://github.com/Michael-JB/ctx/commit/441eaec3b6787951e34761c2f40f260c18e2c11d))
+
 ## [2.8.0](https://github.com/Michael-JB/ctx/compare/v2.7.0...v2.8.0) (2026-09-21)
 
 
