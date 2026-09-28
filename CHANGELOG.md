@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.10.0](https://github.com/Michael-JB/ctx/compare/v2.9.0...v2.10.0) (2026-09-28)
+
+
+### Features
+
+* sort repos by their most recently touched context ([8c2f16f](https://github.com/Michael-JB/ctx/commit/8c2f16f6b5c8dbbf11de4c9fcebed1c904bfa4ef))
+
 ## [2.9.0](https://github.com/Michael-JB/ctx/compare/v2.8.0...v2.9.0) (2026-09-28)
 
 
