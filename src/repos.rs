@@ -33,6 +33,71 @@ pub fn name_from_url(url: &str) -> String {
     last.strip_suffix(".git").unwrap_or(last).to_string()
 }
 
+/// Whether a git call failed for want of credentials it could not prompt for.
+pub fn needs_credentials(err: &CtxError) -> bool {
+    matches!(err, CtxError::Git(git)
+        if git.stderr.as_deref().is_some_and(|stderr| stderr.contains("terminal prompts disabled")))
+}
+
+/// The scheme, userinfo, host and path of a URL, or None for scp/local forms.
+fn split_url(url: &str) -> Option<(&str, Option<&str>, &str, &str)> {
+    let (scheme, rest) = url.split_once("://")?;
+    let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let (userinfo, host) = match authority.rsplit_once('@') {
+        Some((userinfo, host)) => (Some(userinfo), host),
+        None => (None, authority),
+    };
+    Some((scheme, userinfo, host, path))
+}
+
+/// The username a URL carries (`https://user@host/...`), if any.
+pub fn url_username(url: &str) -> Option<&str> {
+    let (_, userinfo, _, _) = split_url(url)?;
+    let userinfo = userinfo?;
+    Some(userinfo.split_once(':').map_or(userinfo, |(user, _)| user))
+}
+
+/// The URL with these credentials in place of any it carries, so every
+/// later transfer from the mirror (and the contexts cloned off it) has them.
+pub fn with_credentials(url: &str, username: &str, password: &str) -> String {
+    let Some((scheme, _, host, path)) = split_url(url) else {
+        return url.to_string();
+    };
+    let userinfo = format!("{}:{}", percent_encode(username), percent_encode(password));
+    if path.is_empty() {
+        format!("{scheme}://{userinfo}@{host}")
+    } else {
+        format!("{scheme}://{userinfo}@{host}/{path}")
+    }
+}
+
+/// The URL without its password, for display.
+pub fn display_url(url: &str) -> String {
+    let Some((scheme, Some(userinfo), host, path)) = split_url(url) else {
+        return url.to_string();
+    };
+    let user = userinfo.split_once(':').map_or(userinfo, |(user, _)| user);
+    if path.is_empty() {
+        format!("{scheme}://{user}@{host}")
+    } else {
+        format!("{scheme}://{user}@{host}/{path}")
+    }
+}
+
+// Git percent-decodes userinfo, so anything a value shares with the URL
+// syntax (':', '@', '/', '%') has to be encoded; unreserved bytes pass.
+fn percent_encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
 /// Populate a mirror's LFS store, which bare fetches leave empty.
 ///
 /// Clones smudge against the mirror, so a missing object there fails every
@@ -220,6 +285,7 @@ pub fn default_branch(cfg: &Config, name: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::GitError;
     use crate::testutil::{commit_file, commit_lfs_file, git, lfs_available, test_env};
 
     #[test]
@@ -232,6 +298,64 @@ mod tests {
         ] {
             assert_eq!(name_from_url(url), name);
         }
+    }
+
+    #[test]
+    fn needs_credentials_spots_a_disabled_prompt() {
+        let prompt = CtxError::Git(GitError {
+            argv: vec![],
+            code: Some(128),
+            stdout: String::new(),
+            stderr: Some(
+                "fatal: could not read Password for 'https://git@host': terminal prompts disabled"
+                    .to_string(),
+            ),
+        });
+        let other = CtxError::Git(GitError {
+            argv: vec![],
+            code: Some(128),
+            stdout: String::new(),
+            stderr: Some("fatal: Authentication failed for 'https://host/'".to_string()),
+        });
+
+        assert!(needs_credentials(&prompt));
+        assert!(!needs_credentials(&other));
+        assert!(!needs_credentials(&CtxError::Msg("x".to_string())));
+    }
+
+    #[test]
+    fn url_username_reads_the_userinfo() {
+        assert_eq!(url_username("https://git@host/p"), Some("git"));
+        assert_eq!(url_username("https://git:pw@host/p"), Some("git"));
+        assert_eq!(url_username("https://host/p"), None);
+        assert_eq!(url_username("git@github.com:foo/bar.git"), None);
+    }
+
+    #[test]
+    fn with_credentials_replaces_the_userinfo_encoded() {
+        assert_eq!(
+            with_credentials("https://git@host/p", "git", "s3cret"),
+            "https://git:s3cret@host/p"
+        );
+        assert_eq!(
+            with_credentials("https://old:x@host:8443/p", "a@b", "p:w/%"),
+            "https://a%40b:p%3Aw%2F%25@host:8443/p"
+        );
+        assert_eq!(
+            with_credentials("https://host", "u", "p"),
+            "https://u:p@host"
+        );
+        assert_eq!(with_credentials("/local/p", "u", "p"), "/local/p");
+    }
+
+    #[test]
+    fn display_url_drops_the_password() {
+        assert_eq!(
+            display_url("https://git:s3cret@host/p"),
+            "https://git@host/p"
+        );
+        assert_eq!(display_url("https://git@host/p"), "https://git@host/p");
+        assert_eq!(display_url("/local/p"), "/local/p");
     }
 
     #[test]
