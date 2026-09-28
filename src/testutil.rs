@@ -129,6 +129,35 @@ impl TestEnv {
         self.make_origin("origin", false)
     }
 
+    /// A git whose https clones demand a password (git's terminal-prompt
+    /// failure), then clone `origin` in the URL's place once one is given.
+    /// Everything else runs the real git.
+    pub fn https_git(&self, origin: &Path) -> EnvGuard {
+        let real = String::from_utf8(
+            Command::new("sh")
+                .args(["-c", "command -v git"])
+                .output()
+                .expect("locate git")
+                .stdout,
+        )
+        .unwrap();
+        let script = format!(
+            r#"n=$#; i=0
+while [ $i -lt $n ]; do
+    a=$1; shift; i=$((i+1))
+    case "$a" in
+        https://*:*@*) a="{origin}" ;;
+        https://*) echo "fatal: could not read Password for '$a': terminal prompts disabled" >&2; exit 128 ;;
+    esac
+    set -- "$@" "$a"
+done
+exec {real} "$@""#,
+            origin = origin.display(),
+            real = real.trim(),
+        );
+        self.fake_cli("git", &script)
+    }
+
     /// Shadow an executable on PATH with a stub script for this thread.
     pub fn fake_cli(&self, name: &str, script: &str) -> EnvGuard {
         use std::os::unix::fs::PermissionsExt;
