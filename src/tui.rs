@@ -202,8 +202,9 @@ enum PromptKind {
     NewName { repo: String },
     NewBase { repo: String, name: String },
     AddRepo,
+    AddRepoName { url: String },
     // The clone of `url` (which names the user) needs a password.
-    RepoPassword { url: String },
+    RepoPassword { url: String, name: String },
     Rename { ctx: Context },
 }
 
@@ -256,8 +257,8 @@ pub struct WorkerDone {
     reload: bool,
     finish_busy: bool,
     alert: Option<String>,
-    /// A repo add that failed for want of credentials, by clone URL.
-    ask_credentials: Option<String>,
+    /// A repo add that failed for want of credentials, by clone URL and name.
+    ask_credentials: Option<(String, String)>,
     exit: bool,
     /// The worker's last report; decrements the outstanding-worker count.
     finished: bool,
@@ -664,8 +665,8 @@ impl CtxTui {
         if let Some(message) = done.alert {
             self.alert(message);
         }
-        if let Some(url) = done.ask_credentials {
-            self.password_prompt(url);
+        if let Some((url, name)) = done.ask_credentials {
+            self.password_prompt(url, name);
         }
         if done.exit {
             self.quit = true;
@@ -1126,27 +1127,37 @@ impl CtxTui {
                 self.start_busy(panel);
                 self.teardown_worker(ctx, Teardown::Rename(value));
             }
-            PromptKind::AddRepo => self.add_repo_worker(value),
-            PromptKind::RepoPassword { url } => {
+            PromptKind::AddRepo => {
+                // The derived name acts selected, like a generated context name.
+                self.modal = Some(Modal::Prompt {
+                    title: "Repo name".to_string(),
+                    placeholder: "name",
+                    input: Input::new(repos::name_from_url(&value)),
+                    replace_on_type: true,
+                    kind: PromptKind::AddRepoName { url: value },
+                });
+            }
+            PromptKind::AddRepoName { url } => self.add_repo_worker(url, value),
+            PromptKind::RepoPassword { url, name } => {
                 let username = repos::url_username(&url).unwrap_or_default();
-                self.add_repo_worker(repos::with_credentials(&url, username, &value));
+                self.add_repo_worker(repos::with_credentials(&url, username, &value), name);
             }
         }
     }
 
-    fn add_repo_worker(&mut self, url: String) {
+    fn add_repo_worker(&mut self, url: String, name: String) {
         self.start_busy(Panel::Repos);
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
         self.workers += 1;
         spawn_worker(move || {
-            let (alert, ask_credentials) = match repos::add_repo(&cfg, &url, None) {
+            let (alert, ask_credentials) = match repos::add_repo(&cfg, &url, Some(&name)) {
                 Ok(_) => (None, None),
                 // Only a password is asked for; a URL without a user shows git's error.
                 Err(err)
                     if repos::needs_credentials(&err) && repos::url_username(&url).is_some() =>
                 {
-                    (None, Some(url))
+                    (None, Some((url, name)))
                 }
                 Err(err) => (Some(err.to_string()), None),
             };
@@ -1161,13 +1172,13 @@ impl CtxTui {
         });
     }
 
-    fn password_prompt(&mut self, url: String) {
+    fn password_prompt(&mut self, url: String, name: String) {
         self.modal = Some(Modal::Prompt {
             title: format!("Password for {}", repos::display_url(&url)),
             placeholder: "",
             input: Input::default(),
             replace_on_type: false,
-            kind: PromptKind::RepoPassword { url },
+            kind: PromptKind::RepoPassword { url, name },
         });
     }
 
@@ -3237,10 +3248,34 @@ mod tests {
     }
 
     /// Open the add-repo prompt and submit `url`.
+    /// Open the add-repo prompt, submit `url`, and accept the derived name.
     fn submit_add_repo(app: &mut CtxTui, url: &str) {
         app.panel = Panel::Repos;
         app.key(KeyCode::Char('a'));
         type_and_enter(app, url);
+        app.key(KeyCode::Enter);
+    }
+
+    #[test]
+    fn add_repo_prompts_for_a_name_prefilled_from_the_url() {
+        let (env, origin) = registered();
+        let mut app = app(&env.cfg, TestMux::stub());
+        app.panel = Panel::Repos;
+        app.key(KeyCode::Char('a'));
+
+        type_and_enter(&mut app, &origin.to_string_lossy());
+
+        match &app.modal {
+            Some(Modal::Prompt { title, input, .. }) => {
+                assert_eq!(title, "Repo name");
+                assert_eq!(input.value(), "origin");
+            }
+            _ => panic!("expected the name prompt"),
+        }
+        // Typing replaces the pre-fill, and the repo registers under the typed name.
+        type_and_enter(&mut app, "mine");
+        app.drain_idle();
+        assert_eq!(repos::repo_names(&env.cfg), ["mine", "origin"]);
     }
 
     fn type_and_enter(app: &mut CtxTui, text: &str) {
@@ -3298,7 +3333,10 @@ mod tests {
     fn the_password_prompt_masks_its_input() {
         let env = test_env();
         let mut app = app(&env.cfg, TestMux::stub());
-        app.password_prompt("https://git@example.com/proj".to_string());
+        app.password_prompt(
+            "https://git@example.com/proj".to_string(),
+            "proj".to_string(),
+        );
         for c in "s3cret".chars() {
             app.key(KeyCode::Char(c));
         }
