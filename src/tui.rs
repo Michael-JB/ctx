@@ -202,6 +202,8 @@ enum PromptKind {
     NewName { repo: String },
     NewBase { repo: String, name: String },
     AddRepo,
+    // The clone of `url` (which names the user) needs a password.
+    RepoPassword { url: String },
     Rename { ctx: Context },
 }
 
@@ -254,6 +256,8 @@ pub struct WorkerDone {
     reload: bool,
     finish_busy: bool,
     alert: Option<String>,
+    /// A repo add that failed for want of credentials, by clone URL.
+    ask_credentials: Option<String>,
     exit: bool,
     /// The worker's last report; decrements the outstanding-worker count.
     finished: bool,
@@ -474,8 +478,13 @@ impl CtxTui {
                 name.clone()
             };
             let url = repos::repo_url(&self.cfg, &name).unwrap_or_default();
-            self.repos
-                .add_row(&name, vec![CellValue::plain(label), CellValue::plain(url)]);
+            self.repos.add_row(
+                &name,
+                vec![
+                    CellValue::plain(label),
+                    CellValue::plain(repos::display_url(&url)),
+                ],
+            );
         }
         self.archived.clear();
         for ctx in contexts::list_archived(&self.cfg) {
@@ -654,6 +663,9 @@ impl CtxTui {
         }
         if let Some(message) = done.alert {
             self.alert(message);
+        }
+        if let Some(url) = done.ask_credentials {
+            self.password_prompt(url);
         }
         if done.exit {
             self.quit = true;
@@ -1114,25 +1126,49 @@ impl CtxTui {
                 self.start_busy(panel);
                 self.teardown_worker(ctx, Teardown::Rename(value));
             }
-            PromptKind::AddRepo => {
-                self.start_busy(Panel::Repos);
-                let cfg = self.cfg.clone();
-                let tx = self.tx.clone();
-                self.workers += 1;
-                spawn_worker(move || {
-                    let alert = repos::add_repo(&cfg, &value, None)
-                        .err()
-                        .map(|err| err.to_string());
-                    let _ = tx.send(Event::Worker(WorkerDone {
-                        reload: true,
-                        finish_busy: true,
-                        alert,
-                        finished: true,
-                        ..WorkerDone::default()
-                    }));
-                });
+            PromptKind::AddRepo => self.add_repo_worker(value),
+            PromptKind::RepoPassword { url } => {
+                let username = repos::url_username(&url).unwrap_or_default();
+                self.add_repo_worker(repos::with_credentials(&url, username, &value));
             }
         }
+    }
+
+    fn add_repo_worker(&mut self, url: String) {
+        self.start_busy(Panel::Repos);
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        self.workers += 1;
+        spawn_worker(move || {
+            let (alert, ask_credentials) = match repos::add_repo(&cfg, &url, None) {
+                Ok(_) => (None, None),
+                // Only a password is asked for; a URL without a user shows git's error.
+                Err(err)
+                    if repos::needs_credentials(&err) && repos::url_username(&url).is_some() =>
+                {
+                    (None, Some(url))
+                }
+                Err(err) => (Some(err.to_string()), None),
+            };
+            let _ = tx.send(Event::Worker(WorkerDone {
+                reload: true,
+                finish_busy: true,
+                alert,
+                ask_credentials,
+                finished: true,
+                ..WorkerDone::default()
+            }));
+        });
+    }
+
+    fn password_prompt(&mut self, url: String) {
+        self.modal = Some(Modal::Prompt {
+            title: format!("Password for {}", repos::display_url(&url)),
+            placeholder: "",
+            input: Input::default(),
+            replace_on_type: false,
+            kind: PromptKind::RepoPassword { url },
+        });
     }
 
     /// Ask before a new context takes a name that is still in use.
@@ -1971,7 +2007,10 @@ impl CtxTui {
         }
         if has_input
             && let Some(Modal::Prompt {
-                input, placeholder, ..
+                input,
+                placeholder,
+                kind,
+                ..
             }) = &self.modal
         {
             let field = Rect {
@@ -1988,6 +2027,8 @@ impl CtxTui {
             let value = input.value();
             let line = if value.is_empty() {
                 Line::from(Span::styled(*placeholder, Style::default().dim()))
+            } else if matches!(kind, PromptKind::RepoPassword { .. }) {
+                Line::from("*".repeat(value.chars().count()))
             } else {
                 Line::from(value.to_string())
             };
@@ -3193,6 +3234,93 @@ mod tests {
         app.panel = Panel::Repos;
         app.key(KeyCode::Char('a'));
         assert!(matches!(app.modal, Some(Modal::Prompt { .. })));
+    }
+
+    /// Open the add-repo prompt and submit `url`.
+    fn submit_add_repo(app: &mut CtxTui, url: &str) {
+        app.panel = Panel::Repos;
+        app.key(KeyCode::Char('a'));
+        type_and_enter(app, url);
+    }
+
+    fn type_and_enter(app: &mut CtxTui, text: &str) {
+        for c in text.chars() {
+            app.key(KeyCode::Char(c));
+        }
+        app.key(KeyCode::Enter);
+    }
+
+    fn prompt_title(app: &CtxTui) -> Option<String> {
+        match &app.modal {
+            Some(Modal::Prompt { title, .. }) => Some(title.clone()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn add_repo_asks_for_the_password_an_https_clone_needs() {
+        let env = test_env();
+        let origin = env.origin();
+        let _git = env.https_git(&origin);
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        submit_add_repo(&mut app, "https://git@example.com/proj");
+        assert!(app.drain_until(|app| prompt_title(app).is_some()));
+        assert_eq!(
+            prompt_title(&app).unwrap(),
+            "Password for https://git@example.com/proj"
+        );
+        type_and_enter(&mut app, "s3cret");
+        app.drain_idle();
+
+        assert!(app.modal.is_none(), "no alert on success");
+        assert_eq!(repos::repo_names(&env.cfg), ["proj"]);
+    }
+
+    #[test]
+    fn add_repo_reports_an_https_url_without_a_user() {
+        let env = test_env();
+        let origin = env.origin();
+        let _git = env.https_git(&origin);
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        submit_add_repo(&mut app, "https://example.com/proj");
+        app.drain_idle();
+
+        assert!(
+            matches!(&app.modal, Some(Modal::Alert { message }) if message.contains("terminal prompts disabled")),
+            "git's error must surface as an alert"
+        );
+        assert_eq!(repos::repo_names(&env.cfg), Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_password_prompt_masks_its_input() {
+        let env = test_env();
+        let mut app = app(&env.cfg, TestMux::stub());
+        app.password_prompt("https://git@example.com/proj".to_string());
+        for c in "s3cret".chars() {
+            app.key(KeyCode::Char(c));
+        }
+
+        let text = render(&mut app);
+
+        assert!(!text.contains("s3cret"), "{text}");
+        assert!(text.contains("******"), "{text}");
+    }
+
+    #[test]
+    fn the_repos_panel_hides_passwords() {
+        let env = test_env();
+        let origin = env.origin();
+        let _git = env.https_git(&origin);
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        submit_add_repo(&mut app, "https://git:s3cret@example.com/proj");
+        app.drain_idle();
+
+        let text = render(&mut app);
+        assert!(!text.contains("s3cret"), "{text}");
     }
 
     #[test]
