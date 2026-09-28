@@ -470,8 +470,17 @@ impl CtxTui {
         }
         self.repos.clear();
         let default = repos::default_repo(&self.cfg);
+        // Repos in the order their contexts are listed: the one worked in most
+        // recently first, ones without contexts last.
+        let recency = |name: &str| ctxs.iter().position(|ctx| ctx.repo == name);
         let mut names = repos::repo_names(&self.cfg);
-        names.sort_by_key(|name| (Some(name) != default.as_ref(), name.clone()));
+        names.sort_by_key(|name| {
+            (
+                Some(name) != default.as_ref(),
+                recency(name).unwrap_or(usize::MAX),
+                name.clone(),
+            )
+        });
         for name in names {
             let label = if Some(&name) == default.as_ref() {
                 format!("{name} *")
@@ -2775,6 +2784,23 @@ mod tests {
             Some("origin"),
             "default must be the top row"
         );
+    }
+
+    #[test]
+    fn repos_sort_by_their_latest_context_then_by_name() {
+        let (env, _origin) = registered();
+        for name in ["aaa", "idle", "zzz"] {
+            let other = env.make_origin(name, false);
+            repos::add_repo(&env.cfg, &other.to_string_lossy(), None).unwrap();
+        }
+        let old = create(&env, "aaa", "old");
+        let _fresh = create(&env, "zzz", "fresh");
+        contexts::backdate_touch(&old, Duration::from_secs(3_600));
+
+        let app = app(&env.cfg, TestMux::stub());
+
+        let rows: Vec<&str> = app.repos.rows.iter().map(|row| row.key.as_str()).collect();
+        assert_eq!(rows, ["zzz", "aaa", "idle", "origin"]);
     }
 
     #[test]
