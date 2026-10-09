@@ -25,7 +25,7 @@ use crate::config::Config;
 use crate::contexts::{self, Context};
 use crate::dates;
 use crate::errors::Result as CtxResult;
-use crate::git::new_command;
+use crate::git::{git_quiet, new_command};
 use crate::multiplexer::Multiplexer;
 use crate::{forge, repos, status};
 
@@ -2189,12 +2189,9 @@ fn switch_away(cfg: &Config, mux: &dyn Multiplexer, ctx: &Context) {
 }
 
 fn open_pr(ctx: &Context) -> Result<(), String> {
-    let remote = new_command("git")
-        .args(["remote", "get-url", "origin"])
-        .current_dir(&ctx.path)
-        .output()
+    let remote = git_quiet(&["remote", "get-url", "origin"], Some(&ctx.path))
         .map_err(|err| err.to_string())?;
-    let command = forge::pr_view_command(String::from_utf8_lossy(&remote.stdout).trim());
+    let command = forge::pr_view_command(remote.trim());
     let result = new_command(&command[0])
         .args(&command[1..])
         .current_dir(&ctx.path)
@@ -2903,6 +2900,29 @@ mod tests {
         assert_eq!(repos::default_repo(&env.cfg).as_deref(), Some("origin"));
         app.key(KeyCode::Char('*'));
         assert_eq!(repos::default_repo(&env.cfg), None);
+    }
+
+    #[test]
+    fn o_without_an_origin_alerts_instead_of_asking_the_forge() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "one");
+        crate::testutil::git(&["remote", "remove", "origin"], &ctx.path);
+        contexts::create_scratch(&env.cfg, "pad").unwrap();
+        let log = env.root().join("gh-args");
+        let _gh = env.fake_cli("gh", &format!("echo \"$@\" > {}", log.display()));
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        // The scratch context is the most recent, then the orphaned checkout.
+        for _ in 0..2 {
+            app.key(KeyCode::Char('o'));
+            app.drain_idle();
+            match app.modal.take() {
+                Some(Modal::Alert { message }) => assert!(!message.is_empty()),
+                _ => panic!("expected an alert"),
+            }
+            app.key(KeyCode::Char('j'));
+        }
+        assert!(!log.exists(), "the forge CLI must not run");
     }
 
     #[test]
