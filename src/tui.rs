@@ -35,7 +35,8 @@ pub enum Request {
         name: String,
     },
     New {
-        repo: String,
+        /// None for a scratch context.
+        repo: Option<String>,
         name: String,
         base: Option<String>,
     },
@@ -199,7 +200,7 @@ impl PanelTable {
 }
 
 enum PromptKind {
-    NewName { repo: String },
+    NewName { repo: Option<String> },
     NewBase { repo: String, name: String },
     AddRepo,
     AddRepoName { url: String },
@@ -216,7 +217,7 @@ enum ConfirmKind {
     Prune,
     Overwrite {
         existing: Context,
-        repo: String,
+        repo: Option<String>,
         name: String,
         base: Option<String>,
     },
@@ -756,6 +757,7 @@ impl CtxTui {
             KeyCode::Char('/') => self.action_filter(),
             KeyCode::Char('n') if self.allow_mutation() => self.action_new(),
             KeyCode::Char('N') if self.allow_mutation() => self.action_new_from_base(),
+            KeyCode::Char('s') if self.allow_mutation() => self.action_scratch(),
             KeyCode::Enter => self.action_select(),
             _ => self.handle_panel_key(key),
         }
@@ -1043,10 +1045,14 @@ impl CtxTui {
         self.repos.selected_key().map(str::to_string)
     }
 
-    fn name_prompt(&mut self, repo: String) {
+    fn name_prompt(&mut self, repo: Option<String>) {
         let value = contexts::random_name(&self.cfg).unwrap_or_default();
+        let title = match &repo {
+            Some(repo) => format!("New context for {repo}"),
+            None => "New scratch context".to_string(),
+        };
         self.modal = Some(Modal::Prompt {
-            title: format!("New context for {repo}"),
+            title,
             placeholder: "name",
             input: Input::new(value),
             replace_on_type: true,
@@ -1063,9 +1069,13 @@ impl CtxTui {
                 if self.mux.can_open_in_place() {
                     self.prefetch(&repo);
                 }
-                self.name_prompt(repo);
+                self.name_prompt(Some(repo));
             }
         }
+    }
+
+    fn action_scratch(&mut self) {
+        self.name_prompt(None);
     }
 
     /// Refresh the mirror while the name is typed, so the fetch overlaps the
@@ -1098,9 +1108,10 @@ impl CtxTui {
         match self.repo_for_new() {
             None => self.alert("no repos registered; press a to add one"),
             Some(repo) => {
-                self.name_prompt(repo);
+                self.name_prompt(Some(repo));
                 if let Some(Modal::Prompt { kind, .. }) = &mut self.modal {
-                    let PromptKind::NewName { repo } = std::mem::replace(kind, PromptKind::AddRepo)
+                    let PromptKind::NewName { repo: Some(repo) } =
+                        std::mem::replace(kind, PromptKind::AddRepo)
                     else {
                         return;
                     };
@@ -1127,7 +1138,7 @@ impl CtxTui {
                     kind: PromptKind::NewBase { repo, name: value },
                 });
             }
-            PromptKind::NewBase { repo, name } => self.create(repo, name, Some(value)),
+            PromptKind::NewBase { repo, name } => self.create(Some(repo), name, Some(value)),
             PromptKind::Rename { ctx } => {
                 // Accepting the old name unchanged is a cancel.
                 if value == ctx.name {
@@ -1197,7 +1208,7 @@ impl CtxTui {
     }
 
     /// Ask before a new context takes a name that is still in use.
-    fn create(&mut self, repo: String, name: String, base: Option<String>) {
+    fn create(&mut self, repo: Option<String>, name: String, base: Option<String>) {
         let Ok(existing) = contexts::find_any(&self.cfg, &name) else {
             self.create_over(None, repo, name, base);
             return;
@@ -1224,7 +1235,7 @@ impl CtxTui {
     fn create_over(
         &mut self,
         replace: Option<Context>,
-        repo: String,
+        repo: Option<String>,
         name: String,
         base: Option<String>,
     ) {
@@ -1241,7 +1252,9 @@ impl CtxTui {
             return;
         }
         let refresh = match &self.prefetch {
-            Some((current, refresh)) if base.is_none() && *current == repo => Some(refresh.clone()),
+            Some((current, refresh)) if base.is_none() && Some(current) == repo.as_ref() => {
+                Some(refresh.clone())
+            }
             _ => None,
         };
         self.start_busy(Panel::Contexts);
@@ -1263,20 +1276,24 @@ impl CtxTui {
                 }));
                 return;
             }
-            let ctx =
-                match contexts::create(&cfg, Some(&repo), &name, base.as_deref(), refresh.as_ref())
-                {
-                    Err(err) => {
-                        let _ = tx.send(Event::Worker(WorkerDone {
-                            finish_busy: true,
-                            alert: Some(err.to_string()),
-                            finished: true,
-                            ..WorkerDone::default()
-                        }));
-                        return;
-                    }
-                    Ok(ctx) => ctx,
-                };
+            let ctx = match contexts::create(
+                &cfg,
+                repo.as_deref(),
+                &name,
+                base.as_deref(),
+                refresh.as_ref(),
+            ) {
+                Err(err) => {
+                    let _ = tx.send(Event::Worker(WorkerDone {
+                        finish_busy: true,
+                        alert: Some(err.to_string()),
+                        finished: true,
+                        ..WorkerDone::default()
+                    }));
+                    return;
+                }
+                Ok(ctx) => ctx,
+            };
             let _ = tx.send(Event::Worker(WorkerDone {
                 reload: true,
                 finish_busy: true,
@@ -1896,6 +1913,7 @@ impl CtxTui {
                 ("D", "Delete"),
                 ("r", "Rename"),
                 ("n", "New context"),
+                ("s", "Scratch"),
                 ("/", "Filter"),
                 ("R", "Refresh"),
                 ("q", "Quit"),
@@ -1906,6 +1924,7 @@ impl CtxTui {
                 ("*", "Set default"),
                 ("d", "Remove repo"),
                 ("n", "New context"),
+                ("s", "Scratch"),
                 ("/", "Filter"),
                 ("R", "Refresh"),
                 ("q", "Quit"),
@@ -1919,6 +1938,7 @@ impl CtxTui {
                 ("e", "Empty"),
                 ("p", "Prune"),
                 ("n", "New context"),
+                ("s", "Scratch"),
                 ("/", "Filter"),
                 ("R", "Refresh"),
                 ("q", "Quit"),
@@ -2262,6 +2282,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
             ("o", "open the PR in the browser"),
             ("n", "new context"),
             ("N", "new context from a base branch"),
+            ("s", "new scratch context"),
             ("d", "archive context"),
             ("D", "permanently delete context"),
             ("r", "rename context"),
@@ -2269,6 +2290,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
         Panel::Repos => &[
             ("enter / n", "new context"),
             ("N", "new context from a base branch"),
+            ("s", "new scratch context"),
             ("a", "add repo"),
             ("*", "set / clear default repo"),
             ("d", "remove repo"),
@@ -2278,6 +2300,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
             ("u", "unarchive context"),
             ("n", "new context"),
             ("N", "new context from a base branch"),
+            ("s", "new scratch context"),
             ("d / D", "permanently delete context"),
             ("r", "rename context"),
             ("e", "empty the archive"),
@@ -2777,6 +2800,27 @@ mod tests {
             ),
             _ => panic!("expected the overwrite confirm"),
         }
+    }
+
+    #[test]
+    fn s_prompts_for_a_scratch_context() {
+        let env = test_env();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Char('s'));
+        let name = match &app.modal {
+            Some(Modal::Prompt { title, input, .. }) => {
+                assert_eq!(title, "New scratch context");
+                input.value().to_string()
+            }
+            _ => panic!("expected the name prompt"),
+        };
+        app.key(KeyCode::Enter);
+        app.drain_idle();
+
+        let ctx = contexts::find_context(&env.cfg, &name).unwrap();
+        assert_eq!(ctx.repo, None);
+        assert_eq!(app.contexts.row_count(), 1);
     }
 
     #[test]

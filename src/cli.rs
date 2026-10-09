@@ -432,7 +432,7 @@ fn cmd_tui(deps: &Deps, io: &mut Io, exit_on_open: bool) -> Result<()> {
             create_and_open(
                 deps,
                 io,
-                Some(&repo),
+                repo.as_deref(),
                 Some(name),
                 base.as_deref(),
                 SessionArgs::default(),
