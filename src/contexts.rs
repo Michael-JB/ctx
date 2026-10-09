@@ -313,13 +313,16 @@ fn random_name_from(cfg: &Config, adjectives: &[&str], animals: &[&str]) -> Resu
     Ok(free[pick].clone())
 }
 
+/// Test shorthand for `create` on a repo, with no refresh under way.
+#[cfg(test)]
 pub fn create_context(cfg: &Config, repo: &str, name: &str, base: Option<&str>) -> Result<Context> {
     create_context_with(cfg, repo, name, base, None)
 }
 
-/// Like `create_context`, but a mirror refresh already under way is awaited
-/// in place of fetching here (it is only consulted when no base is given).
-pub fn create_context_with(
+/// Check out `repo` as a new context. A mirror refresh already under way is
+/// awaited in place of fetching here (it is only consulted when no base is
+/// given).
+fn create_context_with(
     cfg: &Config,
     repo: &str,
     name: &str,
@@ -408,6 +411,24 @@ pub fn create_context_with(
     }
     touch(&ctx);
     Ok(ctx)
+}
+
+/// Create a context of either kind: a checkout of `repo`, or a scratch
+/// context when there is none. A scratch context has nothing to base on.
+pub fn create(
+    cfg: &Config,
+    repo: Option<&str>,
+    name: &str,
+    base: Option<&str>,
+    refresh: Option<&repos::Refresh>,
+) -> Result<Context> {
+    match (repo, base) {
+        (Some(repo), base) => create_context_with(cfg, repo, name, base, refresh),
+        (None, None) => create_scratch(cfg, name),
+        (None, Some(base)) => msg(format!(
+            "a scratch context has no branch '{base}' to base on"
+        )),
+    }
 }
 
 /// Create a scratch context: an empty git repo with no remote.
@@ -1029,6 +1050,17 @@ mod tests {
 
         assert_eq!(ctx.path, path);
         assert_eq!(list_contexts(&env.cfg), vec![ctx]);
+    }
+
+    #[test]
+    fn create_rejects_a_base_for_a_scratch_context() {
+        let env = test_env();
+
+        let err =
+            super::create(&env.cfg, None, "pad", Some("main"), None).expect_err("must reject");
+
+        assert!(err.to_string().contains("no branch 'main'"));
+        assert!(list_contexts(&env.cfg).is_empty());
     }
 
     #[test]
