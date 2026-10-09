@@ -31,7 +31,7 @@ fn session_name_budget() -> Option<usize> {
 }
 
 fn session_name(ctx: &Context) -> String {
-    let name = format!("ctx--{}--{}", ctx.repo, ctx.name).replace(['.', ':'], "-");
+    let name = format!("ctx--{}--{}", ctx.session_repo(), ctx.name).replace(['.', ':'], "-");
     session_name_within(name, session_name_budget())
 }
 
@@ -309,7 +309,7 @@ mod tests {
 
     fn ctx(repo: &str, name: &str) -> Context {
         Context {
-            repo: repo.to_string(),
+            repo: Some(repo.to_string()),
             name: name.to_string(),
             path: PathBuf::from("/w"),
         }

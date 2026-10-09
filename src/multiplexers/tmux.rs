@@ -10,7 +10,7 @@ use crate::multiplexer::{Multiplexer, MultiplexerError, env_truthy};
 use crate::shellrun::via_shell;
 
 fn session_name(ctx: &Context) -> String {
-    let raw = format!("ctx--{}--{}", ctx.repo, ctx.name);
+    let raw = format!("ctx--{}--{}", ctx.session_repo(), ctx.name);
     // tmux forbids '.' and ':' in session names.
     raw.replace(['.', ':'], "-")
 }
@@ -218,7 +218,7 @@ mod tests {
 
     fn ctx(repo: &str, name: &str) -> Context {
         Context {
-            repo: repo.to_string(),
+            repo: Some(repo.to_string()),
             name: name.to_string(),
             path: PathBuf::from("/w"),
         }
