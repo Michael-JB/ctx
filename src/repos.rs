@@ -17,10 +17,9 @@ pub fn repo_names(cfg: &Config) -> Vec<String> {
         .flatten()
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') {
-                return None;
-            }
-            name.strip_suffix(".git").map(str::to_string)
+            name.strip_suffix(".git")
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
         })
         .collect();
     names.sort();
@@ -415,6 +414,24 @@ mod tests {
             &mirror,
         );
         assert_eq!(branches, "main");
+    }
+
+    #[test]
+    fn repo_names_include_dot_prefixed_repos() {
+        // GitHub's `.github` repo is a common one; nothing marks it hidden.
+        let env = test_env();
+        let origin = env.origin();
+        add_repo(&env.cfg, &origin.to_string_lossy(), Some(".github")).unwrap();
+
+        assert_eq!(repo_names(&env.cfg), [".github"]);
+    }
+
+    #[test]
+    fn repo_names_skip_a_bare_git_entry() {
+        let env = test_env();
+        std::fs::create_dir_all(env.cfg.repos_dir.join(".git")).unwrap();
+
+        assert!(repo_names(&env.cfg).is_empty());
     }
 
     #[test]
