@@ -80,6 +80,9 @@ ctx new papaya-nvim
 # Re-attach to a context, unarchiving it and recreating its session if needed:
 ctx open my-cool-feature
 
+# Create a scratch context when your context is not scoped to a repo:
+ctx scratch
+
 # Show, set, or clear the default repo for new contexts:
 ctx repo default
 ctx repo default papaya-nvim

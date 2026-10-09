@@ -27,6 +27,12 @@ the task yourself.
 If `--set` is rejected, let the user know that seeding requires a builtin pane
 in their ctx layout, and create the context unseeded.
 
+For work that belongs to no repo (an experiment, a throwaway script):
+
+    ctx scratch <name> --detach
+
+Takes `--set` and `--detach`.
+
 Clean up after yourself: archive contexts with `ctx archive <name>` when you're
 done. Permanently delete a context with `ctx rm <name>`; do this only when
 explicitly instructed. `ctx --help` covers the rest.
