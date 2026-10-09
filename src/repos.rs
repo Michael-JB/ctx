@@ -17,6 +17,8 @@ pub fn repo_names(cfg: &Config) -> Vec<String> {
         .flatten()
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
+            // Names are checked on `repo add` only: a mirror from before that
+            // stays listed so it can still be removed.
             name.strip_suffix(".git")
                 .filter(|name| !name.is_empty())
                 .map(str::to_string)
@@ -122,13 +124,30 @@ fn fetch_lfs(path: &Path, branch: &str) -> Result<()> {
     Ok(())
 }
 
+// GitHub and GitLab allow nothing else, so the rule costs no real name,
+// and it keeps '/' and '' out of the mirror's path.
+fn check_repo_name(name: &str) -> Result<()> {
+    let allowed = |ch: char| ch.is_ascii_alphanumeric() || "._-".contains(ch);
+    if name.is_empty() || !name.chars().all(allowed) {
+        return msg(format!(
+            "repo name '{name}' may only use letters, digits, '.', '_' and '-'"
+        ));
+    }
+    // '.' would put checkouts straight under the contexts root, '..' above
+    // it, and '.git' would make the root look like a repository.
+    if name.chars().all(|ch| ch == '.') || name == ".git" {
+        return msg(format!("repo name '{name}' is not a usable directory name"));
+    }
+    Ok(())
+}
+
 pub fn add_repo(cfg: &Config, url: &str, name: Option<&str>) -> Result<String> {
-    // An empty name falls back like Python's `name or name_from_url(url)`
-    // (a '' name would clone into a hidden `.git` entry).
+    // An empty name falls back like Python's `name or name_from_url(url)`.
     let name = match name {
         Some(name) if !name.is_empty() => name.to_string(),
         _ => name_from_url(url),
     };
+    check_repo_name(&name)?;
     let path = repo_path(cfg, &name);
     if path.exists() {
         return msg(format!(
@@ -432,6 +451,43 @@ mod tests {
         std::fs::create_dir_all(env.cfg.repos_dir.join(".git")).unwrap();
 
         assert!(repo_names(&env.cfg).is_empty());
+    }
+
+    #[test]
+    fn repo_names_keep_a_mirror_from_before_names_were_checked() {
+        let env = test_env();
+        std::fs::create_dir_all(env.cfg.repos_dir.join("a b.git")).unwrap();
+
+        assert_eq!(repo_names(&env.cfg), ["a b"]);
+    }
+
+    #[test]
+    fn add_repo_rejects_names_outside_the_forge_alphabet() {
+        let env = test_env();
+        let origin = env.origin();
+
+        for name in ["a/b", "my repo", "@scratch", "ü"] {
+            let err =
+                add_repo(&env.cfg, &origin.to_string_lossy(), Some(name)).expect_err("must reject");
+            assert!(err.to_string().contains("may only use"), "{name}");
+        }
+        for name in [".", "..", ".git"] {
+            let err =
+                add_repo(&env.cfg, &origin.to_string_lossy(), Some(name)).expect_err("must reject");
+            assert!(err.to_string().contains("not a usable"), "{name}");
+        }
+        assert!(repo_names(&env.cfg).is_empty());
+        assert!(!env.cfg.contexts_dir.exists());
+    }
+
+    #[test]
+    fn add_repo_accepts_every_forge_name_character() {
+        let env = test_env();
+        let origin = env.origin();
+
+        add_repo(&env.cfg, &origin.to_string_lossy(), Some("A-z_0.9")).unwrap();
+
+        assert_eq!(repo_names(&env.cfg), ["A-z_0.9"]);
     }
 
     #[test]
