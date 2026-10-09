@@ -6,16 +6,46 @@ use crate::errors::{CtxError, Result, msg};
 use crate::git::{git, git_quiet, new_command};
 use crate::repos;
 
+// Keeps the `ctx--<repo>--<name>` shape for scratch contexts, so a session
+// list reads the same for every context.
+const SCRATCH_LABEL: &str = "scratch";
+
+// Repo names keep to the forges' alphabet, which has no `@`, so no repo
+// can share the directory.
+const SCRATCH_DIR: &str = "@scratch";
+
+fn repo_dir(repo: Option<&str>) -> &str {
+    repo.unwrap_or(SCRATCH_DIR)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Context {
-    pub repo: String,
+    /// None for a scratch context.
+    pub repo: Option<String>,
     pub name: String,
     pub path: PathBuf,
 }
 
 impl Context {
+    pub fn session_repo(&self) -> &str {
+        self.repo.as_deref().unwrap_or(SCRATCH_LABEL)
+    }
+
     pub fn qualified(&self) -> String {
-        format!("{}/{}", self.repo, self.name)
+        match &self.repo {
+            Some(repo) => format!("{repo}/{}", self.name),
+            None => self.name.clone(),
+        }
+    }
+
+    /// How a name-conflict message refers to the context holding the name.
+    pub fn name_holder(&self, archived: bool) -> String {
+        match (&self.repo, archived) {
+            (Some(_), false) => self.qualified(),
+            (Some(_), true) => format!("archived {}", self.qualified()),
+            (None, false) => "a scratch context".to_string(),
+            (None, true) => "an archived scratch context".to_string(),
+        }
     }
 }
 
@@ -24,8 +54,8 @@ impl Context {
 // context. `sweep_deleting` finishes such leftovers.
 const DELETING_SUFFIX: &str = ".deleting";
 
-pub fn context_path(cfg: &Config, repo: &str, name: &str) -> PathBuf {
-    cfg.contexts_dir.join(repo).join(name)
+pub fn context_path(cfg: &Config, repo: Option<&str>, name: &str) -> PathBuf {
+    cfg.contexts_dir.join(repo_dir(repo)).join(name)
 }
 
 fn mtime(path: &Path) -> Option<SystemTime> {
@@ -105,9 +135,8 @@ fn sorted_dirs(root: &Path) -> Vec<PathBuf> {
     paths
 }
 
-/// Contexts under a <root>/<repo>/<name> tree, latest `recency` first;
-/// ties (and ones without a recency) read as the listing does, by repo
-/// then by name.
+/// Contexts under a <root>/<repo>/<name> tree, latest `recency` first,
+/// then by repo and name; scratch contexts, having no repo, lead a tie.
 fn scan(root: &Path, recency: fn(&Context) -> Option<SystemTime>) -> Vec<Context> {
     if !root.is_dir() {
         return Vec::new();
@@ -117,11 +146,12 @@ fn scan(root: &Path, recency: fn(&Context) -> Option<SystemTime>) -> Vec<Context
         if !repo_dir.is_dir() {
             continue;
         }
-        let repo = repo_dir
+        let dir_name = repo_dir
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
+        let repo = (dir_name != SCRATCH_DIR).then_some(dir_name);
         for ctx_dir in sorted_dirs(&repo_dir) {
             let name = ctx_dir
                 .file_name()
@@ -171,15 +201,15 @@ fn check_name_free(cfg: &Config, name: &str, exclude: Option<&Path>) -> Result<(
         if ctx.name == name && Some(ctx.path.as_path()) != exclude {
             return msg(format!(
                 "context name '{name}' is already used by {}",
-                ctx.qualified()
+                ctx.name_holder(false)
             ));
         }
     }
     for ctx in list_archived(cfg) {
         if ctx.name == name && Some(ctx.path.as_path()) != exclude {
             return msg(format!(
-                "context name '{name}' is already used by archived {}",
-                ctx.qualified()
+                "context name '{name}' is already used by {}",
+                ctx.name_holder(true)
             ));
         }
     }
@@ -303,7 +333,7 @@ pub fn create_context_with(
         ));
     }
     let branch = check_new_name(cfg, name)?;
-    let path = context_path(cfg, repo, name);
+    let path = context_path(cfg, Some(repo), name);
 
     let (base, fetch_base) = match base {
         None => {
@@ -322,7 +352,7 @@ pub fn create_context_with(
     // A directory that predates the clone is not ours to delete on failure.
     let preexisting = path.exists();
     let ctx = Context {
-        repo: repo.to_string(),
+        repo: Some(repo.to_string()),
         name: name.to_string(),
         path: path.clone(),
     };
@@ -380,8 +410,8 @@ pub fn create_context_with(
     Ok(ctx)
 }
 
-pub fn archive_path(cfg: &Config, repo: &str, name: &str) -> PathBuf {
-    cfg.archive_dir.join(repo).join(name)
+pub fn archive_path(cfg: &Config, repo: Option<&str>, name: &str) -> PathBuf {
+    cfg.archive_dir.join(repo_dir(repo)).join(name)
 }
 
 /// All archived contexts, most recently archived first.
@@ -443,7 +473,7 @@ fn copy_tree(src: &Path, dest: &Path) -> std::io::Result<()> {
 /// Move a context's checkout into the archive.
 pub fn archive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
     check_name_free(cfg, &ctx.name, Some(&ctx.path))?;
-    let dest = archive_path(cfg, &ctx.repo, &ctx.name);
+    let dest = archive_path(cfg, ctx.repo.as_deref(), &ctx.name);
     if dest.exists() {
         return msg(format!("'{}' is already archived", ctx.qualified()));
     }
@@ -463,7 +493,7 @@ pub fn archive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
 /// Move an archived checkout back among the live contexts.
 pub fn unarchive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
     check_name_free(cfg, &ctx.name, Some(&ctx.path))?;
-    let dest = context_path(cfg, &ctx.repo, &ctx.name);
+    let dest = context_path(cfg, ctx.repo.as_deref(), &ctx.name);
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -496,8 +526,8 @@ pub fn rename_context(cfg: &Config, ctx: &Context, name: &str) -> Result<Context
     std::fs::rename(&ctx.path, &dest)?;
     // Agents key their per-checkout state by the live path, archived or not.
     crate::builtins::checkout_moved(
-        &context_path(cfg, &ctx.repo, &ctx.name),
-        &context_path(cfg, &ctx.repo, name),
+        &context_path(cfg, ctx.repo.as_deref(), &ctx.name),
+        &context_path(cfg, ctx.repo.as_deref(), name),
     );
     Ok(Context {
         repo: ctx.repo.clone(),
@@ -834,7 +864,7 @@ mod tests {
             .expect_err("a failed refresh must fail the create");
 
         assert_eq!(err.to_string(), "boom");
-        assert!(!context_path(&env.cfg, "origin", "feat").exists());
+        assert!(!context_path(&env.cfg, Some("origin"), "feat").exists());
     }
 
     #[test]
@@ -943,6 +973,23 @@ mod tests {
         git(&["worktree", "add", &phantom.to_string_lossy()], &ctx.path);
 
         assert_eq!(list_contexts(&env.cfg), vec![ctx]);
+    }
+
+    #[test]
+    fn list_contexts_reads_the_scratch_directory_as_no_repo() {
+        let env = test_env();
+        let path = context_path(&env.cfg, None, "pad");
+        assert_eq!(path, env.cfg.contexts_dir.join("@scratch").join("pad"));
+        std::fs::create_dir_all(path.join(".git")).unwrap();
+
+        assert_eq!(
+            list_contexts(&env.cfg),
+            vec![Context {
+                repo: None,
+                name: "pad".to_string(),
+                path,
+            }]
+        );
     }
 
     fn set_mtime(path: &Path, when: u64) {
@@ -1196,7 +1243,7 @@ mod tests {
         let err = unarchive_context(
             &env.cfg,
             &Context {
-                repo: "origin".to_string(),
+                repo: Some("origin".to_string()),
                 name: "feat".to_string(),
                 path: clash.clone(),
             },
@@ -1312,7 +1359,7 @@ mod tests {
 
         rename_context(&env.cfg, &archived, "better").unwrap();
 
-        let restored = context_path(&env.cfg, "origin", "better");
+        let restored = context_path(&env.cfg, Some("origin"), "better");
         assert!(projects.join(project_key(&resolved(&restored))).is_dir());
         assert!(!old.exists());
     }

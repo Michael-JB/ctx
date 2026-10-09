@@ -457,7 +457,7 @@ impl CtxTui {
             let name_style = (current.is_some() && index == 0).then_some("bold bright_green");
             let mut cells = vec![
                 CellValue::styled(&ctx.name, name_style),
-                CellValue::plain(&ctx.repo),
+                CellValue::plain(ctx.repo.as_deref().unwrap_or_default()),
                 CellValue::plain(contexts::current_branch(ctx)),
             ];
             cells.extend(std::iter::repeat_with(CellValue::default).take(blanks));
@@ -473,7 +473,10 @@ impl CtxTui {
         let default = repos::default_repo(&self.cfg);
         // Repos in the order their contexts are listed: the one worked in most
         // recently first, ones without contexts last.
-        let recency = |name: &str| ctxs.iter().position(|ctx| ctx.repo == name);
+        let recency = |name: &str| {
+            ctxs.iter()
+                .position(|ctx| ctx.repo.as_deref() == Some(name))
+        };
         let mut names = repos::repo_names(&self.cfg);
         names.sort_by_key(|name| {
             (
@@ -503,7 +506,7 @@ impl CtxTui {
                 &ctx.name,
                 vec![
                     CellValue::plain(&ctx.name),
-                    CellValue::plain(&ctx.repo),
+                    CellValue::plain(ctx.repo.as_deref().unwrap_or_default()),
                     // Blank for archives predating the stamp.
                     contexts::archived_at(&ctx)
                         .map(CellValue::since)
@@ -1034,8 +1037,8 @@ impl CtxTui {
             Panel::Contexts => self.selected_context(),
             _ => self.selected_archived(),
         };
-        if let Some(ctx) = hovered {
-            return Some(ctx.repo);
+        if let Some(repo) = hovered.and_then(|ctx| ctx.repo) {
+            return Some(repo);
         }
         self.repos.selected_key().map(str::to_string)
     }
@@ -1199,15 +1202,11 @@ impl CtxTui {
             self.create_over(None, repo, name, base);
             return;
         };
-        let state = if contexts::is_archived(&self.cfg, &existing) {
-            "archived "
-        } else {
-            ""
-        };
+        let archived = contexts::is_archived(&self.cfg, &existing);
         self.modal = Some(Modal::Confirm {
             message: format!(
-                "'{name}' is already used by {state}{}. Overwrite it?",
-                existing.qualified()
+                "'{name}' is already used by {}. Overwrite it?",
+                existing.name_holder(archived)
             ),
             confirm_label: "Overwrite",
             selected: 0,
@@ -2760,6 +2759,28 @@ mod tests {
         app.drain_idle();
 
         assert!(contexts::find_context(&env.cfg, &name).is_ok());
+    }
+
+    #[test]
+    fn overwrite_prompt_names_a_scratch_context_as_such() {
+        let (env, _origin) = registered();
+        let scratch = contexts::context_path(&env.cfg, None, "pad");
+        std::fs::create_dir_all(scratch.join(".git")).unwrap();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Char('n'));
+        for ch in "pad".chars() {
+            app.key(KeyCode::Char(ch));
+        }
+        app.key(KeyCode::Enter);
+
+        match &app.modal {
+            Some(Modal::Confirm { message, .. }) => assert_eq!(
+                message,
+                "'pad' is already used by a scratch context. Overwrite it?"
+            ),
+            _ => panic!("expected the overwrite confirm"),
+        }
     }
 
     #[test]

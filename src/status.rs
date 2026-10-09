@@ -40,10 +40,13 @@ fn run(mut cmd: Command, ctx: &Context) -> Option<String> {
     use wait_timeout::ChildExt;
 
     cmd.current_dir(&ctx.path)
-        .env("CTX_REPO", &ctx.repo)
         .env("CTX_NAME", &ctx.name)
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
+    match &ctx.repo {
+        Some(repo) => cmd.env("CTX_REPO", repo),
+        None => cmd.env_remove("CTX_REPO"),
+    };
     let deadline = std::time::Instant::now() + TIMEOUT;
     let mut child = cmd.spawn().ok()?;
     // Drain stdout on a thread so a chatty provider can't fill the pipe and
@@ -541,6 +544,24 @@ mod tests {
         assert_eq!(
             command_status(&ctx, "echo \"$CTX_REPO/$CTX_NAME\"").as_deref(),
             Some("origin/feat")
+        );
+    }
+
+    #[test]
+    fn command_status_hides_an_inherited_repo_from_a_scratch_context() {
+        let env = test_env();
+        let path = crate::contexts::context_path(&env.cfg, None, "pad");
+        std::fs::create_dir_all(path.join(".git")).unwrap();
+        let ctx = Context {
+            repo: None,
+            name: "pad".to_string(),
+            path,
+        };
+        let _leak = crate::testutil::push_env("CTX_REPO", "leaked");
+
+        assert_eq!(
+            command_status(&ctx, "echo \"${CTX_REPO-unset}/$CTX_NAME\"").as_deref(),
+            Some("unset/pad")
         );
     }
 

@@ -254,7 +254,7 @@ fn cmd_list(deps: &Deps, io: &mut Io, archived: bool) -> Result<()> {
     {
         let mut row = vec![
             ctx.name.clone(),
-            ctx.repo.clone(),
+            ctx.repo.clone().unwrap_or_default(),
             if archived {
                 contexts::archived_at(ctx)
                     .map(|at| dates::relative_time(at, SystemTime::now()))
