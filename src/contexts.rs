@@ -193,6 +193,14 @@ fn branch_for(cfg: &Config, name: &str) -> String {
     format!("{}{}", cfg.branch_prefix, name.replace(' ', "-"))
 }
 
+/// Every rule a name passes to become a context's; the branch it maps to.
+fn check_new_name(cfg: &Config, name: &str) -> Result<String> {
+    let branch = branch_for(cfg, name);
+    check_name(name, &branch)?;
+    check_name_free(cfg, name, None)?;
+    Ok(branch)
+}
+
 /// Reject names that break the paths, branches, or commands they feed.
 fn check_name(name: &str, branch: &str) -> Result<()> {
     if name.trim().is_empty() {
@@ -288,15 +296,13 @@ pub fn create_context_with(
     base: Option<&str>,
     refresh: Option<&repos::Refresh>,
 ) -> Result<Context> {
-    let branch = branch_for(cfg, name);
-    check_name(name, &branch)?;
     let mirror = repos::repo_path(cfg, repo);
     if !mirror.exists() {
         return msg(format!(
             "repo '{repo}' is not registered (ctx repo add <url>)"
         ));
     }
-    check_name_free(cfg, name, None)?;
+    let branch = check_new_name(cfg, name)?;
     let path = context_path(cfg, repo, name);
 
     let (base, fetch_base) = match base {
@@ -477,11 +483,10 @@ pub fn unarchive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
 /// The new name must pass the create rules, so a renamed context could
 /// have been created as such.
 pub fn rename_context(cfg: &Config, ctx: &Context, name: &str) -> Result<Context> {
-    check_name(name, &branch_for(cfg, name))?;
     if name == ctx.name {
         return msg(format!("'{}' already has that name", ctx.qualified()));
     }
-    check_name_free(cfg, name, None)?;
+    check_new_name(cfg, name)?;
     // Same parent directory, so a plain rename; it must not replace a
     // (non-clone) directory already there, as renaming onto an empty one would.
     let dest = ctx.path.with_file_name(name);
