@@ -106,7 +106,8 @@ fn sorted_dirs(root: &Path) -> Vec<PathBuf> {
 }
 
 /// Contexts under a <root>/<repo>/<name> tree, latest `recency` first;
-/// ones without a recency follow by name.
+/// ties (and ones without a recency) read as the listing does, by repo
+/// then by name.
 fn scan(root: &Path, recency: fn(&Context) -> Option<SystemTime>) -> Vec<Context> {
     if !root.is_dir() {
         return Vec::new();
@@ -139,12 +140,13 @@ fn scan(root: &Path, recency: fn(&Context) -> Option<SystemTime>) -> Vec<Context
             }
         }
     }
-    let mut keyed: Vec<(Option<SystemTime>, String, Context)> = found
-        .into_iter()
-        .map(|ctx| (recency(&ctx), ctx.qualified(), ctx))
-        .collect();
-    keyed.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-    keyed.into_iter().map(|(_, _, ctx)| ctx).collect()
+    let mut keyed: Vec<(Option<SystemTime>, Context)> =
+        found.into_iter().map(|ctx| (recency(&ctx), ctx)).collect();
+    keyed.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| (&a.1.repo, &a.1.name).cmp(&(&b.1.repo, &b.1.name)))
+    });
+    keyed.into_iter().map(|(_, ctx)| ctx).collect()
 }
 
 /// All contexts, most recently touched first.
@@ -968,6 +970,22 @@ mod tests {
         touch(&older);
 
         assert_eq!(list_contexts(&env.cfg), vec![older, a, b, newer]);
+    }
+
+    #[test]
+    fn list_contexts_breaks_ties_by_repo_then_name() {
+        let (env, _origin) = registered();
+        let other = env.make_origin("other", false);
+        repos::add_repo(&env.cfg, &other.to_string_lossy(), None).unwrap();
+        // Names are unique across repos; "a" sorts first by name alone.
+        let origin_z = create(&env, "origin", "z");
+        let other_a = create(&env, "other", "a");
+        let origin_m = create(&env, "origin", "m");
+        for ctx in [&origin_z, &other_a, &origin_m] {
+            set_touched(ctx, 1_000);
+        }
+
+        assert_eq!(list_contexts(&env.cfg), vec![origin_m, origin_z, other_a]);
     }
 
     #[test]
