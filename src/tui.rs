@@ -785,7 +785,7 @@ impl CtxTui {
                 self.action_rename()
             }
             (Panel::Repos, KeyCode::Char('a')) if gated => self.action_add_repo(),
-            (Panel::Repos, KeyCode::Char('s')) if gated => self.action_set_default_repo(),
+            (Panel::Repos, KeyCode::Char('*')) if gated => self.action_set_default_repo(),
             (Panel::Repos, KeyCode::Char('d')) if gated => self.action_delete(),
             (Panel::Archived, KeyCode::Char('u')) if gated => self.action_unarchive(),
             (Panel::Archived, KeyCode::Char('d') | KeyCode::Char('D')) if gated => {
@@ -1903,7 +1903,7 @@ impl CtxTui {
             ],
             Panel::Repos => &[
                 ("a", "Add repo"),
-                ("s", "Set default"),
+                ("*", "Set default"),
                 ("d", "Remove repo"),
                 ("n", "New context"),
                 ("/", "Filter"),
@@ -2270,7 +2270,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
             ("enter / n", "new context"),
             ("N", "new context from a base branch"),
             ("a", "add repo"),
-            ("s", "set / clear default repo"),
+            ("*", "set / clear default repo"),
             ("d", "remove repo"),
         ],
         Panel::Archived => &[
@@ -2850,14 +2850,14 @@ mod tests {
     }
 
     #[test]
-    fn s_toggles_the_default_repo() {
+    fn star_toggles_the_default_repo() {
         let (env, _origin) = registered();
         let mut app = app(&env.cfg, TestMux::stub());
 
         app.panel = Panel::Repos;
-        app.key(KeyCode::Char('s'));
+        app.key(KeyCode::Char('*'));
         assert_eq!(repos::default_repo(&env.cfg).as_deref(), Some("origin"));
-        app.key(KeyCode::Char('s'));
+        app.key(KeyCode::Char('*'));
         assert_eq!(repos::default_repo(&env.cfg), None);
     }
 
