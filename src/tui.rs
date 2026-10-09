@@ -1263,24 +1263,20 @@ impl CtxTui {
                 }));
                 return;
             }
-            let ctx = match contexts::create_context_with(
-                &cfg,
-                &repo,
-                &name,
-                base.as_deref(),
-                refresh.as_ref(),
-            ) {
-                Err(err) => {
-                    let _ = tx.send(Event::Worker(WorkerDone {
-                        finish_busy: true,
-                        alert: Some(err.to_string()),
-                        finished: true,
-                        ..WorkerDone::default()
-                    }));
-                    return;
-                }
-                Ok(ctx) => ctx,
-            };
+            let ctx =
+                match contexts::create(&cfg, Some(&repo), &name, base.as_deref(), refresh.as_ref())
+                {
+                    Err(err) => {
+                        let _ = tx.send(Event::Worker(WorkerDone {
+                            finish_busy: true,
+                            alert: Some(err.to_string()),
+                            finished: true,
+                            ..WorkerDone::default()
+                        }));
+                        return;
+                    }
+                    Ok(ctx) => ctx,
+                };
             let _ = tx.send(Event::Worker(WorkerDone {
                 reload: true,
                 finish_busy: true,

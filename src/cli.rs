@@ -177,7 +177,7 @@ fn create_and_open(
         Some(name) => name,
         None => contexts::random_name(&deps.cfg)?,
     };
-    let ctx = contexts::create_context(&deps.cfg, repo, &name, base)?;
+    let ctx = contexts::create(&deps.cfg, Some(repo), &name, base, None)?;
     writeln!(
         io.out,
         "created {} at {} on {}",
