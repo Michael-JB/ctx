@@ -410,6 +410,41 @@ pub fn create_context_with(
     Ok(ctx)
 }
 
+/// Create a scratch context: an empty git repo with no remote.
+///
+/// The `.git` directory is what makes it a context: the listing, the touch
+/// markers and the agent status all live there. It stays on git's default
+/// branch so a project started here pushes like any new repo.
+pub fn create_scratch(cfg: &Config, name: &str) -> Result<Context> {
+    check_new_name(cfg, name)?;
+    let path = context_path(cfg, None, name);
+    // Unlike a clone, `git init` would quietly adopt whatever is there,
+    // following a symlink to do so.
+    let existing = path.symlink_metadata().ok();
+    let empty_dir =
+        existing.as_ref().is_some_and(|meta| meta.is_dir()) && path.read_dir()?.next().is_none();
+    if existing.is_some() && !empty_dir {
+        return msg(format!("'{}' already exists", path.display()));
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let ctx = Context {
+        repo: None,
+        name: name.to_string(),
+        path: path.clone(),
+    };
+    if let Err(err) = git_quiet(&["init", &path.to_string_lossy()], None) {
+        // A directory that predates the init is not ours to delete.
+        if existing.is_none() {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        return Err(err.into());
+    }
+    touch(&ctx);
+    Ok(ctx)
+}
+
 pub fn archive_path(cfg: &Config, repo: Option<&str>, name: &str) -> PathBuf {
     cfg.archive_dir.join(repo_dir(repo)).join(name)
 }
@@ -952,6 +987,101 @@ mod tests {
         let err = random_name_from(&env.cfg, &["holy"], &["tiger"]).expect_err("must fail");
 
         assert!(err.to_string().contains("all generated names are taken"));
+    }
+
+    #[test]
+    fn create_scratch_makes_an_empty_repo_without_a_remote() {
+        let env = test_env();
+
+        let ctx = create_scratch(&env.cfg, "pad").unwrap();
+
+        assert_eq!(ctx.repo, None);
+        assert_eq!(ctx.path, env.cfg.contexts_dir.join("@scratch").join("pad"));
+        assert_eq!(current_branch(&ctx), "main");
+        assert_eq!(git(&["remote"], &ctx.path), "");
+        assert_eq!(git(&["status", "--porcelain"], &ctx.path), "");
+        assert_eq!(list_contexts(&env.cfg), vec![ctx]);
+    }
+
+    #[test]
+    fn create_scratch_shares_the_name_pool() {
+        let (env, _origin) = registered();
+        create(&env, "origin", "feat");
+
+        let err = create_scratch(&env.cfg, "feat").expect_err("must reject");
+        assert!(err.to_string().contains("already used by origin/feat"));
+
+        create_scratch(&env.cfg, "pad").unwrap();
+        let err = create_context(&env.cfg, "origin", "pad", None).expect_err("must reject");
+        assert!(
+            err.to_string()
+                .contains("already used by a scratch context")
+        );
+    }
+
+    #[test]
+    fn create_scratch_fills_an_empty_directory_left_behind() {
+        let env = test_env();
+        let path = context_path(&env.cfg, None, "pad");
+        std::fs::create_dir_all(&path).unwrap();
+
+        let ctx = create_scratch(&env.cfg, "pad").unwrap();
+
+        assert_eq!(ctx.path, path);
+        assert_eq!(list_contexts(&env.cfg), vec![ctx]);
+    }
+
+    #[test]
+    fn create_scratch_refuses_a_directory_in_the_way() {
+        let env = test_env();
+        let path = context_path(&env.cfg, None, "pad");
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::write(path.join("notes.txt"), "keep").unwrap();
+
+        let err = create_scratch(&env.cfg, "pad").expect_err("must reject");
+
+        assert!(err.to_string().contains("already exists"));
+        assert!(path.join("notes.txt").exists());
+        assert!(!path.join(".git").exists());
+    }
+
+    #[test]
+    fn create_scratch_refuses_a_file_in_the_way() {
+        let env = test_env();
+        let path = context_path(&env.cfg, None, "pad");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "keep").unwrap();
+
+        let err = create_scratch(&env.cfg, "pad").expect_err("must reject");
+
+        assert!(err.to_string().contains("already exists"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "keep");
+    }
+
+    #[test]
+    fn create_scratch_refuses_a_symlink_in_the_way() {
+        let env = test_env();
+        let path = context_path(&env.cfg, None, "pad");
+        let target = env.cfg.contexts_dir.join("elsewhere");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+
+        let err = create_scratch(&env.cfg, "pad").expect_err("must reject");
+
+        assert!(err.to_string().contains("already exists"));
+        assert!(path.is_symlink());
+        assert!(!target.join(".git").exists());
+    }
+
+    #[test]
+    fn create_scratch_rejects_bad_names() {
+        let env = test_env();
+
+        let err = create_scratch(&env.cfg, "a/b").expect_err("must reject");
+
+        assert!(err.to_string().contains("single path component"));
+        assert!(!env.cfg.contexts_dir.join("@scratch").exists());
     }
 
     #[test]
