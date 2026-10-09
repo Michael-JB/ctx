@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::time::SystemTime;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 use crate::config::{Config, ConfigError, load_config};
 use crate::contexts;
@@ -30,12 +30,23 @@ pub struct Io<'a> {
 #[command(
     name = "ctx",
     version,
-    about = "Manage repo-scoped work contexts.",
+    about = "Manage isolated work contexts.",
     disable_help_subcommand = true
 )]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
+}
+
+/// How a new context's session starts.
+#[derive(Args, Default)]
+struct SessionArgs {
+    /// Pass a value to the layout's builtin panes (e.g. prompt=... for claude).
+    #[arg(short = 's', long = "set", value_name = "KEY=VALUE")]
+    assignments: Vec<String>,
+    /// Start the session without attaching to it.
+    #[arg(short = 'd', long)]
+    detach: bool,
 }
 
 #[derive(Subcommand)]
@@ -49,12 +60,16 @@ enum Commands {
         /// Base branch (default: the repo's default branch).
         #[arg(short = 'b', long = "branch")]
         base: Option<String>,
-        /// Pass a value to the layout's builtin panes (e.g. prompt=... for claude).
-        #[arg(short = 's', long = "set", value_name = "KEY=VALUE")]
-        assignments: Vec<String>,
-        /// Start the session without attaching to it.
-        #[arg(short = 'd', long)]
-        detach: bool,
+        #[command(flatten)]
+        session: SessionArgs,
+    },
+    /// Create a scratch context: an empty directory with no repo, in the usual session.
+    ///
+    /// NAME defaults to a random adjective-animal pair.
+    Scratch {
+        name: Option<String>,
+        #[command(flatten)]
+        session: SessionArgs,
     },
     /// Attach to a context's session, unarchiving it and recreating the session if needed.
     Open { name: String },
@@ -167,17 +182,17 @@ fn parse_assignments(cfg: &Config, assignments: &[String]) -> Result<HashMap<Str
 fn create_and_open(
     deps: &Deps,
     io: &mut Io,
-    repo: &str,
+    repo: Option<&str>,
     name: Option<String>,
     base: Option<&str>,
-    values: HashMap<String, String>,
-    detach: bool,
+    session: SessionArgs,
 ) -> Result<()> {
+    let values = parse_assignments(&deps.cfg, &session.assignments)?;
     let name = match name {
         Some(name) => name,
         None => contexts::random_name(&deps.cfg)?,
     };
-    let ctx = contexts::create(&deps.cfg, Some(repo), &name, base, None)?;
+    let ctx = contexts::create(&deps.cfg, repo, &name, base, None)?;
     writeln!(
         io.out,
         "created {} at {} on {}",
@@ -185,7 +200,7 @@ fn create_and_open(
         ctx.path.display(),
         contexts::current_branch(&ctx)
     )?;
-    if detach {
+    if session.detach {
         deps.mux.create(&ctx, Some(&values))?;
     } else {
         deps.mux.open(&ctx, Some(&values))?;
@@ -417,11 +432,10 @@ fn cmd_tui(deps: &Deps, io: &mut Io, exit_on_open: bool) -> Result<()> {
             create_and_open(
                 deps,
                 io,
-                &repo,
+                Some(&repo),
                 Some(name),
                 base.as_deref(),
-                HashMap::new(),
-                false,
+                SessionArgs::default(),
             )?;
         }
         None => {}
@@ -505,11 +519,10 @@ fn dispatch(cli: Cli, deps: &Deps, io: &mut Io) -> Result<i32> {
             repo,
             name,
             base,
-            assignments,
-            detach,
-        } => {
-            let values = parse_assignments(&deps.cfg, &assignments)?;
-            create_and_open(deps, io, &repo, name, base.as_deref(), values, detach)?;
+            session,
+        } => create_and_open(deps, io, Some(&repo), name, base.as_deref(), session)?,
+        Commands::Scratch { name, session } => {
+            create_and_open(deps, io, None, name, None, session)?
         }
         Commands::Open { name } => cmd_open(deps, io, &name)?,
         Commands::List { archived } => cmd_list(deps, io, archived)?,
@@ -815,6 +828,75 @@ mod tests {
         assert_eq!(state.created, ["origin/feat"]);
         assert!(state.opened.is_empty());
         assert_eq!(state.values, [Some(HashMap::new())]);
+    }
+
+    #[test]
+    fn scratch_reports_the_created_context() {
+        let env = test_env();
+        let (deps, mux) = deps_for(&env);
+
+        let run = invoke(&["scratch", "pad"], &deps);
+
+        assert_eq!(run.code, 0);
+        assert!(run.out.contains("created pad at"));
+        assert!(env.cfg.contexts_dir.join("@scratch/pad/.git").is_dir());
+        let state = mux.state();
+        assert_eq!(state.opened, ["pad"]);
+        assert_eq!(state.values, [Some(HashMap::new())]);
+    }
+
+    #[test]
+    fn scratch_without_a_name_generates_one() {
+        let env = test_env();
+        let (deps, _mux) = deps_for(&env);
+
+        let run = invoke(&["scratch"], &deps);
+
+        assert_eq!(run.code, 0);
+        assert!(run.out.contains("created "));
+        assert_eq!(contexts::list_contexts(&env.cfg).len(), 1);
+    }
+
+    #[test]
+    fn scratch_detach_creates_the_session_without_opening() {
+        let env = test_env();
+        let (deps, mux) = deps_for(&env);
+
+        let run = invoke(&["scratch", "pad", "--detach"], &deps);
+
+        assert_eq!(run.code, 0);
+        let state = mux.state();
+        assert_eq!(state.created, ["pad"]);
+        assert!(state.opened.is_empty());
+    }
+
+    #[test]
+    fn scratch_set_passes_values_to_the_session() {
+        let env = test_env();
+        let (deps, mux) = deps_for(&env);
+        let deps = with_claude_layout(deps);
+
+        let run = invoke(&["scratch", "pad", "--set", "prompt=explore x"], &deps);
+
+        assert_eq!(run.code, 0);
+        assert_eq!(
+            mux.state().values,
+            [Some(HashMap::from([(
+                "prompt".to_string(),
+                "explore x".to_string()
+            )]))]
+        );
+    }
+
+    #[test]
+    fn scratch_rejects_a_taken_name() {
+        let (_env, deps, _mux) = registered();
+        create(&deps, "feat");
+
+        let run = invoke(&["scratch", "feat"], &deps);
+
+        assert_eq!(run.code, 1);
+        assert!(run.err.contains("already used by origin/feat"));
     }
 
     #[test]
