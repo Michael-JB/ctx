@@ -80,6 +80,13 @@ pub fn archived_at(ctx: &Context) -> Option<SystemTime> {
     mtime(&archived_marker(ctx))
 }
 
+/// Move the context's archive date `ago` into the past.
+#[cfg(test)]
+pub fn backdate_archived(ctx: &Context, ago: std::time::Duration) {
+    let file = std::fs::File::open(archived_marker(ctx)).unwrap();
+    file.set_modified(SystemTime::now() - ago).unwrap();
+}
+
 /// Whether a directory is a full clone, the only thing a context can be.
 ///
 /// A `.git` directory means a full clone. A `.git` file marks a linked
@@ -576,6 +583,32 @@ pub fn empty_archive(cfg: &Config) -> Result<()> {
     stage_empty_archive(cfg)?
         .iter()
         .try_for_each(|doomed| finish_removal(doomed))
+}
+
+/// Archived contexts at least `prune_after_days` old, as of `now`. Archives
+/// predating the stamp carry no date and count as old.
+pub fn prunable(cfg: &Config, now: SystemTime) -> Vec<Context> {
+    let cutoff = std::time::Duration::from_secs(cfg.prune_after_days.saturating_mul(24 * 60 * 60));
+    list_archived(cfg)
+        .into_iter()
+        .filter(|ctx| {
+            archived_at(ctx).is_none_or(|at| now.duration_since(at).unwrap_or_default() >= cutoff)
+        })
+        .collect()
+}
+
+/// Rename every prunable archived context away, see `stage_removal`.
+pub fn stage_prune(cfg: &Config, now: SystemTime) -> Result<Vec<PathBuf>> {
+    prunable(cfg, now).iter().map(stage_removal).collect()
+}
+
+/// Permanently delete every prunable archived context; how many went.
+pub fn prune_archive(cfg: &Config, now: SystemTime) -> Result<usize> {
+    let doomed = stage_prune(cfg, now)?;
+    doomed
+        .iter()
+        .try_for_each(|doomed| finish_removal(doomed))?;
+    Ok(doomed.len())
 }
 
 #[cfg(test)]
@@ -1390,5 +1423,31 @@ mod tests {
 
         assert_eq!(list_archived(&env.cfg), vec![]);
         assert_eq!(list_contexts(&env.cfg), vec![kept]);
+    }
+
+    #[test]
+    fn prune_deletes_only_archives_past_the_cutoff() {
+        let (mut env, _origin) = registered();
+        env.cfg.prune_after_days = 30;
+        let day = std::time::Duration::from_secs(24 * 60 * 60);
+        let old = archive_context(&env.cfg, &create(&env, "origin", "old")).unwrap();
+        let fresh = archive_context(&env.cfg, &create(&env, "origin", "fresh")).unwrap();
+        let unstamped = archive_context(&env.cfg, &create(&env, "origin", "unstamped")).unwrap();
+        let live = create(&env, "origin", "live");
+        backdate_archived(&old, 31 * day);
+        backdate_archived(&fresh, 29 * day);
+        std::fs::remove_file(archived_marker(&unstamped)).unwrap();
+        let now = SystemTime::now();
+
+        assert_eq!(
+            prunable(&env.cfg, now),
+            vec![old.clone(), unstamped.clone()]
+        );
+        assert_eq!(prune_archive(&env.cfg, now).unwrap(), 2);
+
+        assert_eq!(list_archived(&env.cfg), vec![fresh]);
+        assert_eq!(list_contexts(&env.cfg), vec![live]);
+        assert!(!old.path.exists());
+        assert!(!unstamped.path.exists());
     }
 }

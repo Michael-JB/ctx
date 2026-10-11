@@ -114,6 +114,7 @@ archive_dir = "~/.local/share/ctx/archive"    # where archived contexts go
 branch_prefix = ""                            # work branch prefix, e.g. "jane/"
 multiplexer = "tmux"                          # or "zellij" (requires zellij >= 0.44)
 nerd_font = true                              # false swaps builtin glyphs for plain unicode
+prune_after_days = 30                         # archived contexts this old are permanently deleted on prune
 ```
 
 ### Multiplexer layout

@@ -133,6 +133,8 @@ pub struct Config {
     pub branch_prefix: String,
     pub multiplexer: MultiplexerKind,
     pub nerd_font: bool,
+    /// Archived contexts this many days old are prunable.
+    pub prune_after_days: u64,
     pub layout: Node,
     pub status: Vec<StatusColumn>,
     pub theme: Theme,
@@ -148,6 +150,7 @@ impl Default for Config {
             branch_prefix: String::new(),
             multiplexer: MultiplexerKind::Tmux,
             nerd_font: true,
+            prune_after_days: 30,
             layout: default_layout(),
             status: Vec::new(),
             theme: Theme::default(),
@@ -194,6 +197,12 @@ pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
         match value {
             Value::Boolean(flag) => cfg.nerd_font = *flag,
             _ => return config_err("nerd_font must be a boolean"),
+        }
+    }
+    if let Some(value) = data.get("prune_after_days") {
+        match value {
+            Value::Integer(days) if *days > 0 => cfg.prune_after_days = *days as u64,
+            _ => return config_err("prune_after_days must be a positive integer"),
         }
     }
     if let Some(value) = data.get("layout") {
@@ -566,5 +575,22 @@ mod tests {
     #[test]
     fn nerd_font_rejects_non_booleans() {
         assert!(err("nerd_font = \"yes\"").contains("nerd_font"));
+    }
+
+    #[test]
+    fn prune_after_days_defaults_to_thirty_and_can_be_set() {
+        assert_eq!(Config::default().prune_after_days, 30);
+        assert_eq!(load("prune_after_days = 7").unwrap().prune_after_days, 7);
+    }
+
+    #[test]
+    fn prune_after_days_rejects_non_positive_and_non_integers() {
+        for text in [
+            "prune_after_days = 0",
+            "prune_after_days = -1",
+            "prune_after_days = \"7\"",
+        ] {
+            assert!(err(text).contains("prune_after_days must be a positive integer"));
+        }
     }
 }

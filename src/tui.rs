@@ -213,6 +213,7 @@ enum ConfirmKind {
     DeleteArchived(Context),
     RemoveRepo(String),
     EmptyArchive,
+    Prune,
     Overwrite {
         existing: Context,
         repo: String,
@@ -788,6 +789,7 @@ impl CtxTui {
                 self.action_delete()
             }
             (Panel::Archived, KeyCode::Char('e')) if gated => self.action_empty_archive(),
+            (Panel::Archived, KeyCode::Char('p')) if gated => self.action_prune(),
             _ => {}
         }
     }
@@ -1406,6 +1408,22 @@ impl CtxTui {
         });
     }
 
+    fn action_prune(&mut self) {
+        let count = contexts::prunable(&self.cfg, SystemTime::now()).len();
+        if count == 0 {
+            return;
+        }
+        self.modal = Some(Modal::Confirm {
+            message: format!(
+                "Permanently delete {count} archived context(s) older than {} day(s)?",
+                self.cfg.prune_after_days
+            ),
+            confirm_label: "Prune",
+            selected: 0,
+            kind: ConfirmKind::Prune,
+        });
+    }
+
     fn action_delete(&mut self) {
         match self.panel {
             Panel::Repos => self.delete_repo_prompt(),
@@ -1514,6 +1532,15 @@ impl CtxTui {
                 let tx = self.tx.clone();
                 self.workers += 1;
                 spawn_worker(move || report_staged(&tx, contexts::stage_empty_archive(&cfg)));
+            }
+            ConfirmKind::Prune => {
+                self.start_busy(Panel::Archived);
+                let cfg = self.cfg.clone();
+                let tx = self.tx.clone();
+                self.workers += 1;
+                spawn_worker(move || {
+                    report_staged(&tx, contexts::stage_prune(&cfg, SystemTime::now()))
+                });
             }
         }
     }
@@ -1895,6 +1922,7 @@ impl CtxTui {
                 ("d", "Delete"),
                 ("r", "Rename"),
                 ("e", "Empty"),
+                ("p", "Prune"),
                 ("n", "New context"),
                 ("/", "Filter"),
                 ("R", "Refresh"),
@@ -2258,6 +2286,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
             ("d / D", "permanently delete context"),
             ("r", "rename context"),
             ("e", "empty the archive"),
+            ("p", "prune old archived contexts"),
         ],
     };
     let common: &[(&str, &str)] = &[
@@ -3083,6 +3112,41 @@ mod tests {
 
         assert!(contexts::find_archived(&env.cfg, "one").is_err());
         assert!(contexts::find_context(&env.cfg, "one").is_ok());
+    }
+
+    #[test]
+    fn p_prunes_old_archived_contexts_after_confirming() {
+        let (env, _origin) = registered();
+        let old = contexts::archive_context(&env.cfg, &create(&env, "origin", "old")).unwrap();
+        let fresh = contexts::archive_context(&env.cfg, &create(&env, "origin", "fresh")).unwrap();
+        contexts::backdate_archived(&old, Duration::from_secs(31 * 86_400));
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.panel = Panel::Archived;
+        app.key(KeyCode::Char('p'));
+        match &app.modal {
+            Some(Modal::Confirm { message, .. }) => {
+                assert!(message.contains("1 archived context(s) older than 30 day(s)"));
+            }
+            _ => panic!("expected a confirm"),
+        }
+        app.key(KeyCode::Enter);
+        app.drain_idle();
+
+        assert_eq!(contexts::list_archived(&env.cfg), vec![fresh]);
+        assert_eq!(app.archived.selected_key(), Some("fresh"));
+    }
+
+    #[test]
+    fn p_does_nothing_when_no_archive_is_old_enough() {
+        let (env, _origin) = registered();
+        contexts::archive_context(&env.cfg, &create(&env, "origin", "fresh")).unwrap();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.panel = Panel::Archived;
+        app.key(KeyCode::Char('p'));
+
+        assert!(app.modal.is_none());
     }
 
     /// Open the rename prompt, clear the old name, and submit `name`.
