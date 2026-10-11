@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.12.0](https://github.com/Michael-JB/ctx/compare/v2.11.0...v2.12.0) (2026-10-11)
+
+
+### Features
+
+* ctx scratch starts a session in an empty directory ([a2cc10f](https://github.com/Michael-JB/ctx/commit/a2cc10f27cec8d6ba7406c69eaadeb471def8715))
+* name sessions ctx--&lt;repo&gt;--&lt;name&gt; ([6b1a20a](https://github.com/Michael-JB/ctx/commit/6b1a20a42f51070eef096f89b1c69697c75b729e))
+* s starts a scratch context in the TUI ([d595484](https://github.com/Michael-JB/ctx/commit/d5954849646ba9a24248139a5eaf9f0f49e4b14f))
+* set the default repo with * in the TUI, not s ([e2d4c46](https://github.com/Michael-JB/ctx/commit/e2d4c4660c6cdc8d1100f8112e3d673875b79b02))
+
+
+### Bug Fixes
+
+* list repos whose names start with a dot ([8b1ced8](https://github.com/Michael-JB/ctx/commit/8b1ced856cbc71256461628f430749b09f41d8da))
+* o reports what git says instead of the forge CLI's error ([0d3b384](https://github.com/Michael-JB/ctx/commit/0d3b384de065fb99e5e8491981ed33dfd3c2470b))
+* validate repo names ([f7c5171](https://github.com/Michael-JB/ctx/commit/f7c517185b3bdc03599e7d8aff6b40169cad9a8c))
+
 ## [2.11.0](https://github.com/Michael-JB/ctx/compare/v2.10.0...v2.11.0) (2026-10-11)
 
 
