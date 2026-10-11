@@ -10,7 +10,7 @@ use crate::multiplexer::{Multiplexer, MultiplexerError, env_truthy};
 use crate::shellrun::via_shell;
 
 fn session_name(ctx: &Context) -> String {
-    let raw = format!("{}--{}", ctx.repo, ctx.name);
+    let raw = format!("ctx--{}--{}", ctx.repo, ctx.name);
     // tmux forbids '.' and ':' in session names.
     raw.replace(['.', ':'], "-")
 }
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn session_name_replaces_forbidden_characters() {
-        assert_eq!(session_name(&ctx("my.repo", "a:b")), "my-repo--a-b");
+        assert_eq!(session_name(&ctx("my.repo", "a:b")), "ctx--my-repo--a-b");
     }
 
     #[test]
@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn is_current_compares_the_attached_session() {
         let env = test_env();
-        let _guard = env.fake_cli("tmux", "echo 'repo--a'");
+        let _guard = env.fake_cli("tmux", "echo 'ctx--repo--a'");
         let _tmux = push_env("TMUX", "/tmp/tmux-1/default,1,0");
         let mux = TmuxMultiplexer::new(Node::Pane(Pane::default()));
 
