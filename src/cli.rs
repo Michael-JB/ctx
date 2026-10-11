@@ -81,6 +81,8 @@ enum Commands {
     },
     /// Restore an archived context.
     Unarchive { name: String },
+    /// Permanently delete archived contexts older than prune_after_days.
+    Prune,
     /// Rename a context, archived or not.
     Rename { name: String, new_name: String },
     /// Manage contexts and repos interactively.
@@ -371,6 +373,12 @@ fn archive_one(deps: &Deps, io: &mut Io, name: &str) -> Result<()> {
     Ok(())
 }
 
+fn cmd_prune(deps: &Deps, io: &mut Io) -> Result<()> {
+    let count = contexts::prune_archive(&deps.cfg, std::time::SystemTime::now())?;
+    writeln!(io.out, "pruned {count} archived context(s)")?;
+    Ok(())
+}
+
 fn cmd_unarchive(deps: &Deps, io: &mut Io, name: &str) -> Result<()> {
     let archived = contexts::find_archived(&deps.cfg, name)?;
     let ctx = contexts::unarchive_context(&deps.cfg, &archived)?;
@@ -508,6 +516,7 @@ fn dispatch(cli: Cli, deps: &Deps, io: &mut Io) -> Result<i32> {
         Commands::Rm { names, force } => return cmd_rm(deps, io, &names, force),
         Commands::Archive { names, empty } => return cmd_archive(deps, io, &names, empty),
         Commands::Unarchive { name } => cmd_unarchive(deps, io, &name)?,
+        Commands::Prune => cmd_prune(deps, io)?,
         Commands::Rename { name, new_name } => cmd_rename(deps, io, &name, &new_name)?,
         Commands::Tui { exit_on_open } => cmd_tui(deps, io, exit_on_open)?,
         Commands::AgentDocs => {
@@ -1246,6 +1255,20 @@ mod tests {
         let run = invoke(&["archive", "--empty", "feat"], &deps);
 
         assert_eq!(run.code, 2);
+    }
+
+    #[test]
+    fn prune_deletes_archives_past_the_cutoff() {
+        let (_env, deps, _mux) = registered();
+        let old = contexts::archive_context(&deps.cfg, &create(&deps, "old")).unwrap();
+        let fresh = contexts::archive_context(&deps.cfg, &create(&deps, "fresh")).unwrap();
+        contexts::backdate_archived(&old, std::time::Duration::from_secs(31 * 24 * 60 * 60));
+
+        let run = invoke(&["prune"], &deps);
+
+        assert_eq!(run.code, 0);
+        assert!(run.out.contains("pruned 1 archived context(s)"));
+        assert_eq!(contexts::list_archived(&deps.cfg), vec![fresh]);
     }
 
     #[test]
