@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.0](https://github.com/Michael-JB/ctx/compare/v2.10.0...v2.11.0) (2026-10-11)
+
+
+### Features
+
+* prune old archived contexts past a configurable age ([a42b8bd](https://github.com/Michael-JB/ctx/commit/a42b8bd1a157d589caddc4b8fcd6c1ce18cfece1))
+
 ## [2.10.0](https://github.com/Michael-JB/ctx/compare/v2.9.0...v2.10.0) (2026-09-28)
 
 
