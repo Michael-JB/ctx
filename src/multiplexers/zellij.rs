@@ -31,7 +31,7 @@ fn session_name_budget() -> Option<usize> {
 }
 
 fn session_name(ctx: &Context) -> String {
-    let name = format!("{}--{}", ctx.repo, ctx.name).replace(['.', ':'], "-");
+    let name = format!("ctx--{}--{}", ctx.repo, ctx.name).replace(['.', ':'], "-");
     session_name_within(name, session_name_budget())
 }
 
@@ -325,8 +325,8 @@ mod tests {
     #[test]
     fn session_name_replaces_forbidden_characters() {
         assert_eq!(
-            session_name_within("my.repo--a:b".replace(['.', ':'], "-"), None),
-            "my-repo--a-b"
+            session_name_within("ctx--my.repo--a:b".replace(['.', ':'], "-"), None),
+            "ctx--my-repo--a-b"
         );
     }
 
@@ -436,7 +436,7 @@ mod tests {
             .filter(|s| !s.is_empty())
             .collect();
         assert_eq!(args[0], "--layout");
-        assert_eq!(args[2..], ["attach", "--create-background", "repo--a"]);
+        assert_eq!(args[2..], ["attach", "--create-background", "ctx--repo--a"]);
         // With the session env visible, zellij would open the layout as new
         // tabs of the current session instead of creating one.
         let leaked = std::fs::read_to_string(&env_log).unwrap_or_default();
