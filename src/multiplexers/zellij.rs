@@ -154,6 +154,58 @@ fn run_zellij(mut cmd: std::process::Command, message: String) -> Result<(), Mul
     }))
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum Listing {
+    Absent,
+    Live,
+    /// Left behind by a reboot or a crashed server, resurrectable on attach.
+    Dead,
+}
+
+fn listing(session: &str) -> Listing {
+    let output = new_command("zellij")
+        .args(["list-sessions", "--no-formatting"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output();
+    // Nonzero means no zellij server is running.
+    let Ok(output) = output else {
+        return Listing::Absent;
+    };
+    if !output.status.success() {
+        return Listing::Absent;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find(|line| line.split_whitespace().next() == Some(session))
+        .map_or(Listing::Absent, |line| {
+            if line.contains("(EXITED") {
+                Listing::Dead
+            } else {
+                Listing::Live
+            }
+        })
+}
+
+/// Whether the session is live, deleting a dead one so the caller creates
+/// it afresh.
+///
+/// Zellij resurrects a dead session from its own snapshot, which runs pane
+/// commands bare instead of through `via_shell`, so the panes miss the
+/// environment the user's shell would load (direnv, mise, ...).
+fn live_or_clear(session: &str) -> Result<bool, MultiplexerError> {
+    match listing(session) {
+        Listing::Live => Ok(true),
+        Listing::Absent => Ok(false),
+        Listing::Dead => {
+            let mut cmd = new_command("zellij");
+            cmd.args(["delete-session", session]);
+            run_zellij(cmd, format!("zellij could not delete dead '{session}'"))?;
+            Ok(false)
+        }
+    }
+}
+
 pub struct ZellijMultiplexer {
     layout: Node,
 }
@@ -189,22 +241,7 @@ impl Multiplexer for ZellijMultiplexer {
     }
 
     fn exists(&self, ctx: &Context) -> bool {
-        let output = new_command("zellij")
-            .args(["list-sessions", "--short"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output();
-        // Nonzero means no zellij server is running.
-        let Ok(output) = output else {
-            return false;
-        };
-        if !output.status.success() {
-            return false;
-        }
-        let session = session_name(ctx);
-        String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .any(|line| line == session)
+        listing(&session_name(ctx)) != Listing::Absent
     }
 
     fn is_current(&self, ctx: &Context) -> bool {
@@ -216,10 +253,10 @@ impl Multiplexer for ZellijMultiplexer {
         ctx: &Context,
         values: Option<&HashMap<String, String>>,
     ) -> Result<(), MultiplexerError> {
-        if self.exists(ctx) {
+        let session = session_name(ctx);
+        if live_or_clear(&session)? {
             return Ok(());
         }
-        let session = session_name(ctx);
         let layout_file = self.write_layout_file(ctx, values)?;
         let mut cmd = std::process::Command::new("zellij");
         cmd.env_clear().envs(env_without_zellij());
@@ -241,7 +278,7 @@ impl Multiplexer for ZellijMultiplexer {
         use std::os::unix::process::CommandExt;
 
         let session = session_name(ctx);
-        let exists = self.exists(ctx);
+        let exists = live_or_clear(&session)?;
         if env_truthy("ZELLIJ") {
             // A nested `zellij attach` cannot run inside a session, so re-point
             // the already-attached client instead (zellij >= 0.44). The layout
@@ -409,7 +446,7 @@ mod tests {
         let env = test_env();
         let args_log = env.root().join("zellij-args.log");
         let env_log = env.root().join("zellij-env.log");
-        // Only the create invocation must hide the session env; the exists()
+        // Only the create invocation must hide the session env; the session
         // probe legitimately runs with it.
         let script = format!(
             "{{ printf '%s\\037' \"$@\"; printf '\\n'; }} >> {args}\n\
@@ -441,6 +478,32 @@ mod tests {
         // tabs of the current session instead of creating one.
         let leaked = std::fs::read_to_string(&env_log).unwrap_or_default();
         assert_eq!(leaked.trim(), "");
+    }
+
+    #[test]
+    fn create_replaces_a_dead_session() {
+        let env = test_env();
+        let args_log = env.root().join("zellij-args.log");
+        let script = format!(
+            "echo \"$*\" >> {args}\n\
+             case \"$*\" in list-sessions*) echo 'ctx--repo--a [Created 1day ago] (EXITED - attach to resurrect)';; esac\n\
+             exit 0",
+            args = args_log.display()
+        );
+        let _guard = env.fake_cli("zellij", &script);
+        let mux = ZellijMultiplexer::new(Node::Pane(Pane::default()));
+
+        mux.create(&ctx("repo", "a"), Some(&HashMap::new()))
+            .unwrap();
+
+        let log = std::fs::read_to_string(&args_log).unwrap();
+        let calls: Vec<&str> = log
+            .lines()
+            .filter(|line| !line.starts_with("list-sessions"))
+            .collect();
+        assert_eq!(calls.len(), 2, "{calls:?}");
+        assert_eq!(calls[0], "delete-session ctx--repo--a");
+        assert!(calls[1].ends_with("attach --create-background ctx--repo--a"));
     }
 
     #[test]
