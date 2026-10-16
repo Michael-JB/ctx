@@ -24,7 +24,7 @@ use tui_input::backend::crossterm::EventHandler;
 use crate::config::Config;
 use crate::contexts::{self, Context};
 use crate::dates;
-use crate::errors::Result as CtxResult;
+use crate::errors::{CtxError, Result as CtxResult};
 use crate::git::{git_quiet, new_command};
 use crate::multiplexer::Multiplexer;
 use crate::{forge, repos, status};
@@ -215,6 +215,7 @@ enum ConfirmKind {
     RemoveRepo(String),
     EmptyArchive,
     Prune,
+    ArchiveStale(Vec<Context>),
     Overwrite {
         existing: Context,
         repo: Option<String>,
@@ -783,6 +784,7 @@ impl CtxTui {
             (Panel::Contexts, KeyCode::Char('o')) => self.action_open_pr(),
             (Panel::Contexts, KeyCode::Char('d')) if gated => self.action_archive(),
             (Panel::Contexts, KeyCode::Char('D')) if gated => self.action_delete(),
+            (Panel::Contexts, KeyCode::Char('p')) if gated => self.action_archive_stale(),
             (Panel::Contexts | Panel::Archived, KeyCode::Char('r')) if gated => {
                 self.action_rename()
             }
@@ -1436,6 +1438,31 @@ impl CtxTui {
         });
     }
 
+    /// Archive the rows painted dim, after confirming. Taken from the table
+    /// as displayed, so the sweep matches what the user sees.
+    fn action_archive_stale(&mut self) {
+        let keys: Vec<String> = self
+            .contexts
+            .rows
+            .iter()
+            .filter(|row| row.dim)
+            .map(|row| row.key.clone())
+            .collect();
+        let stale: Vec<Context> = keys
+            .iter()
+            .filter_map(|key| contexts::find_context(&self.cfg, key).ok())
+            .collect();
+        if stale.is_empty() {
+            return;
+        }
+        self.modal = Some(Modal::Confirm {
+            message: format!("Archive {} stale context(s)?", stale.len()),
+            confirm_label: "Archive",
+            selected: 0,
+            kind: ConfirmKind::ArchiveStale(stale),
+        });
+    }
+
     fn action_delete(&mut self) {
         match self.panel {
             Panel::Repos => self.delete_repo_prompt(),
@@ -1552,6 +1579,31 @@ impl CtxTui {
                 self.workers += 1;
                 spawn_worker(move || {
                     report_staged(&tx, contexts::stage_prune(&cfg, SystemTime::now()))
+                });
+            }
+            ConfirmKind::ArchiveStale(stale) => {
+                self.start_busy(Panel::Contexts);
+                let cfg = self.cfg.clone();
+                let mux = self.mux.clone();
+                let tx = self.tx.clone();
+                self.workers += 1;
+                spawn_worker(move || {
+                    // Keep going past a failure so one bad context does not
+                    // hold the rest back; report every failure together.
+                    let failures: Vec<String> = stale
+                        .iter()
+                        .filter_map(|ctx| {
+                            teardown(&cfg, mux.as_ref(), ctx, Teardown::Archive)
+                                .err()
+                                .map(|err| format!("{}: {err}", ctx.qualified()))
+                        })
+                        .collect();
+                    let staged = if failures.is_empty() {
+                        Ok(Vec::new())
+                    } else {
+                        Err(CtxError::Msg(failures.join("\n")))
+                    };
+                    report_staged(&tx, staged);
                 });
             }
         }
@@ -1911,6 +1963,7 @@ impl CtxTui {
                 ("o", "Open PR"),
                 ("d", "Archive"),
                 ("D", "Delete"),
+                ("p", "Archive stale"),
                 ("r", "Rename"),
                 ("n", "New context"),
                 ("s", "Scratch"),
@@ -2282,6 +2335,7 @@ fn panel_keybindings(panel: Panel) -> Vec<(&'static str, &'static str)> {
             ("s", "new scratch context"),
             ("d", "archive context"),
             ("D", "permanently delete context"),
+            ("p", "archive all stale (dimmed) contexts"),
             ("r", "rename context"),
         ],
         Panel::Repos => &[
@@ -3216,6 +3270,72 @@ mod tests {
 
         assert_eq!(contexts::list_archived(&env.cfg), vec![fresh]);
         assert_eq!(app.archived.selected_key(), Some("fresh"));
+    }
+
+    #[test]
+    fn p_archives_stale_contexts_after_confirming() {
+        let (env, _origin) = registered();
+        let stale = create(&env, "origin", "stale");
+        let current = create(&env, "origin", "current");
+        create(&env, "origin", "fresh");
+        contexts::backdate_touch(&stale, Duration::from_secs(2 * 86_400));
+        contexts::backdate_touch(&current, Duration::from_secs(2 * 86_400));
+        let mux = TestMux::recording(Some("current"));
+        let mut app = app(&env.cfg, mux.clone());
+
+        app.key(KeyCode::Char('p'));
+        match &app.modal {
+            Some(Modal::Confirm { message, .. }) => {
+                assert!(message.contains("Archive 1 stale context(s)?"), "{message}");
+            }
+            _ => panic!("expected a confirm"),
+        }
+        app.key(KeyCode::Enter);
+        app.drain_idle();
+
+        let live: Vec<_> = contexts::list_contexts(&env.cfg)
+            .iter()
+            .map(|ctx| ctx.name.clone())
+            .collect();
+        assert_eq!(live, ["fresh", "current"]);
+        assert!(contexts::find_archived(&env.cfg, "stale").is_ok());
+        assert_eq!(mux.calls(), [("kill".to_string(), "stale".to_string())]);
+    }
+
+    #[test]
+    fn p_archives_past_a_failure_and_names_it() {
+        let (env, _origin) = registered();
+        let stale = create(&env, "origin", "stale");
+        let clash = create(&env, "origin", "clash");
+        contexts::backdate_touch(&stale, Duration::from_secs(2 * 86_400));
+        contexts::backdate_touch(&clash, Duration::from_secs(2 * 86_400));
+        // An archive already holding the name makes archiving fail.
+        std::fs::create_dir_all(contexts::archive_path(&env.cfg, Some("origin"), "clash")).unwrap();
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Char('p'));
+        app.key(KeyCode::Enter);
+        app.drain_idle();
+
+        assert!(contexts::find_archived(&env.cfg, "stale").is_ok());
+        assert!(contexts::find_context(&env.cfg, "clash").is_ok());
+        match &app.modal {
+            Some(Modal::Alert { message }) => {
+                assert!(message.starts_with("origin/clash: "), "{message}");
+            }
+            _ => panic!("expected an alert"),
+        }
+    }
+
+    #[test]
+    fn p_does_nothing_without_stale_contexts() {
+        let (env, _origin) = registered();
+        create(&env, "origin", "fresh");
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.key(KeyCode::Char('p'));
+
+        assert!(app.modal.is_none());
     }
 
     #[test]
