@@ -184,21 +184,46 @@ pub fn list_contexts(cfg: &Config) -> Vec<Context> {
     scan(&cfg.contexts_dir, last_touched)
 }
 
+/// The name a context gets for a requested one: whitespace runs become a
+/// dash, so the name is safe as a directory and a branch (scripts inside a
+/// checkout, shebangs above all, break on a path with spaces). Anything else
+/// unfit for either is rejected, not rewritten.
+pub fn slug(name: &str) -> String {
+    name.split_whitespace().collect::<Vec<_>>().join("-")
+}
+
+/// Two names denote the same context when they slug alike: a directory
+/// created before names were slugged keeps its raw name, and must answer
+/// to the slug too.
+fn same_name(a: &str, b: &str) -> bool {
+    slug(a) == slug(b)
+}
+
+/// The context a name denotes among `candidates`. An exact match wins over
+/// a slug match, so that a pre-slug `a b` beside `a-b` can still be told
+/// apart.
+fn find_named(candidates: Vec<Context>, name: &str) -> Option<Context> {
+    candidates
+        .iter()
+        .position(|ctx| ctx.name == name)
+        .or_else(|| candidates.iter().position(|ctx| same_name(&ctx.name, name)))
+        .map(|at| candidates.into_iter().nth(at).unwrap())
+}
+
 /// Resolve a context name; names are globally unique.
 pub fn find_context(cfg: &Config, name: &str) -> Result<Context> {
-    list_contexts(cfg)
-        .into_iter()
-        .find(|ctx| ctx.name == name)
+    find_named(list_contexts(cfg), name)
         .ok_or_else(|| CtxError::Msg(format!("no context '{name}'")))
 }
 
 /// Names are unique across live and archived contexts alike.
 ///
 /// Sharing a name with an archived context would leave that archive
-/// unrestorable, so the two pools compete for the same names.
+/// unrestorable, so the two pools compete for the same names. Names that
+/// slug alike compete too, since the slug is what goes on disk.
 fn check_name_free(cfg: &Config, name: &str, exclude: Option<&Path>) -> Result<()> {
     for ctx in list_contexts(cfg) {
-        if ctx.name == name && Some(ctx.path.as_path()) != exclude {
+        if same_name(&ctx.name, name) && Some(ctx.path.as_path()) != exclude {
             return msg(format!(
                 "context name '{name}' is already used by {}",
                 ctx.name_holder(false)
@@ -206,7 +231,7 @@ fn check_name_free(cfg: &Config, name: &str, exclude: Option<&Path>) -> Result<(
         }
     }
     for ctx in list_archived(cfg) {
-        if ctx.name == name && Some(ctx.path.as_path()) != exclude {
+        if same_name(&ctx.name, name) && Some(ctx.path.as_path()) != exclude {
             return msg(format!(
                 "context name '{name}' is already used by {}",
                 ctx.name_holder(true)
@@ -218,9 +243,7 @@ fn check_name_free(cfg: &Config, name: &str, exclude: Option<&Path>) -> Result<(
 
 /// The branch a context of this name works on.
 fn branch_for(cfg: &Config, name: &str) -> String {
-    // Spaces are welcome in context names but not in branch names; dash them
-    // out. Anything else unfit for a branch is rejected, not rewritten.
-    format!("{}{}", cfg.branch_prefix, name.replace(' ', "-"))
+    format!("{}{}", cfg.branch_prefix, name)
 }
 
 /// Every rule a name passes to become a context's: the name it becomes and
@@ -230,11 +253,12 @@ fn check_new_name(cfg: &Config, name: &str, exclude: Option<&Path>) -> Result<(S
     if name.trim().is_empty() {
         return msg("context name must not be empty");
     }
-    let name = name.to_string();
-    let branch = branch_for(cfg, &name);
-    check_name(&name, &branch)?;
-    check_name_free(cfg, &name, exclude)?;
-    Ok((name, branch))
+    let slugged = slug(name);
+    let branch = branch_for(cfg, &slugged);
+    check_name(&slugged, &branch)?;
+    // Checked as typed, so a refusal names what the user asked for.
+    check_name_free(cfg, name, exclude)?;
+    Ok((slugged, branch))
 }
 
 /// Reject names that break the paths, branches, or commands they feed.
@@ -480,19 +504,15 @@ pub fn list_archived(cfg: &Config) -> Vec<Context> {
 
 /// Resolve an archived context by name.
 pub fn find_archived(cfg: &Config, name: &str) -> Result<Context> {
-    list_archived(cfg)
-        .into_iter()
-        .find(|ctx| ctx.name == name)
+    find_named(list_archived(cfg), name)
         .ok_or_else(|| CtxError::Msg(format!("no archived context '{name}'")))
 }
 
 /// Resolve a context name among live and archived contexts alike.
 pub fn find_any(cfg: &Config, name: &str) -> Result<Context> {
-    list_contexts(cfg)
-        .into_iter()
-        .chain(list_archived(cfg))
-        .find(|ctx| ctx.name == name)
-        .ok_or_else(|| CtxError::Msg(format!("no context '{name}'")))
+    let mut all = list_contexts(cfg);
+    all.extend(list_archived(cfg));
+    find_named(all, name).ok_or_else(|| CtxError::Msg(format!("no context '{name}'")))
 }
 
 pub fn is_archived(cfg: &Config, ctx: &Context) -> bool {
@@ -572,7 +592,7 @@ pub fn unarchive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
 /// The new name must pass the create rules, so a renamed context could
 /// have been created as such.
 pub fn rename_context(cfg: &Config, ctx: &Context, name: &str) -> Result<Context> {
-    if name == ctx.name {
+    if slug(name) == ctx.name {
         return msg(format!("'{}' already has that name", ctx.qualified()));
     }
     let (name, _) = check_new_name(cfg, name, Some(&ctx.path))?;
@@ -770,13 +790,101 @@ mod tests {
     }
 
     #[test]
-    fn create_maps_name_spaces_to_branch_dashes() {
+    fn create_slugs_whitespace_in_the_name() {
         let (env, _origin) = registered();
 
-        let ctx = create(&env, "origin", "two words");
+        let ctx = create(&env, "origin", " two \t words ");
 
+        assert_eq!(ctx.name, "two-words");
+        assert_eq!(
+            ctx.path,
+            env.cfg.contexts_dir.join("origin").join("two-words")
+        );
         assert_eq!(current_branch(&ctx), "two-words");
+        // The name as typed still resolves the context.
         assert_eq!(find_context(&env.cfg, "two words").unwrap(), ctx);
+        assert_eq!(find_any(&env.cfg, "two words").unwrap(), ctx);
+    }
+
+    #[test]
+    fn create_rejects_a_name_slugging_to_a_taken_one() {
+        let (env, _origin) = registered();
+        create(&env, "origin", "two-words");
+
+        let err = create_context(&env.cfg, "origin", "two words", None).expect_err("must reject");
+
+        // The refusal names the context as asked for, not its slug.
+        assert!(
+            err.to_string()
+                .contains("'two words' is already used by origin/two-words")
+        );
+    }
+
+    /// A context whose directory predates slugged names.
+    fn create_legacy(env: &TestEnv, repo: &str, name: &str) -> Context {
+        let ctx = create(env, repo, "legacy-stand-in");
+        let path = ctx.path.with_file_name(name);
+        std::fs::rename(&ctx.path, &path).unwrap();
+        Context {
+            name: name.to_string(),
+            path,
+            ..ctx
+        }
+    }
+
+    #[test]
+    fn a_legacy_name_answers_to_its_slug() {
+        let (env, _origin) = registered();
+        let legacy = create_legacy(&env, "origin", "two words");
+
+        assert_eq!(find_context(&env.cfg, "two-words").unwrap(), legacy);
+        assert_eq!(find_any(&env.cfg, "two-words").unwrap(), legacy);
+        let archived = archive_context(&env.cfg, &legacy).unwrap();
+        assert_eq!(find_archived(&env.cfg, "two-words").unwrap(), archived);
+    }
+
+    #[test]
+    fn an_exact_name_wins_over_a_slug_match() {
+        // Both could exist before names were slugged; each must stay reachable.
+        let (env, _origin) = registered();
+        let legacy = create_legacy(&env, "origin", "two words");
+        let slugged = create_legacy(&env, "origin", "two-words");
+
+        assert_eq!(find_context(&env.cfg, "two words").unwrap(), legacy);
+        assert_eq!(find_context(&env.cfg, "two-words").unwrap(), slugged);
+    }
+
+    #[test]
+    fn unarchive_rejects_a_name_slugging_to_a_live_one() {
+        let (env, _origin) = registered();
+        create(&env, "origin", "two-words");
+        let stale = archive_context(&env.cfg, &create(&env, "origin", "old")).unwrap();
+        let cold = Context {
+            name: "two words".to_string(),
+            path: stale.path.with_file_name("two words"),
+            ..stale
+        };
+        std::fs::rename(&stale.path, &cold.path).unwrap();
+
+        let err = unarchive_context(&env.cfg, &cold).expect_err("must reject");
+
+        assert!(
+            err.to_string()
+                .contains("'two words' is already used by origin/two-words")
+        );
+    }
+
+    #[test]
+    fn a_legacy_name_keeps_its_slug_taken() {
+        let (env, _origin) = registered();
+        let legacy = create_legacy(&env, "origin", "two words");
+
+        let err = create_context(&env.cfg, "origin", "two-words", None).expect_err("must reject");
+
+        assert!(err.to_string().contains("already used by origin/two words"));
+        // Renaming to the same words slugs the directory.
+        let renamed = rename_context(&env.cfg, &legacy, "two words").unwrap();
+        assert_eq!(renamed.path, legacy.path.with_file_name("two-words"));
     }
 
     #[test]
@@ -865,14 +973,7 @@ mod tests {
     fn create_rejects_names_unfit_for_branches() {
         let (env, _origin) = registered();
 
-        for name in [
-            "feat~1",
-            "a..b",
-            "what?",
-            "tab\there",
-            ".hidden",
-            "feat.lock",
-        ] {
+        for name in ["feat~1", "a..b", "what?", ".hidden", "feat.lock"] {
             let err = create_context(&env.cfg, "origin", name, None).expect_err("must reject");
             assert!(err.to_string().contains("valid branch name"));
         }
@@ -1473,9 +1574,10 @@ mod tests {
         let (env, _origin) = registered();
         let ctx = create(&env, "origin", "feat");
 
-        let err = rename_context(&env.cfg, &ctx, "feat").expect_err("must reject");
-
-        assert!(err.to_string().contains("already has that name"));
+        for name in ["feat", " feat "] {
+            let err = rename_context(&env.cfg, &ctx, name).expect_err("must reject");
+            assert!(err.to_string().contains("already has that name"));
+        }
     }
 
     #[test]
