@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.13.0](https://github.com/Michael-JB/ctx/compare/v2.12.0...v2.13.0) (2026-10-16)
+
+
+### Features
+
+* context names slug whitespace to dashes ([b6fbf21](https://github.com/Michael-JB/ctx/commit/b6fbf21449bd5bcfc56aed87c61c2f8559b281b6))
+* p archives all stale contexts in the TUI ([45f9398](https://github.com/Michael-JB/ctx/commit/45f939815884372e6264eb9fdedc08e04684bedf))
+
 ## [2.12.0](https://github.com/Michael-JB/ctx/compare/v2.11.0...v2.12.0) (2026-10-11)
 
 
