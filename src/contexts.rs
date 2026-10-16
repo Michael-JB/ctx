@@ -223,19 +223,22 @@ fn branch_for(cfg: &Config, name: &str) -> String {
     format!("{}{}", cfg.branch_prefix, name.replace(' ', "-"))
 }
 
-/// Every rule a name passes to become a context's; the branch it maps to.
-fn check_new_name(cfg: &Config, name: &str) -> Result<String> {
-    let branch = branch_for(cfg, name);
-    check_name(name, &branch)?;
-    check_name_free(cfg, name, None)?;
-    Ok(branch)
+/// Every rule a name passes to become a context's: the name it becomes and
+/// the branch it maps to. `exclude` is the context the name is for, if it
+/// exists already.
+fn check_new_name(cfg: &Config, name: &str, exclude: Option<&Path>) -> Result<(String, String)> {
+    if name.trim().is_empty() {
+        return msg("context name must not be empty");
+    }
+    let name = name.to_string();
+    let branch = branch_for(cfg, &name);
+    check_name(&name, &branch)?;
+    check_name_free(cfg, &name, exclude)?;
+    Ok((name, branch))
 }
 
 /// Reject names that break the paths, branches, or commands they feed.
 fn check_name(name: &str, branch: &str) -> Result<()> {
-    if name.trim().is_empty() {
-        return msg("context name must not be empty");
-    }
     if name.contains('/') || name == "." || name == ".." {
         return msg(format!(
             "context name '{name}' must be a single path component"
@@ -335,8 +338,8 @@ fn create_context_with(
             "repo '{repo}' is not registered (ctx repo add <url>)"
         ));
     }
-    let branch = check_new_name(cfg, name)?;
-    let path = context_path(cfg, Some(repo), name);
+    let (name, branch) = check_new_name(cfg, name, None)?;
+    let path = context_path(cfg, Some(repo), &name);
 
     let (base, fetch_base) = match base {
         None => {
@@ -356,7 +359,7 @@ fn create_context_with(
     let preexisting = path.exists();
     let ctx = Context {
         repo: Some(repo.to_string()),
-        name: name.to_string(),
+        name,
         path: path.clone(),
     };
     let checkout = || -> Result<()> {
@@ -437,8 +440,8 @@ pub fn create(
 /// markers and the agent status all live there. It stays on git's default
 /// branch so a project started here pushes like any new repo.
 pub fn create_scratch(cfg: &Config, name: &str) -> Result<Context> {
-    check_new_name(cfg, name)?;
-    let path = context_path(cfg, None, name);
+    let (name, _) = check_new_name(cfg, name, None)?;
+    let path = context_path(cfg, None, &name);
     // Unlike a clone, `git init` would quietly adopt whatever is there,
     // following a symlink to do so.
     let existing = path.symlink_metadata().ok();
@@ -452,7 +455,7 @@ pub fn create_scratch(cfg: &Config, name: &str) -> Result<Context> {
     }
     let ctx = Context {
         repo: None,
-        name: name.to_string(),
+        name,
         path: path.clone(),
     };
     if let Err(err) = git_quiet(&["init", &path.to_string_lossy()], None) {
@@ -572,10 +575,10 @@ pub fn rename_context(cfg: &Config, ctx: &Context, name: &str) -> Result<Context
     if name == ctx.name {
         return msg(format!("'{}' already has that name", ctx.qualified()));
     }
-    check_new_name(cfg, name)?;
+    let (name, _) = check_new_name(cfg, name, Some(&ctx.path))?;
     // Same parent directory, so a plain rename; it must not replace a
     // (non-clone) directory already there, as renaming onto an empty one would.
-    let dest = ctx.path.with_file_name(name);
+    let dest = ctx.path.with_file_name(&name);
     if dest.exists() {
         return msg(format!("'{}' already exists", dest.display()));
     }
@@ -583,11 +586,11 @@ pub fn rename_context(cfg: &Config, ctx: &Context, name: &str) -> Result<Context
     // Agents key their per-checkout state by the live path, archived or not.
     crate::builtins::checkout_moved(
         &context_path(cfg, ctx.repo.as_deref(), &ctx.name),
-        &context_path(cfg, ctx.repo.as_deref(), name),
+        &context_path(cfg, ctx.repo.as_deref(), &name),
     );
     Ok(Context {
         repo: ctx.repo.clone(),
-        name: name.to_string(),
+        name,
         path: dest,
     })
 }
