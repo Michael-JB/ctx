@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.1](https://github.com/Michael-JB/ctx/compare/v2.13.0...v2.13.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* contexts reopened after a reboot load the shell environment again ([c3a01f2](https://github.com/Michael-JB/ctx/commit/c3a01f2322c7d4d992c11792b73f703a432f744b))
+
 ## [2.13.0](https://github.com/Michael-JB/ctx/compare/v2.12.0...v2.13.0) (2026-10-16)
 
 
