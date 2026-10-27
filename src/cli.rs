@@ -403,11 +403,7 @@ fn cmd_unarchive(deps: &Deps, io: &mut Io, name: &str) -> Result<()> {
 
 fn cmd_rename(deps: &Deps, io: &mut Io, name: &str, new_name: &str) -> Result<()> {
     let ctx = contexts::find_any(&deps.cfg, name)?;
-    let renamed = contexts::rename_context(&deps.cfg, &ctx, new_name)?;
-    // Kill last: killing our own session takes this process down with it.
-    if deps.mux.exists(&ctx) {
-        deps.mux.kill(&ctx)?;
-    }
+    let renamed = contexts::rename_with_session(&deps.cfg, deps.mux.as_ref(), &ctx, new_name)?;
     writeln!(
         io.out,
         "renamed {} to {}",
@@ -620,6 +616,7 @@ mod tests {
         created: Vec<String>,
         killed: Vec<String>,
         renamed: Vec<(String, String)>,
+        refuse_rename: bool,
         path_present_at_kill: Option<bool>,
         values: Vec<Option<HashMap<String, String>>>,
     }
@@ -676,7 +673,11 @@ mod tests {
         }
 
         fn rename(&self, ctx: &Context, to: &Context) -> std::result::Result<(), MultiplexerError> {
-            self.state().renamed.push((ctx.qualified(), to.qualified()));
+            let mut state = self.state();
+            if state.refuse_rename {
+                return Err(MultiplexerError("name taken".to_string()));
+            }
+            state.renamed.push((ctx.qualified(), to.qualified()));
             Ok(())
         }
     }
@@ -1389,7 +1390,7 @@ mod tests {
     }
 
     #[test]
-    fn rename_moves_the_context_and_kills_its_session() {
+    fn rename_renames_the_session_and_keeps_the_checkout() {
         let (_env, deps, mux) = registered();
         let ctx = create(&deps, "feat");
         mux.state().running.push("origin/feat".to_string());
@@ -1398,8 +1399,12 @@ mod tests {
 
         assert_eq!(run.code, 0);
         assert!(run.out.contains("renamed origin/feat to origin/better"));
-        assert_eq!(mux.state().killed, ["origin/feat"]);
-        assert!(!ctx.path.exists());
+        assert_eq!(
+            mux.state().renamed,
+            [("origin/feat".to_string(), "origin/better".to_string())]
+        );
+        assert!(mux.state().killed.is_empty());
+        assert!(ctx.path.exists());
         assert_eq!(
             contexts::current_branch(&contexts::find_context(&deps.cfg, "better").unwrap()),
             "feat"
@@ -1407,20 +1412,21 @@ mod tests {
     }
 
     #[test]
-    fn rename_of_the_current_context_moves_before_the_kill() {
+    fn rename_keeps_the_old_name_when_the_session_refuses_the_new_one() {
         let (_env, deps, mux) = registered();
-        let ctx = create(&deps, "feat");
+        create(&deps, "feat");
         {
             let mut state = mux.state();
             state.running.push("origin/feat".to_string());
-            state.current = Some("origin/feat".to_string());
+            state.refuse_rename = true;
         }
 
         let run = invoke(&["rename", "feat", "better"], &deps);
 
-        assert_eq!(run.code, 0);
-        assert!(!ctx.path.exists());
-        assert_eq!(mux.state().path_present_at_kill, Some(false));
+        assert_eq!(run.code, 1);
+        assert!(run.err.contains("name taken"));
+        assert!(contexts::find_context(&deps.cfg, "feat").is_ok());
+        assert!(contexts::find_context(&deps.cfg, "better").is_err());
     }
 
     #[test]

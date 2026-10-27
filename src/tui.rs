@@ -1152,7 +1152,7 @@ impl CtxTui {
                     Panel::Contexts
                 };
                 self.start_busy(panel);
-                self.teardown_worker(ctx, Teardown::Rename(value));
+                self.rename_worker(ctx, value);
             }
             PromptKind::AddRepo => {
                 // The derived name acts selected, like a generated context name.
@@ -1647,6 +1647,18 @@ impl CtxTui {
         spawn_worker(move || {
             let staged = teardown(&cfg, mux.as_ref(), &ctx, mode).map(Vec::from_iter);
             report_staged(&tx, staged);
+        });
+    }
+
+    fn rename_worker(&mut self, ctx: Context, name: String) {
+        let cfg = self.cfg.clone();
+        let mux = self.mux.clone();
+        let tx = self.tx.clone();
+        self.workers += 1;
+        spawn_worker(move || {
+            let renamed =
+                contexts::rename_with_session(&cfg, mux.as_ref(), &ctx, &name).map(|_| Vec::new());
+            report_staged(&tx, renamed);
         });
     }
 
@@ -2199,7 +2211,6 @@ impl CtxTui {
 enum Teardown {
     Archive,
     Delete,
-    Rename(String),
 }
 
 /// Move a context out from under its session and kill the session; a
@@ -2221,7 +2232,6 @@ fn teardown(
     let removed = match mode {
         Teardown::Archive => contexts::archive_context(cfg, ctx).map(|_| None),
         Teardown::Delete => contexts::stage_removal(ctx).map(Some),
-        Teardown::Rename(name) => contexts::rename_context(cfg, ctx, &name).map(|_| None),
     };
     if mux.exists(ctx) {
         mux.kill(ctx)?;
@@ -3409,7 +3419,7 @@ mod tests {
     }
 
     #[test]
-    fn renaming_moves_the_context_and_kills_its_session() {
+    fn renaming_keeps_the_checkout_and_renames_the_session() {
         let (env, _origin) = registered();
         let ctx = create(&env, "origin", "one");
         let mux = TestMux::recording(None);
@@ -3418,16 +3428,16 @@ mod tests {
         submit_rename(&mut app, "two");
         app.drain_idle();
 
-        assert!(!ctx.path.exists());
         let renamed = contexts::find_context(&env.cfg, "two").unwrap();
+        assert_eq!(renamed.path, ctx.path);
         assert_eq!(contexts::current_branch(&renamed), "one");
-        assert_eq!(mux.calls(), [("kill".to_string(), "one".to_string())]);
+        assert_eq!(mux.calls(), [("rename".to_string(), "one two".to_string())]);
         assert_eq!(app.contexts.selected_key(), Some("two"));
         assert!(app.busy.is_empty());
     }
 
     #[test]
-    fn renaming_the_current_context_switches_away_then_kills() {
+    fn renaming_the_current_context_stays_in_its_session() {
         let (env, _origin) = registered();
         for name in ["one", "two"] {
             create(&env, "origin", name);
@@ -3442,15 +3452,7 @@ mod tests {
 
         assert_eq!(
             mux.calls(),
-            [
-                ("open".to_string(), "two".to_string()),
-                ("kill".to_string(), "one".to_string()),
-            ]
-        );
-        assert_eq!(
-            mux.state.lock().unwrap().path_present_at_kill,
-            Some(false),
-            "the move must come before the kill"
+            [("rename".to_string(), "one three".to_string())]
         );
         assert!(contexts::find_context(&env.cfg, "three").is_ok());
     }
