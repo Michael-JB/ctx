@@ -619,6 +619,7 @@ mod tests {
         opened: Vec<String>,
         created: Vec<String>,
         killed: Vec<String>,
+        renamed: Vec<(String, String)>,
         path_present_at_kill: Option<bool>,
         values: Vec<Option<HashMap<String, String>>>,
     }
@@ -671,6 +672,11 @@ mod tests {
             let mut state = self.state();
             state.path_present_at_kill = Some(ctx.path.exists());
             state.killed.push(ctx.qualified());
+            Ok(())
+        }
+
+        fn rename(&self, ctx: &Context, to: &Context) -> std::result::Result<(), MultiplexerError> {
+            self.state().renamed.push((ctx.qualified(), to.qualified()));
             Ok(())
         }
     }

@@ -2530,6 +2530,15 @@ mod tests {
             state.calls.push(("kill".to_string(), ctx.name.clone()));
             Ok(())
         }
+
+        fn rename(&self, ctx: &Context, to: &Context) -> Result<(), MultiplexerError> {
+            self.state
+                .lock()
+                .unwrap()
+                .calls
+                .push(("rename".to_string(), format!("{} {}", ctx.name, to.name)));
+            Ok(())
+        }
     }
 
     fn registered() -> (TestEnv, std::path::PathBuf) {
