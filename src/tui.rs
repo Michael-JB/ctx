@@ -473,17 +473,20 @@ impl CtxTui {
         }
         self.repos.clear();
         let default = repos::default_repo(&self.cfg);
-        // Repos in the order their contexts are listed: the one worked in most
-        // recently first, ones without contexts last.
-        let recency = |name: &str| {
-            ctxs.iter()
-                .position(|ctx| ctx.repo.as_deref() == Some(name))
-        };
+        let archived = contexts::list_archived(&self.cfg);
+        // Repos by their most recently touched context, archived ones too.
+        let mut latest: HashMap<&str, SystemTime> = HashMap::new();
+        for ctx in ctxs.iter().chain(&archived) {
+            if let (Some(repo), Some(at)) = (ctx.repo.as_deref(), contexts::last_touched(ctx)) {
+                let entry = latest.entry(repo).or_insert(at);
+                *entry = (*entry).max(at);
+            }
+        }
         let mut names = repos::repo_names(&self.cfg);
         names.sort_by_key(|name| {
             (
                 Some(name) != default.as_ref(),
-                recency(name).unwrap_or(usize::MAX),
+                std::cmp::Reverse(latest.get(name.as_str()).copied()),
                 name.clone(),
             )
         });
@@ -503,7 +506,7 @@ impl CtxTui {
             );
         }
         self.archived.clear();
-        for ctx in contexts::list_archived(&self.cfg) {
+        for ctx in archived {
             self.archived.add_row(
                 &ctx.name,
                 vec![
@@ -2942,6 +2945,23 @@ mod tests {
 
         let rows: Vec<&str> = app.repos.rows.iter().map(|row| row.key.as_str()).collect();
         assert_eq!(rows, ["zzz", "aaa", "idle", "origin"]);
+    }
+
+    #[test]
+    fn repos_count_archived_contexts_as_activity() {
+        let (env, _origin) = registered();
+        for name in ["aaa", "zzz"] {
+            let other = env.make_origin(name, false);
+            repos::add_repo(&env.cfg, &other.to_string_lossy(), None).unwrap();
+        }
+        let live = create(&env, "aaa", "live");
+        contexts::backdate_touch(&live, Duration::from_secs(3_600));
+        contexts::archive_context(&env.cfg, &create(&env, "zzz", "gone")).unwrap();
+
+        let app = app(&env.cfg, TestMux::stub());
+
+        let rows: Vec<&str> = app.repos.rows.iter().map(|row| row.key.as_str()).collect();
+        assert_eq!(rows, ["zzz", "aaa", "origin"]);
     }
 
     #[test]

@@ -77,7 +77,7 @@ pub fn touch(ctx: &Context) {
 }
 
 /// When the context was last created or opened, if known.
-fn last_touched(ctx: &Context) -> Option<SystemTime> {
+pub fn last_touched(ctx: &Context) -> Option<SystemTime> {
     mtime(&touched_marker(ctx))
 }
 
