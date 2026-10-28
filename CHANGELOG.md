@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.2](https://github.com/Michael-JB/ctx/compare/v2.13.1...v2.13.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* repos rank by their archived contexts too ([548be23](https://github.com/Michael-JB/ctx/commit/548be230e0085af0350e4af2fe70569c551d7e46))
+
 ## [2.13.1](https://github.com/Michael-JB/ctx/compare/v2.13.0...v2.13.1) (2026-10-17)
 
 
