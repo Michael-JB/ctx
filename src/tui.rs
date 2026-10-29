@@ -184,18 +184,22 @@ impl PanelTable {
     }
 
     fn update_cell(&mut self, key: &str, column: usize, cell: CellValue) {
-        // The row may have been deleted or archived since the fetch started.
-        if let Some(row) = self.rows.iter_mut().find(|row| row.key == key)
-            && let Some(slot) = row.cells.get_mut(column)
-        {
-            *slot = cell;
-        }
+        update_cell(&mut self.rows, key, column, cell);
     }
 
     fn cursor_to_key(&mut self, key: &str) {
         if let Some(index) = self.rows.iter().position(|row| row.key == key) {
             self.cursor = index;
         }
+    }
+}
+
+fn update_cell(rows: &mut [TableRow], key: &str, column: usize, cell: CellValue) {
+    // The row may have been deleted or archived since the fetch started.
+    if let Some(row) = rows.iter_mut().find(|row| row.key == key)
+        && let Some(slot) = row.cells.get_mut(column)
+    {
+        *slot = cell;
     }
 }
 
@@ -680,6 +684,12 @@ impl CtxTui {
             Event::Mouse(mouse) => self.handle_mouse(mouse),
             Event::Tick => self.handle_tick(),
             Event::Cell { key, column, cell } => {
+                // The unfiltered rows come back on dismiss, so they need it too.
+                if let Some(filter) = &mut self.filter
+                    && filter.target == Panel::Contexts
+                {
+                    update_cell(&mut filter.rows, &key, 3 + column, cell.clone());
+                }
                 self.contexts.update_cell(&key, 3 + column, cell);
             }
             Event::ColumnDone(index) => {
@@ -3953,6 +3963,29 @@ mod tests {
         assert_eq!(app.contexts.selected_key(), Some(selected.as_str()));
         app.key(KeyCode::Esc);
         assert_eq!(app.contexts.row_count(), 4);
+    }
+
+    #[test]
+    fn statuses_landing_while_filtered_survive_the_dismiss() {
+        let (env, _origin) = registered();
+        for name in ["alpha", "beta"] {
+            create(&env, "origin", name);
+        }
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.keys(&[KeyCode::Char('/'), KeyCode::Char('b')]);
+        for key in ["alpha", "beta"] {
+            app.handle(Event::Cell {
+                key: key.to_string(),
+                column: 0,
+                cell: CellValue::plain("landed"),
+            });
+        }
+        app.key(KeyCode::Esc);
+
+        for row in &app.contexts.rows {
+            assert_eq!(row.cells[3].text, "landed", "{} lost its status", row.key);
+        }
     }
 
     #[test]
