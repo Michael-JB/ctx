@@ -443,10 +443,11 @@ impl CtxTui {
     /// shell out to `gh`), which is more than the panels can wait for and far
     /// more than the interface can stop responding for.
     fn reload(&mut self) {
-        if let Some(filter) = self.filter.take() {
-            // A reload repopulates every panel, so the snapshot is stale.
-            self.panel = filter.target;
-        }
+        let filter = self.filter.take();
+        let selected = filter
+            .as_ref()
+            .and_then(|filter| self.table(filter.target).selected_key())
+            .map(str::to_string);
         let blanks = 1 + self.cfg.status.len();
         let now = SystemTime::now();
         self.contexts.clear();
@@ -522,7 +523,24 @@ impl CtxTui {
                 ],
             );
         }
+        if let Some(filter) = filter {
+            self.refilter(filter, selected);
+        }
         self.refresh_statuses();
+    }
+
+    /// Re-apply a filter over its panel's fresh rows.
+    fn refilter(&mut self, mut filter: Filter, selected: Option<String>) {
+        let target = filter.target;
+        filter.rows = self.table(target).rows.clone();
+        let editing = filter.editing;
+        self.filter = Some(filter);
+        self.apply_filter();
+        if !editing && self.table(target).row_count() == 0 {
+            self.dismiss_filter();
+        } else if let Some(key) = selected {
+            self.table_mut(target).cursor_to_key(&key);
+        }
     }
 
     fn refresh_statuses(&mut self) {
@@ -3915,6 +3933,26 @@ mod tests {
         app.keys(&[KeyCode::Char('/'), KeyCode::Enter]);
         assert!(app.filter.is_none());
         assert!(mux.calls().is_empty());
+    }
+
+    #[test]
+    fn a_reload_keeps_the_filter() {
+        let (env, _origin) = registered();
+        for name in ["alpha", "beta", "beth"] {
+            create(&env, "origin", name);
+        }
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.keys(&[KeyCode::Char('/'), KeyCode::Char('b'), KeyCode::Enter]);
+        app.key(KeyCode::Char('j'));
+        let selected = app.contexts.selected_key().unwrap().to_string();
+        create(&env, "origin", "bolt");
+        app.key(KeyCode::Char('R'));
+
+        assert_eq!(app.contexts.row_count(), 3, "the new match must show");
+        assert_eq!(app.contexts.selected_key(), Some(selected.as_str()));
+        app.key(KeyCode::Esc);
+        assert_eq!(app.contexts.row_count(), 4);
     }
 
     #[test]
