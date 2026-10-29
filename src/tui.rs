@@ -252,6 +252,9 @@ struct Filter {
     target: Panel,
     query: Input,
     rows: Vec<TableRow>,
+    /// Keys go to the query; once submitted, the filtered panel is browsed
+    /// like any other.
+    editing: bool,
 }
 
 /// A worker's report back to the event loop.
@@ -719,10 +722,30 @@ impl CtxTui {
             self.handle_modal_key(key);
             return;
         }
-        if self.filter.is_some() {
+        if self.filter_editing() {
             self.handle_filter_key(key);
             return;
         }
+        if self.filter.is_some() {
+            match key.code {
+                KeyCode::Esc => {
+                    self.dismiss_filter();
+                    return;
+                }
+                KeyCode::Char('/') => {
+                    if let Some(filter) = &mut self.filter {
+                        filter.editing = true;
+                    }
+                    return;
+                }
+                _ => {}
+            }
+        }
+        self.handle_browse_key(key);
+        self.drop_filter_off_target();
+    }
+
+    fn handle_browse_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Char('1') => self.panel = Panel::Contexts,
             KeyCode::Char('2') => self.panel = Panel::Repos,
@@ -978,12 +1001,13 @@ impl CtxTui {
                         }
                     }
                 }
+                self.drop_filter_off_target();
             }
-            MouseEventKind::ScrollDown if self.modal.is_none() && self.filter.is_none() => {
+            MouseEventKind::ScrollDown if self.modal.is_none() && !self.filter_editing() => {
                 let table = self.table_mut(self.panel);
                 table.move_cursor(table.cursor as isize + 1);
             }
-            MouseEventKind::ScrollUp if self.modal.is_none() && self.filter.is_none() => {
+            MouseEventKind::ScrollUp if self.modal.is_none() && !self.filter_editing() => {
                 let table = self.table_mut(self.panel);
                 table.move_cursor(table.cursor as isize - 1);
             }
@@ -1685,11 +1709,27 @@ impl CtxTui {
             target,
             query: Input::default(),
             rows,
+            editing: true,
         });
+    }
+
+    fn filter_editing(&self) -> bool {
+        self.filter.as_ref().is_some_and(|filter| filter.editing)
     }
 
     fn drop_filter(&mut self) -> Option<Filter> {
         self.filter.take()
+    }
+
+    /// Leaving the filtered panel restores its rows.
+    fn drop_filter_off_target(&mut self) {
+        if let Some(filter) = &self.filter
+            && filter.target != self.panel
+        {
+            let panel = self.panel;
+            self.dismiss_filter();
+            self.panel = panel;
+        }
     }
 
     /// Restore the full panel, keeping the cursor on the filtered selection.
@@ -1749,13 +1789,13 @@ impl CtxTui {
         let Some(filter) = &self.filter else {
             return;
         };
-        let target = filter.target;
-        if self.table(target).selected_key().is_none() {
-            return;
+        if filter.query.value().is_empty() {
+            self.dismiss_filter();
+        } else if self.table(filter.target).selected_key().is_some()
+            && let Some(filter) = &mut self.filter
+        {
+            filter.editing = false;
         }
-        self.dismiss_filter();
-        self.panel = target;
-        self.action_select();
     }
 
     // ------------------------------------------------------------------
@@ -1854,7 +1894,7 @@ impl CtxTui {
     fn render_panel(&mut self, panel: Panel, area: Rect, buffer: &mut ratatui::buffer::Buffer) {
         let theme = self.cfg.theme.clone();
         let busy = self.busy.contains(&panel);
-        let focused = self.panel == panel && self.filter.is_none() && self.modal.is_none();
+        let focused = self.panel == panel && !self.filter_editing() && self.modal.is_none();
         let border = if focused {
             theme_color(&theme.border_active)
         } else {
@@ -3740,31 +3780,57 @@ mod tests {
     }
 
     #[test]
-    fn slash_filters_and_enter_opens_the_match() {
+    fn enter_applies_the_filter_for_browsing() {
         let (env, _origin) = registered();
-        for name in ["alpha", "beta"] {
+        for name in ["alpha", "beta", "beth"] {
             create(&env, "origin", name);
         }
         let mux = TestMux::recording(None);
         let mut app = app(&env.cfg, mux.clone());
 
         app.keys(&[KeyCode::Char('/'), KeyCode::Char('b'), KeyCode::Char('t')]);
-        assert_eq!(
-            app.contexts.row_count(),
-            1,
-            "only the fuzzy match may remain"
-        );
+        assert_eq!(app.contexts.row_count(), 2, "only fuzzy matches may remain");
         app.key(KeyCode::Enter);
+        assert!(mux.calls().is_empty(), "submitting must not open");
+        assert_eq!(app.contexts.row_count(), 2, "the filter must stay applied");
 
-        assert!(
-            mux.calls()
-                .contains(&("open".to_string(), "beta".to_string()))
-        );
-        assert_eq!(
-            app.contexts.row_count(),
-            2,
-            "the filter must clear after opening"
-        );
+        app.keys(&[KeyCode::Char('j'), KeyCode::Enter]);
+        let second = app.contexts.selected_key().unwrap().to_string();
+        assert!(mux.calls().contains(&("open".to_string(), second)));
+
+        app.key(KeyCode::Esc);
+        assert_eq!(app.contexts.row_count(), 3);
+        assert!(app.filter.is_none());
+    }
+
+    #[test]
+    fn slash_edits_an_applied_filter() {
+        let (env, _origin) = registered();
+        for name in ["alpha", "beta"] {
+            create(&env, "origin", name);
+        }
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.keys(&[KeyCode::Char('/'), KeyCode::Char('a'), KeyCode::Enter]);
+        assert_eq!(app.contexts.row_count(), 2);
+        app.keys(&[KeyCode::Char('/'), KeyCode::Char('l')]);
+        assert_eq!(app.contexts.row_count(), 1);
+        assert_eq!(app.contexts.selected_key(), Some("alpha"));
+    }
+
+    #[test]
+    fn leaving_the_filtered_panel_clears_the_filter() {
+        let (env, _origin) = registered();
+        for name in ["alpha", "beta"] {
+            create(&env, "origin", name);
+        }
+        let mut app = app(&env.cfg, TestMux::stub());
+
+        app.keys(&[KeyCode::Char('/'), KeyCode::Char('b'), KeyCode::Enter]);
+        app.key(KeyCode::Char('2'));
+        assert!(app.filter.is_none());
+        assert_eq!(app.contexts.row_count(), 2);
+        assert_eq!(app.panel, Panel::Repos);
     }
 
     #[test]
@@ -3840,6 +3906,43 @@ mod tests {
     }
 
     #[test]
+    fn enter_on_an_empty_filter_dismisses_it() {
+        let (env, _origin) = registered();
+        create(&env, "origin", "alpha");
+        let mux = TestMux::recording(None);
+        let mut app = app(&env.cfg, mux.clone());
+
+        app.keys(&[KeyCode::Char('/'), KeyCode::Enter]);
+        assert!(app.filter.is_none());
+        assert!(mux.calls().is_empty());
+    }
+
+    #[test]
+    fn clicking_another_panel_clears_the_filter() {
+        use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+
+        let (env, _origin) = registered();
+        for name in ["alpha", "beta"] {
+            create(&env, "origin", name);
+        }
+        let mut app = app(&env.cfg, TestMux::stub());
+        render(&mut app);
+
+        app.keys(&[KeyCode::Char('/'), KeyCode::Char('b')]);
+        let area = app.areas[&Panel::Repos];
+        app.handle(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: area.x + 2,
+            row: area.y + 2,
+            modifiers: KeyModifiers::NONE,
+        }));
+
+        assert!(app.filter.is_none());
+        assert_eq!(app.contexts.row_count(), 2);
+        assert_eq!(app.panel, Panel::Repos);
+    }
+
+    #[test]
     fn the_ui_stays_responsive_while_statuses_fetch() {
         // A slow status provider must not stall the event loop.
         let (env, _origin) = registered();
@@ -3885,7 +3988,7 @@ mod tests {
             "each keystroke must reselect the top match"
         );
         let top = app.contexts.selected_key().unwrap().to_string();
-        app.key(KeyCode::Enter);
+        app.keys(&[KeyCode::Enter, KeyCode::Enter]);
         assert!(mux.calls().contains(&("open".to_string(), top)));
     }
 
