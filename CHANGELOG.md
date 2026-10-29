@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.13.3](https://github.com/Michael-JB/ctx/compare/v2.13.2...v2.13.3) (2026-10-29)
+
+
+### Bug Fixes
+
+* enter applies the TUI filter so its matches can be browsed ([af95286](https://github.com/Michael-JB/ctx/commit/af95286da4b558be9f0391ae1ddc3a0b58656e73))
+* statuses that land while filtering survive clearing the filter ([9d89170](https://github.com/Michael-JB/ctx/commit/9d89170aaa07d5b35abdd259e35d870d9f9967af))
+
 ## [2.13.2](https://github.com/Michael-JB/ctx/compare/v2.13.1...v2.13.2) (2026-10-28)
 
 
