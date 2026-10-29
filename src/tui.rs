@@ -1012,10 +1012,14 @@ impl CtxTui {
                     self.click_modal(mouse.column, mouse.row);
                     return;
                 }
+                let mut submit = false;
                 for panel in Panel::ALL {
                     if let Some(area) = self.areas.get(&panel)
                         && area.contains((mouse.column, mouse.row).into())
                     {
+                        if self.filter_editing() && self.panel == panel {
+                            submit = true;
+                        }
                         self.panel = panel;
                         // Rows start below the border and header; clicks on
                         // blank space past the last row only focus the panel.
@@ -1030,6 +1034,9 @@ impl CtxTui {
                     }
                 }
                 self.drop_filter_off_target();
+                if submit {
+                    self.submit_filter();
+                }
             }
             MouseEventKind::ScrollDown if self.modal.is_none() && !self.filter_editing() => {
                 let table = self.table_mut(self.panel);
@@ -2019,10 +2026,15 @@ impl CtxTui {
             return;
         };
         let value = filter.query.value();
-        let line = if value.is_empty() {
-            Line::from(Span::styled(" filter", Style::default().dim()))
+        let line = if !filter.editing {
+            Line::from(Span::styled(format!(" /{value}"), Style::default().dim()))
+        } else if value.is_empty() {
+            Line::from(vec![
+                Span::raw(" /"),
+                Span::styled("filter", Style::default().dim()),
+            ])
         } else {
-            Line::from(format!(" {value}"))
+            Line::from(format!(" /{value}"))
         };
         Paragraph::new(line).render_widget(area, buffer);
     }
@@ -2069,8 +2081,12 @@ impl CtxTui {
                 ("?", "Help"),
             ],
         };
+        let mut bindings = bindings.to_vec();
+        if self.filter.is_some() && !self.filter_editing() {
+            bindings.insert(0, ("esc", "Clear filter"));
+        }
         let mut spans = Vec::new();
-        for (key, label) in bindings {
+        for (key, label) in &bindings {
             if !spans.is_empty() {
                 spans.push(Span::raw("  "));
             }
@@ -4011,6 +4027,40 @@ mod tests {
         assert!(app.filter.is_none());
         assert_eq!(app.contexts.row_count(), 2);
         assert_eq!(app.panel, Panel::Repos);
+    }
+
+    #[test]
+    fn clicking_the_filtered_panel_submits_the_filter() {
+        use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+
+        let (env, _origin) = registered();
+        for name in ["alpha", "beta", "beth"] {
+            create(&env, "origin", name);
+        }
+        let mut app = app(&env.cfg, TestMux::stub());
+        render(&mut app);
+        let click = |area: Rect, row: u16| {
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: area.x + 2,
+                row,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+
+        app.keys(&[KeyCode::Char('/'), KeyCode::Char('b')]);
+        let footer = app.areas[&Panel::Contexts].y + 100;
+        app.handle(click(app.areas[&Panel::Contexts], footer));
+        assert!(
+            app.filter_editing(),
+            "a click outside the panel must not submit"
+        );
+
+        let area = app.areas[&Panel::Contexts];
+        app.handle(click(area, area.y + 3));
+        assert!(!app.filter_editing());
+        assert_eq!(app.contexts.cursor, 1, "the click must keep its row");
+        assert_eq!(app.contexts.row_count(), 2);
     }
 
     #[test]
