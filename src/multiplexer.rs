@@ -94,6 +94,10 @@ pub trait Multiplexer: Send + Sync {
 
     /// Tear down the context's session.
     fn kill(&self, ctx: &Context) -> Result<(), MultiplexerError>;
+
+    /// Give the context's running session the name `to`'s session goes by,
+    /// leaving everything running in it untouched.
+    fn rename(&self, ctx: &Context, to: &Context) -> Result<(), MultiplexerError>;
 }
 
 pub fn get_multiplexer(kind: MultiplexerKind, layout: Node) -> std::sync::Arc<dyn Multiplexer> {

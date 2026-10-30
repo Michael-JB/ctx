@@ -207,6 +207,16 @@ impl Multiplexer for TmuxMultiplexer {
         tmux(&["kill-session", "-t", &format!("={}", session_name(ctx))])?;
         Ok(())
     }
+
+    fn rename(&self, ctx: &Context, to: &Context) -> Result<(), MultiplexerError> {
+        tmux(&[
+            "rename-session",
+            "-t",
+            &format!("={}", session_name(ctx)),
+            &session_name(to),
+        ])?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -375,6 +385,25 @@ mod tests {
             !calls
                 .iter()
                 .any(|call| call[0] == "switch-client" || call[0] == "attach-session")
+        );
+    }
+
+    #[test]
+    fn rename_retargets_the_exact_session() {
+        let env = test_env();
+        let (log, _guard) = stub_tmux(&env, "");
+        let mux = TmuxMultiplexer::new(Node::Pane(Pane::default()));
+
+        mux.rename(&ctx("repo", "a"), &ctx("repo", "b")).unwrap();
+
+        assert_eq!(
+            calls(&log),
+            vec![vec![
+                "rename-session",
+                "-t",
+                "=ctx--repo--a",
+                "ctx--repo--b"
+            ]]
         );
     }
 }

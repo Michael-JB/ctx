@@ -4,6 +4,7 @@ use std::time::SystemTime;
 use crate::config::Config;
 use crate::errors::{CtxError, Result, msg};
 use crate::git::{git, git_quiet, new_command};
+use crate::multiplexer::Multiplexer;
 use crate::repos;
 
 // Keeps the `ctx--<repo>--<name>` shape for scratch contexts, so a session
@@ -94,6 +95,29 @@ pub fn backdate_touch(ctx: &Context, ago: std::time::Duration) {
     file.set_modified(SystemTime::now() - ago).unwrap();
 }
 
+// Renaming only rewrites this file: the checkout keeps its directory, so
+// nothing running in it, nor anything keyed by its path, notices.
+fn name_marker(path: &Path) -> PathBuf {
+    path.join(".git").join("ctx-name")
+}
+
+/// A checkout's context name: the one it was renamed to, else its
+/// directory's.
+fn name_of(path: &Path) -> String {
+    std::fs::read_to_string(name_marker(path))
+        .ok()
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| dir_name(path))
+}
+
+fn dir_name(path: &Path) -> String {
+    path.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn archived_marker(ctx: &Context) -> PathBuf {
     ctx.path.join(".git").join("ctx-archived")
 }
@@ -146,25 +170,16 @@ fn scan(root: &Path, recency: fn(&Context) -> Option<SystemTime>) -> Vec<Context
         if !repo_dir.is_dir() {
             continue;
         }
-        let dir_name = repo_dir
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned();
-        let repo = (dir_name != SCRATCH_DIR).then_some(dir_name);
+        let repo_name = dir_name(&repo_dir);
+        let repo = (repo_name != SCRATCH_DIR).then_some(repo_name);
         for ctx_dir in sorted_dirs(&repo_dir) {
-            let name = ctx_dir
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned();
-            if name.ends_with(DELETING_SUFFIX) {
+            if dir_name(&ctx_dir).ends_with(DELETING_SUFFIX) {
                 continue;
             }
             if is_clone(&ctx_dir) {
                 found.push(Context {
                     repo: repo.clone(),
-                    name,
+                    name: name_of(&ctx_dir),
                     path: ctx_dir,
                 });
             }
@@ -220,10 +235,15 @@ pub fn find_context(cfg: &Config, name: &str) -> Result<Context> {
 ///
 /// Sharing a name with an archived context would leave that archive
 /// unrestorable, so the two pools compete for the same names. Names that
-/// slug alike compete too, since the slug is what goes on disk.
+/// slug alike compete too, since the slug is what goes on disk. A renamed
+/// context still holds its directory's name, which a new one would need.
 fn check_name_free(cfg: &Config, name: &str, exclude: Option<&Path>) -> Result<()> {
+    let holds = |ctx: &Context| {
+        (same_name(&ctx.name, name) || same_name(&dir_name(&ctx.path), name))
+            && Some(ctx.path.as_path()) != exclude
+    };
     for ctx in list_contexts(cfg) {
-        if same_name(&ctx.name, name) && Some(ctx.path.as_path()) != exclude {
+        if holds(&ctx) {
             return msg(format!(
                 "context name '{name}' is already used by {}",
                 ctx.name_holder(false)
@@ -231,7 +251,7 @@ fn check_name_free(cfg: &Config, name: &str, exclude: Option<&Path>) -> Result<(
         }
     }
     for ctx in list_archived(cfg) {
-        if same_name(&ctx.name, name) && Some(ctx.path.as_path()) != exclude {
+        if holds(&ctx) {
             return msg(format!(
                 "context name '{name}' is already used by {}",
                 ctx.name_holder(true)
@@ -322,7 +342,7 @@ fn random_name_from(cfg: &Config, adjectives: &[&str], animals: &[&str]) -> Resu
     let taken: std::collections::HashSet<String> = list_contexts(cfg)
         .into_iter()
         .chain(list_archived(cfg))
-        .map(|ctx| ctx.name)
+        .flat_map(|ctx| [dir_name(&ctx.path), ctx.name])
         .collect();
     let free: Vec<String> = adjectives
         .iter()
@@ -552,7 +572,7 @@ fn copy_tree(src: &Path, dest: &Path) -> std::io::Result<()> {
 /// Move a context's checkout into the archive.
 pub fn archive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
     check_name_free(cfg, &ctx.name, Some(&ctx.path))?;
-    let dest = archive_path(cfg, ctx.repo.as_deref(), &ctx.name);
+    let dest = archive_path(cfg, ctx.repo.as_deref(), &dir_name(&ctx.path));
     if dest.exists() {
         return msg(format!("'{}' is already archived", ctx.qualified()));
     }
@@ -572,7 +592,7 @@ pub fn archive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
 /// Move an archived checkout back among the live contexts.
 pub fn unarchive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
     check_name_free(cfg, &ctx.name, Some(&ctx.path))?;
-    let dest = context_path(cfg, ctx.repo.as_deref(), &ctx.name);
+    let dest = context_path(cfg, ctx.repo.as_deref(), &dir_name(&ctx.path));
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -587,7 +607,7 @@ pub fn unarchive_context(cfg: &Config, ctx: &Context) -> Result<Context> {
     Ok(restored)
 }
 
-/// Give a context, live or archived, a new name.
+/// Give a context, live or archived, a new name; its checkout stays put.
 ///
 /// The new name must pass the create rules, so a renamed context could
 /// have been created as such.
@@ -596,23 +616,43 @@ pub fn rename_context(cfg: &Config, ctx: &Context, name: &str) -> Result<Context
         return msg(format!("'{}' already has that name", ctx.qualified()));
     }
     let (name, _) = check_new_name(cfg, name, Some(&ctx.path))?;
-    // Same parent directory, so a plain rename; it must not replace a
-    // (non-clone) directory already there, as renaming onto an empty one would.
-    let dest = ctx.path.with_file_name(&name);
-    if dest.exists() {
-        return msg(format!("'{}' already exists", dest.display()));
-    }
-    std::fs::rename(&ctx.path, &dest)?;
-    // Agents key their per-checkout state by the live path, archived or not.
-    crate::builtins::checkout_moved(
-        &context_path(cfg, ctx.repo.as_deref(), &ctx.name),
-        &context_path(cfg, ctx.repo.as_deref(), &name),
-    );
+    store_name(&ctx.path, &name)?;
     Ok(Context {
         repo: ctx.repo.clone(),
         name,
-        path: dest,
+        path: ctx.path.clone(),
     })
+}
+
+fn store_name(path: &Path, name: &str) -> Result<()> {
+    let marker = name_marker(path);
+    if name == dir_name(path) {
+        match std::fs::remove_file(&marker) {
+            Err(err) if err.kind() != std::io::ErrorKind::NotFound => return Err(err.into()),
+            _ => {}
+        }
+    } else {
+        std::fs::write(&marker, format!("{name}\n"))?;
+    }
+    Ok(())
+}
+
+/// Rename a context along with its running session, which carries on as is.
+pub fn rename_with_session(
+    cfg: &Config,
+    mux: &dyn Multiplexer,
+    ctx: &Context,
+    name: &str,
+) -> Result<Context> {
+    let renamed = rename_context(cfg, ctx, name)?;
+    if mux.exists(ctx)
+        && let Err(err) = mux.rename(ctx, &renamed)
+    {
+        // The name must keep leading to the session that kept the old one.
+        store_name(&ctx.path, &ctx.name)?;
+        return Err(err.into());
+    }
+    Ok(renamed)
 }
 
 /// The checkout's branch, read from `.git/HEAD` to spare a subprocess.
@@ -730,7 +770,6 @@ pub fn prune_archive(cfg: &Config, now: SystemTime) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::claude_transcripts::{project_key, resolved};
     use crate::testutil::{TestEnv, commit_file, commit_lfs_file, git, lfs_available, test_env};
 
     fn registered() -> (TestEnv, PathBuf) {
@@ -877,14 +916,11 @@ mod tests {
     #[test]
     fn a_legacy_name_keeps_its_slug_taken() {
         let (env, _origin) = registered();
-        let legacy = create_legacy(&env, "origin", "two words");
+        create_legacy(&env, "origin", "two words");
 
         let err = create_context(&env.cfg, "origin", "two-words", None).expect_err("must reject");
 
         assert!(err.to_string().contains("already used by origin/two words"));
-        // Renaming to the same words slugs the directory.
-        let renamed = rename_context(&env.cfg, &legacy, "two words").unwrap();
-        assert_eq!(renamed.path, legacy.path.with_file_name("two-words"));
     }
 
     #[test]
@@ -1522,19 +1558,56 @@ mod tests {
     }
 
     #[test]
-    fn rename_moves_the_checkout_and_keeps_the_branch() {
+    fn rename_keeps_the_checkout_and_the_branch() {
         let (env, _origin) = registered();
         let ctx = create(&env, "origin", "feat");
 
         let renamed = rename_context(&env.cfg, &ctx, "better").unwrap();
 
-        assert_eq!(
-            renamed.path,
-            env.cfg.contexts_dir.join("origin").join("better")
-        );
+        assert_eq!(renamed.name, "better");
+        assert_eq!(renamed.path, ctx.path);
         assert_eq!(current_branch(&renamed), "feat");
-        assert!(!ctx.path.exists());
         assert_eq!(list_contexts(&env.cfg), vec![renamed]);
+    }
+
+    #[test]
+    fn renaming_back_to_the_directory_name_drops_the_stored_name() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "feat");
+        let renamed = rename_context(&env.cfg, &ctx, "better").unwrap();
+
+        let back = rename_context(&env.cfg, &renamed, "feat").unwrap();
+
+        assert!(!name_marker(&ctx.path).exists());
+        assert_eq!(list_contexts(&env.cfg), vec![back]);
+    }
+
+    #[test]
+    fn a_renamed_context_keeps_its_directory_name_taken() {
+        let (env, _origin) = registered();
+        rename_context(&env.cfg, &create(&env, "origin", "feat"), "better").unwrap();
+
+        let err = create_context(&env.cfg, "origin", "feat", None).expect_err("must reject");
+
+        assert!(err.to_string().contains("already used by origin/better"));
+    }
+
+    #[test]
+    fn archiving_a_renamed_context_keeps_its_directory_and_name() {
+        let (env, _origin) = registered();
+        let ctx = create(&env, "origin", "feat");
+        let renamed = rename_context(&env.cfg, &ctx, "better").unwrap();
+
+        let archived = archive_context(&env.cfg, &renamed).unwrap();
+        let restored = unarchive_context(&env.cfg, &archived).unwrap();
+
+        assert_eq!(
+            archived.path,
+            env.cfg.archive_dir.join("origin").join("feat")
+        );
+        assert_eq!(restored.path, ctx.path);
+        assert_eq!(list_contexts(&env.cfg), vec![restored]);
+        assert_eq!(list_contexts(&env.cfg)[0].name, "better");
     }
 
     #[test]
@@ -1544,10 +1617,7 @@ mod tests {
 
         let renamed = rename_context(&env.cfg, &archived, "better").unwrap();
 
-        assert_eq!(
-            renamed.path,
-            env.cfg.archive_dir.join("origin").join("better")
-        );
+        assert_eq!(renamed.path, archived.path);
         assert_eq!(list_archived(&env.cfg), vec![renamed]);
         assert_eq!(list_contexts(&env.cfg), vec![]);
     }
@@ -1589,59 +1659,6 @@ mod tests {
             rename_context(&env.cfg, &ctx, name).expect_err("must reject");
         }
         assert_eq!(list_contexts(&env.cfg), vec![ctx]);
-    }
-
-    #[test]
-    fn rename_carries_the_agent_state_along() {
-        // Claude Code keeps a checkout's transcripts under a directory named
-        // after its path; a rename must move it or `--continue` finds nothing.
-        let (env, _origin) = registered();
-        let claude_dir = env.root().join("claude");
-        let _config_dir =
-            crate::testutil::push_env("CLAUDE_CONFIG_DIR", &claude_dir.to_string_lossy());
-        let ctx = create(&env, "origin", "feat");
-        let projects = claude_dir.join("projects");
-        let old = projects.join(project_key(&resolved(&ctx.path)));
-        std::fs::create_dir_all(&old).unwrap();
-        std::fs::write(old.join("s.jsonl"), "{}\n").unwrap();
-
-        let renamed = rename_context(&env.cfg, &ctx, "better").unwrap();
-
-        let new = projects.join(project_key(&resolved(&renamed.path)));
-        assert!(new.join("s.jsonl").exists());
-        assert!(!old.exists());
-    }
-
-    #[test]
-    fn rename_of_an_archived_context_relocates_by_its_live_path() {
-        let (env, _origin) = registered();
-        let claude_dir = env.root().join("claude");
-        let _config_dir =
-            crate::testutil::push_env("CLAUDE_CONFIG_DIR", &claude_dir.to_string_lossy());
-        let live = create(&env, "origin", "feat");
-        let archived = archive_context(&env.cfg, &live).unwrap();
-        let projects = claude_dir.join("projects");
-        let old = projects.join(project_key(&resolved(&live.path)));
-        std::fs::create_dir_all(&old).unwrap();
-
-        rename_context(&env.cfg, &archived, "better").unwrap();
-
-        let restored = context_path(&env.cfg, Some("origin"), "better");
-        assert!(projects.join(project_key(&resolved(&restored))).is_dir());
-        assert!(!old.exists());
-    }
-
-    #[test]
-    fn rename_refuses_to_replace_a_directory_in_the_way() {
-        let (env, _origin) = registered();
-        let ctx = create(&env, "origin", "feat");
-        let squatter = ctx.path.with_file_name("better");
-        std::fs::create_dir(&squatter).unwrap();
-
-        let err = rename_context(&env.cfg, &ctx, "better").expect_err("must reject");
-
-        assert!(err.to_string().contains("already exists"));
-        assert!(ctx.path.exists());
     }
 
     #[test]

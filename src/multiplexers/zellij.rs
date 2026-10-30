@@ -334,6 +334,23 @@ impl Multiplexer for ZellijMultiplexer {
         }
         Ok(())
     }
+
+    fn rename(&self, ctx: &Context, to: &Context) -> Result<(), MultiplexerError> {
+        let (from, to) = (session_name(ctx), session_name(to));
+        // A dead session has no server to rename it; the next open recreates
+        // it under the new name, as it would replace a dead one anyway.
+        if !live_or_clear(&from)? {
+            return Ok(());
+        }
+        let mut cmd = std::process::Command::new("zellij");
+        // Run as if from outside, so `--session` picks the target even when
+        // called from within another session.
+        cmd.env_clear().envs(env_without_zellij());
+        // zellij 0.45 refuses any name the session has held before, as if
+        // another session had it.
+        cmd.args(["--session", &from, "action", "rename-session", &to]);
+        run_zellij(cmd, format!("zellij could not rename '{from}' to '{to}'"))
+    }
 }
 
 #[cfg(test)]
@@ -504,6 +521,60 @@ mod tests {
         assert_eq!(calls.len(), 2, "{calls:?}");
         assert_eq!(calls[0], "delete-session ctx--repo--a");
         assert!(calls[1].ends_with("attach --create-background ctx--repo--a"));
+    }
+
+    #[test]
+    fn rename_renames_the_live_session_as_if_from_outside() {
+        let env = test_env();
+        let args_log = env.root().join("zellij-args.log");
+        let env_log = env.root().join("zellij-env.log");
+        let script = format!(
+            "case \"$*\" in\n\
+               list-sessions*) echo 'ctx--repo--a [Created 1h ago]';;\n\
+               *) echo \"$*\" >> {args}; printenv | grep '^ZELLIJ' >> {env} || true;;\n\
+             esac\n\
+             exit 0",
+            args = args_log.display(),
+            env = env_log.display()
+        );
+        let _guard = env.fake_cli("zellij", &script);
+        let _zellij = push_env("ZELLIJ", "0");
+        let _session = push_env("ZELLIJ_SESSION_NAME", "elsewhere");
+        let mux = ZellijMultiplexer::new(Node::Pane(Pane::default()));
+
+        mux.rename(&ctx("repo", "a"), &ctx("repo", "b")).unwrap();
+
+        let calls = std::fs::read_to_string(&args_log).unwrap();
+        assert_eq!(
+            calls.lines().collect::<Vec<_>>(),
+            ["--session ctx--repo--a action rename-session ctx--repo--b"]
+        );
+        let leaked = std::fs::read_to_string(&env_log).unwrap_or_default();
+        assert_eq!(leaked.trim(), "");
+    }
+
+    #[test]
+    fn rename_deletes_a_dead_session_instead() {
+        let env = test_env();
+        let args_log = env.root().join("zellij-args.log");
+        let script = format!(
+            "case \"$*\" in\n\
+               list-sessions*) echo 'ctx--repo--a [Created 1day ago] (EXITED - attach to resurrect)';;\n\
+               *) echo \"$*\" >> {args};;\n\
+             esac\n\
+             exit 0",
+            args = args_log.display()
+        );
+        let _guard = env.fake_cli("zellij", &script);
+        let mux = ZellijMultiplexer::new(Node::Pane(Pane::default()));
+
+        mux.rename(&ctx("repo", "a"), &ctx("repo", "b")).unwrap();
+
+        let calls = std::fs::read_to_string(&args_log).unwrap();
+        assert_eq!(
+            calls.lines().collect::<Vec<_>>(),
+            ["delete-session ctx--repo--a"]
+        );
     }
 
     #[test]
