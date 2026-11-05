@@ -5,7 +5,7 @@ use std::process::Stdio;
 use super::CmdError;
 use crate::contexts::Context;
 use crate::git::new_command;
-use crate::layout::{Node, Pane, SplitDirection, resolve_layout};
+use crate::layout::{Layouts, Node, Pane, SplitDirection, resolve_layout};
 use crate::multiplexer::{Multiplexer, MultiplexerError, env_truthy};
 use crate::shellrun::via_shell;
 
@@ -136,12 +136,14 @@ fn create_session(session: &str, cwd: &Path, layout: &Node) -> Result<(), Multip
 }
 
 pub struct TmuxMultiplexer {
-    layout: Node,
+    layouts: Layouts,
 }
 
 impl TmuxMultiplexer {
-    pub fn new(layout: Node) -> TmuxMultiplexer {
-        TmuxMultiplexer { layout }
+    pub fn new(layouts: impl Into<Layouts>) -> TmuxMultiplexer {
+        TmuxMultiplexer {
+            layouts: layouts.into(),
+        }
     }
 }
 
@@ -176,8 +178,11 @@ impl Multiplexer for TmuxMultiplexer {
         values: Option<&HashMap<String, String>>,
     ) -> Result<(), MultiplexerError> {
         if !self.exists(ctx) {
-            let layout = via_shell(&resolve_layout(&self.layout, values))
-                .map_err(|err| MultiplexerError(err.to_string()))?;
+            let layout = via_shell(&resolve_layout(
+                self.layouts.for_repo(ctx.repo.as_deref()),
+                values,
+            ))
+            .map_err(|err| MultiplexerError(err.to_string()))?;
             create_session(&session_name(ctx), &ctx.path, &layout)?;
         }
         Ok(())

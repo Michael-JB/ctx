@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use toml::{Table, Value};
 
-use crate::layout::{LayoutError, Node, coerce_string, default_layout, parse_layout};
+use crate::layout::{LayoutError, Layouts, coerce_string, default_layout, parse_layout};
 use crate::multiplexer::MultiplexerKind;
 
 /// The home directory of a passwd entry produced by `lookup`.
@@ -135,7 +135,7 @@ pub struct Config {
     pub nerd_font: bool,
     /// Archived contexts this many days old are prunable.
     pub prune_after_days: u64,
-    pub layout: Node,
+    pub layouts: Layouts,
     pub status: Vec<StatusColumn>,
     pub theme: Theme,
 }
@@ -151,7 +151,7 @@ impl Default for Config {
             multiplexer: MultiplexerKind::Tmux,
             nerd_font: true,
             prune_after_days: 30,
-            layout: default_layout(),
+            layouts: default_layout().into(),
             status: Vec::new(),
             theme: Theme::default(),
         }
@@ -207,8 +207,14 @@ pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
     }
     if let Some(value) = data.get("layout") {
         match value {
-            Value::Table(table) => cfg.layout = parse_layout(table)?,
+            Value::Table(table) => cfg.layouts.default = parse_layout(table)?,
             _ => return config_err("layout must be a table"),
+        }
+    }
+    if let Some(value) = data.get("scratch_layout") {
+        match value {
+            Value::Table(table) => cfg.layouts.scratch = Some(parse_layout(table)?),
+            _ => return config_err("scratch_layout must be a table"),
         }
     }
     if let Some(value) = data.get("status") {
@@ -317,7 +323,7 @@ fn parse_status(data: &Value) -> Result<Vec<StatusColumn>, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layout::Pane;
+    use crate::layout::{Node, Pane};
 
     fn write_config(dir: &Path, text: &str) -> PathBuf {
         let path = dir.join("config.toml");
@@ -548,12 +554,24 @@ mod tests {
         let cfg = load("layout = { command = \"nvim\" }").unwrap();
 
         assert_eq!(
-            cfg.layout,
+            cfg.layouts.default,
             Node::Pane(Pane {
                 command: Some("nvim".to_string()),
                 ..Pane::default()
             })
         );
+    }
+
+    #[test]
+    fn scratch_layout_applies_to_scratch_contexts_only() {
+        let cfg = load("scratch_layout = { command = \"htop\" }").unwrap();
+        let htop = Node::Pane(Pane {
+            command: Some("htop".to_string()),
+            ..Pane::default()
+        });
+
+        assert_eq!(cfg.layouts.for_repo(None), &htop);
+        assert_ne!(cfg.layouts.for_repo(Some("repo")), &htop);
     }
 
     #[test]

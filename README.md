@@ -35,7 +35,8 @@ answer using the concrete snippets under Configuration.
 1. Which multiplexer do you use, tmux or zellij? Set `multiplexer` in
    the config file.
 2. Which panes should every context session open with (agent, editor,
-   git client, ...), and which gets focus? Write the `layout` table.
+   git client, ...), and which gets focus? Write the `layout` table. Should
+   scratch contexts open differently? Write a `scratch_layout` table.
 3. Which additional status columns do you want? (github, agent). Make sure
    their pre-requisites are met, then add them to the `[[status]]` table.
 4. Which key should summon the picker? Bind it in the multiplexer's config
@@ -142,6 +143,14 @@ command = "nvim"
 [[layout.panes]]
 builtin = "claude"
 focus = true
+```
+
+Scratch contexts use `scratch_layout` when set, falling back to `layout`. It
+takes the same keys:
+
+```toml
+[scratch_layout]
+builtin = "claude"
 ```
 
 #### Pane builtins

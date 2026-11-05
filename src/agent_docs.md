@@ -31,7 +31,8 @@ For work that belongs to no repo (an experiment, a throwaway script):
 
     ctx scratch <name> --detach
 
-Takes `--set` and `--detach`.
+Takes `--set` and `--detach`. Its session uses the user's scratch layout if
+they set one, else their ctx layout.
 
 Clean up after yourself: archive contexts with `ctx archive <name>` when you're
 done. Permanently delete a context with `ctx rm <name>`; do this only when

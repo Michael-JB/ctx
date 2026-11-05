@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 
 use crate::contexts::Context;
 use crate::git::new_command;
-use crate::layout::{Node, SplitDirection, resolve_layout};
+use crate::layout::{Layouts, Node, SplitDirection, resolve_layout};
 use crate::multiplexer::{Multiplexer, MultiplexerError, env_truthy, env_var};
 use crate::shellrun::via_shell;
 
@@ -207,12 +207,14 @@ fn live_or_clear(session: &str) -> Result<bool, MultiplexerError> {
 }
 
 pub struct ZellijMultiplexer {
-    layout: Node,
+    layouts: Layouts,
 }
 
 impl ZellijMultiplexer {
-    pub fn new(layout: Node) -> ZellijMultiplexer {
-        ZellijMultiplexer { layout }
+    pub fn new(layouts: impl Into<Layouts>) -> ZellijMultiplexer {
+        ZellijMultiplexer {
+            layouts: layouts.into(),
+        }
     }
 
     fn write_layout_file(
@@ -227,7 +229,11 @@ impl ZellijMultiplexer {
             .disable_cleanup(true)
             .tempfile()
             .map_err(to_mux_err)?;
-        let layout = via_shell(&resolve_layout(&self.layout, values)).map_err(to_mux_err)?;
+        let layout = via_shell(&resolve_layout(
+            self.layouts.for_repo(ctx.repo.as_deref()),
+            values,
+        ))
+        .map_err(to_mux_err)?;
         file.write_all(render_layout(&layout, &ctx.path)?.as_bytes())
             .map_err(to_mux_err)?;
         Ok(file.path().to_string_lossy().into_owned())

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::contexts::Context;
-use crate::layout::Node;
+use crate::layout::Layouts;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MultiplexerKind {
@@ -96,13 +96,13 @@ pub trait Multiplexer: Send + Sync {
     fn kill(&self, ctx: &Context) -> Result<(), MultiplexerError>;
 }
 
-pub fn get_multiplexer(kind: MultiplexerKind, layout: Node) -> std::sync::Arc<dyn Multiplexer> {
+pub fn get_multiplexer(kind: MultiplexerKind, layouts: Layouts) -> std::sync::Arc<dyn Multiplexer> {
     match kind {
         MultiplexerKind::Tmux => {
-            std::sync::Arc::new(crate::multiplexers::tmux::TmuxMultiplexer::new(layout))
+            std::sync::Arc::new(crate::multiplexers::tmux::TmuxMultiplexer::new(layouts))
         }
         MultiplexerKind::Zellij => {
-            std::sync::Arc::new(crate::multiplexers::zellij::ZellijMultiplexer::new(layout))
+            std::sync::Arc::new(crate::multiplexers::zellij::ZellijMultiplexer::new(layouts))
         }
     }
 }
