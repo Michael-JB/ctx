@@ -60,6 +60,33 @@ pub fn default_layout() -> Node {
     Node::Pane(Pane::default())
 }
 
+/// The session layouts: `scratch` for scratch contexts when set, `default`
+/// for everything else.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Layouts {
+    pub default: Node,
+    pub scratch: Option<Node>,
+}
+
+impl Layouts {
+    /// The layout for a context of `repo`, None meaning a scratch context.
+    pub fn for_repo(&self, repo: Option<&str>) -> &Node {
+        match (repo, &self.scratch) {
+            (None, Some(scratch)) => scratch,
+            _ => &self.default,
+        }
+    }
+}
+
+impl From<Node> for Layouts {
+    fn from(default: Node) -> Layouts {
+        Layouts {
+            default,
+            scratch: None,
+        }
+    }
+}
+
 pub fn parse_layout(data: &Table) -> Result<Node, LayoutError> {
     let node = parse_node(data)?;
     if count_focus(&node) > 1 {

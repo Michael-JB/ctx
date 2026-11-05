@@ -158,8 +158,12 @@ enum RepoCommands {
     },
 }
 
-fn parse_assignments(cfg: &Config, assignments: &[String]) -> Result<HashMap<String, String>> {
-    let accepted = accepted_keys(&cfg.layout);
+fn parse_assignments(
+    cfg: &Config,
+    repo: Option<&str>,
+    assignments: &[String],
+) -> Result<HashMap<String, String>> {
+    let accepted = accepted_keys(cfg.layouts.for_repo(repo));
     let mut values = HashMap::new();
     for assignment in assignments {
         let Some((key, value)) = assignment.split_once('=') else {
@@ -187,7 +191,7 @@ fn create_and_open(
     base: Option<&str>,
     session: SessionArgs,
 ) -> Result<()> {
-    let values = parse_assignments(&deps.cfg, &session.assignments)?;
+    let values = parse_assignments(&deps.cfg, repo, &session.assignments)?;
     let name = match name {
         Some(name) => name,
         None => contexts::random_name(&deps.cfg)?,
@@ -594,7 +598,7 @@ pub fn main() -> i32 {
             return 1;
         }
     };
-    let mux = get_multiplexer(cfg.multiplexer, cfg.layout.clone());
+    let mux = get_multiplexer(cfg.multiplexer, cfg.layouts.clone());
     let deps = Deps { cfg, mux };
     match dispatch(cli, &deps, &mut io) {
         Ok(code) => code,
@@ -920,7 +924,7 @@ mod tests {
 
     fn with_claude_layout(deps: Deps) -> Deps {
         let mut cfg = deps.cfg;
-        cfg.layout = crate::layout::Node::Pane(crate::layout::Pane {
+        cfg.layouts.default = crate::layout::Node::Pane(crate::layout::Pane {
             builtin: Some("claude".to_string()),
             ..crate::layout::Pane::default()
         });
