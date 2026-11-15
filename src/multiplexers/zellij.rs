@@ -111,7 +111,7 @@ fn render_node(node: &Node, cwd: &Path, indent: usize) -> Result<String, Multipl
 
 fn render_layout(layout: &Node, cwd: &Path) -> Result<String, MultiplexerError> {
     Ok(format!(
-        "layout {{\n    default_tab_template {{\n        pane size=1 borderless=true {{\n            plugin location=\"zellij:tab-bar\"\n        }}\n        children\n        pane size=2 borderless=true {{\n            plugin location=\"zellij:status-bar\"\n        }}\n    }}\n    tab {{\n{}\n    }}\n}}\n",
+        "layout {{\n    default_tab_template {{\n        children\n        pane size=1 borderless=true {{\n            plugin location=\"zellij:compact-bar\"\n        }}\n    }}\n    tab {{\n{}\n    }}\n}}\n",
         render_node(layout, cwd, 2)?
     ))
 }
@@ -431,6 +431,17 @@ mod tests {
         let out = render_layout(&Node::Pane(Pane::default()), Path::new("/w")).unwrap();
 
         assert!(out.contains("pane cwd=\"/w\""));
+    }
+
+    #[test]
+    fn layout_uses_compact_bar_below_children() {
+        let out = render_layout(&Node::Pane(Pane::default()), Path::new("/w")).unwrap();
+
+        let children = out.find("children").unwrap();
+        let bar = out.find("plugin location=\"zellij:compact-bar\"").unwrap();
+        assert!(children < bar);
+        assert!(!out.contains("zellij:tab-bar"));
+        assert!(!out.contains("zellij:status-bar"));
     }
 
     #[test]
