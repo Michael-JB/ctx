@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.14.0](https://github.com/Michael-JB/ctx/compare/v2.13.3...v2.14.0) (2026-11-16)
+
+
+### Features
+
+* use zellij's compact bar in session layouts ([3a2909c](https://github.com/Michael-JB/ctx/commit/3a2909c0f1896ebd47ebf2ae17f2b059a969cf21))
+
 ## [2.13.3](https://github.com/Michael-JB/ctx/compare/v2.13.2...v2.13.3) (2026-10-29)
 
 
